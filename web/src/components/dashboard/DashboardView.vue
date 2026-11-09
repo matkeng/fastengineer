@@ -70,7 +70,7 @@ const kpis = computed<Kpi[]>(() => {
 		{ label: 'Lists, trees & tables', icon: 'database', value: k.enums + k.trees + k.tables, go: 'ref',
 			sub: `${k.enums} lists · ${k.trees} trees · ${k.tables} tables · ${k.rows} rows` },
 		{ label: 'Generators', icon: 'generator', value: k.generators, go: 'generators',
-			sub: `${k.gen_builds} build(s)${k.latest_build_at ? `, last ${ago(k.latest_build_at)}` : ''}` },
+			sub: `${k.gen_builds} build(s)${k.latest_build_at ? `, last ${ago(k.latest_build_at)}` : ''}${k.plc_cards ? ` · ${k.plc_panels} PLC panel(s), ${k.plc_cards} cards` : ''}` },
 		{ label: 'Engine', icon: 'cpu', value: wb.status === 'ready' ? 'OK' : '–', go: 'engine',
 			sub: `${wb.info?.compiled ? 'compiled' : 'Python'}${wb.connectMs !== null ? ` · started in ${wb.connectMs < 1000 ? `${wb.connectMs} ms` : `${(wb.connectMs / 1000).toFixed(1)} s`}` : ''}`,
 			tone: wb.status === 'ready' ? 'ok' : 'warn' },
@@ -131,7 +131,7 @@ async function openEvent(e: DashEvent) {
 		ui.go('mel');
 	} else if (e.section === 'generators') {
 		if (gens.draft?.id !== e.id) {
-			if (gens.dirty && !confirm('Discard unsaved changes to the open generator?')) return;
+			if (gens.anyDirty && !confirm('Discard unsaved changes to the open generator?')) return;
 			await gens.open(e.id);
 		}
 		if (e.kind === 'build') gens.tab = 'build';

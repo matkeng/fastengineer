@@ -22,6 +22,7 @@ from workbench_core.refdata import EnumList, RefRow, RefTable, RefTree, RefValid
 from workbench_core.mel.models import RevisionInfo
 from workbench_core.symbols import Drawing, Library, PageOverride, PageResult, RunInfo, Template
 from workbench_core.generators.editable import BuildInfo, BuildRecord, GenRecord, GenSummary, summarise
+from workbench_core.generators.hardware import Catalogue, Hardware, default_catalogue
 from workbench_core.generators.models import BuildResult, Generator, RefTable as GenTable
 from workbench_core.generators.xlsx_import import ImportReport
 
@@ -131,6 +132,12 @@ CREATE TABLE IF NOT EXISTS gen_builds (
     info TEXT NOT NULL,
     data TEXT NOT NULL,
     UNIQUE (generator_id, seq)
+);
+-- PLC hardware register per generator (panels -> racks -> cards); the type catalogue is in settings.
+CREATE TABLE IF NOT EXISTS gen_hardware (
+    generator_id TEXT PRIMARY KEY REFERENCES gen_generators(id) ON DELETE CASCADE,
+    data TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -760,6 +767,44 @@ class GeneratorStore:
             (g,) = self._db.execute("SELECT COUNT(*) FROM gen_generators").fetchone()
             (b,) = self._db.execute("SELECT COUNT(*) FROM gen_builds").fetchone()
         return g, b
+
+    # -- PLC hardware ----------------------------------------------------------------
+
+    def catalogue(self) -> Catalogue:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM settings WHERE key = 'gen_hw_catalogue'").fetchone()
+        return Catalogue.model_validate_json(row[0]) if row else default_catalogue()
+
+    def save_catalogue(self, cat: Catalogue) -> Catalogue:
+        with self._lock, self._db:
+            self._db.execute("INSERT INTO settings VALUES ('gen_hw_catalogue', ?) "
+                             "ON CONFLICT(key) DO UPDATE SET data = excluded.data", (cat.model_dump_json(),))
+        return cat
+
+    def hardware(self, rid: str) -> Hardware:
+        self.get(rid)
+        with self._lock:
+            row = self._db.execute("SELECT data FROM gen_hardware WHERE generator_id = ?", (rid,)).fetchone()
+        return Hardware.model_validate_json(row[0]) if row else Hardware()
+
+    def save_hardware(self, rid: str, hw: Hardware) -> Hardware:
+        self.get(rid)
+        now = _now().isoformat()
+        with self._lock, self._db:
+            self._db.execute("INSERT INTO gen_hardware VALUES (?, ?, ?) ON CONFLICT(generator_id) DO UPDATE SET "
+                             "data = excluded.data, updated_at = excluded.updated_at", (rid, hw.model_dump_json(), now))
+        return hw
+
+    def hardware_counts(self) -> tuple[int, int]:
+        """(panels, cards) across all generators."""
+        with self._lock:
+            rows = self._db.execute("SELECT data FROM gen_hardware").fetchall()
+        panels = cards = 0
+        for (d,) in rows:
+            hw = Hardware.model_validate_json(d)
+            panels += len(hw.panels)
+            cards += sum(1 for p in hw.panels for r in p.racks for c in r.cards if c is not None)
+        return panels, cards
 
     def all_builds(self) -> list[BuildInfo]:
         with self._lock:

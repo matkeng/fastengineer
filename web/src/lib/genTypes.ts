@@ -268,3 +268,32 @@ export const isTag = (s: string | null | undefined) => {
 	const t = (s ?? '').trim();
 	return t.startsWith('<<') && t.endsWith('>>') && t.length > 4;
 };
+
+// -- PLC hardware (mirrors generators/hardware.py) -------------------------------------
+
+export type CardKind = 'Network' | 'DI' | 'DO' | 'AI' | 'AO' | 'RTD';
+export const CARD_KINDS: CardKind[] = ['Network', 'DI', 'DO', 'AI', 'AO', 'RTD'];
+export const IO_SIZES = [8, 12, 16, 32];
+
+export interface CardType { id: string; kind: CardKind; channels: number; part_number: string; description: string; wiring: string }
+export interface RackType { id: string; part_number: string; description: string; max_slots: number | null }
+export interface Catalogue { rack_types: RackType[]; card_types: CardType[] }
+export interface Card { id: string; card_type_id: string; tag: string; spare: boolean; notes: string }
+export interface Rack { id: string; number: number; rack_type_id: string; description: string; first_slot: number; cards: (Card | null)[] }
+export interface Panel { id: string; tag: string; description: string; location: string; racks: Rack[] }
+export interface Hardware { panels: Panel[] }
+export interface ScheduleRow {
+	panel: string; rack: number; slot: number; card: string; kind: string; channels: number;
+	part_number: string; description: string; spare: boolean; notes: string;
+}
+export interface HardwareSummary {
+	panels: number; racks: number; cards: number;
+	by_kind: { kind: string; cards: number; channels: number; spare_cards: number }[];
+	demand: { card_type: string; points: number; kind: string | null; channels: number; free: number }[];
+	demand_column: string | null;
+}
+export interface HardwareView {
+	hardware: Hardware; catalogue: Catalogue; findings: Finding[]; summary: HardwareSummary; schedule: ScheduleRow[];
+}
+
+export const newId = () => Math.random().toString(16).slice(2, 14);

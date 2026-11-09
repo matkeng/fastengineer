@@ -769,3 +769,35 @@ main.fill > .gen > .wizard { flex: 1; min-height: 320px; display: flex; flex-dir
 .gen-settings label { display: flex; flex-direction: column; gap: 3px; font-size: 0.85rem; }
 .gen-settings label.check { flex-direction: row; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .gen-settings label.check .hint { margin: 0; font-size: 0.78rem; }
+
+/* PLC hardware */
+.gen-hw .subtabs.inline { border: 0; margin: 0 8px 0 0; }
+.hw-layout { display: grid; grid-template-columns: minmax(180px, 230px) minmax(0, 1fr); gap: 12px; min-height: 0; flex: 1; }
+.hw-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; overflow: auto; }
+.hw-panel-fields label, .rack-head label, .card-edit label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; }
+.gen-hw input.wide { min-width: 240px; }
+.hw-rack { border: 1px solid var(--border); background: var(--card); padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+.slots { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; }
+.slot { flex: none; width: 74px; height: 112px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; padding: 4px 2px;
+	border: 1px solid var(--border-strong); border-radius: 2px; background: var(--bg); color: var(--text); font-weight: 400; cursor: pointer; }
+.slot:hover:not(:disabled) { border-color: var(--accent); background: var(--bg); }
+.slot.on { box-shadow: 0 0 0 2px var(--accent); }
+.slot.empty { border-style: dashed; color: var(--muted); }
+.slot.over { border-color: var(--danger); }
+.slot.spare { background-image: repeating-linear-gradient(45deg, transparent 0 6px, color-mix(in srgb, var(--muted) 18%, transparent) 6px 8px); }
+.slot .slot-no { font-size: 10px; color: var(--muted); align-self: stretch; text-align: center; border-bottom: 1px solid var(--border); }
+.slot .slot-kind { font-weight: 700; font-size: 14px; margin-top: 6px; }
+.slot .slot-ch { font-size: 18px; font-weight: 600; }
+.slot .slot-pn { font-size: 9px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 68px; }
+.slot .slot-add { font-size: 22px; margin-top: 24px; }
+.kind-Network { --kind: #5f6368; } .kind-DI { --kind: #1a73e8; } .kind-DO { --kind: #e8710a; }
+.kind-AI { --kind: #188038; } .kind-AO { --kind: #a142f4; } .kind-RTD { --kind: #d93025; } .kind-unknown { --kind: var(--danger); }
+.slot[class*='kind-'] { border-top: 5px solid var(--kind); }
+.slot[class*='kind-'] .slot-kind { color: var(--kind); }
+.chip[class*='kind-'] { border-left: 4px solid var(--kind); }
+.card-edit { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px; background: var(--select); border: 1px solid var(--border); }
+.hw-findings li.error { color: var(--danger); }
+.hw-demand td.bad { color: var(--danger); font-weight: 700; }
+.hw-types { display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+.hw-types h4 { margin: 8px 0 0; }
+@media (max-width: 760px) { .hw-layout { grid-template-columns: 1fr; } .gen-hw input.wide { min-width: 0; } }

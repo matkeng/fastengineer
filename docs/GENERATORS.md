@@ -44,7 +44,26 @@ cell for cell, in **compatibility mode**.
    - It shows the stats and warnings, the output and the **changes** against the previous build (added / removed / changed, old → new per column).
    - Click an output row to see the run and template row it came from.
    - **Export .xlsx / .csv** writes the shown build (Save As in the desktop app).
-6. **Settings**: the config (tags, run range, expansion flags, compatibility or standard mode, document fields).
+6. **PLC hardware**: the PLC panels of the project, each with racks, each with cards in numbered slots.
+   - **Card & rack types** is a catalogue shared by every generator.
+     - It starts with Network plus DI, DO, AI, AO and RTD cards in 8, 12, 16 and 32 channel variants, and one modular rack type.
+     - Fill in part numbers and descriptions; a rack type can have a maximum slot count.
+     - Types used in a saved rack can't be removed.
+   - **Panels, racks & cards**:
+     - add a panel (tag, description, location);
+     - add racks (rack number, type, first slot number); each new rack starts with a network adapter;
+     - fill slots with cards: click an empty slot or use + Card.
+     - A selected card can change type or name (default `{PANEL}-R{rack}-S{slot}`), be marked spare, or be moved, removed, or given an empty slot before it.
+   - **Live checks:**
+     - duplicate panel tags, rack numbers or card names;
+     - unknown types;
+     - more cards than the rack's slots;
+     - a rack with IO but no network adapter.
+   - **Totals:** cards and channels per kind, and channels against the latest IO list build. The IO list's card type column is matched to the card part numbers.
+   - **Export .xlsx:** the card schedule.
+
+   IO points are not assigned to channels yet; that is the next step.
+7. **Settings**: the config (tags, run range, expansion flags, compatibility or standard mode, document fields).
 
 The dashboard counts generators and builds, and lists them in recent activity.
 `samples/generator-sample.xlsx` (invented data, written by `scripts/make-generator-sample.py`) is used by the engine tests and the Windows CI smoke test.

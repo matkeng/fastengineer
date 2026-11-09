@@ -8,6 +8,7 @@ import { type GenTab, useGenerators } from '../../stores/generators';
 import AppModal from '../common/AppModal.vue';
 import GenBuild from './GenBuild.vue';
 import GenCheck from './GenCheck.vue';
+import GenHardware from './GenHardware.vue';
 import GenRunsheet from './GenRunsheet.vue';
 import GenSettings from './GenSettings.vue';
 import GenTemplates from './GenTemplates.vue';
@@ -23,9 +24,10 @@ const TABS = computed<{ id: GenTab; label: string; count?: number; tone?: string
 	{ id: 'templates', label: 'Templates', count: new Set(g.draft?.generator.templates.map((t) => t.id)).size },
 	{ id: 'check', label: 'Check', count: errors.value || undefined, tone: errors.value ? 'bad' : undefined },
 	{ id: 'build', label: 'Build', count: g.builds.length || undefined },
+	{ id: 'hardware', label: 'PLC hardware', count: g.hwView?.summary.cards || undefined },
 	{ id: 'settings', label: 'Settings' },
 ]);
-const panels: Record<GenTab, unknown> = { runsheet: GenRunsheet, templates: GenTemplates, check: GenCheck, build: GenBuild, settings: GenSettings };
+const panels: Record<GenTab, unknown> = { runsheet: GenRunsheet, templates: GenTemplates, check: GenCheck, build: GenBuild, hardware: GenHardware, settings: GenSettings };
 const report = computed<ImportReport | null>(() => g.draft?.import_report ?? null);
 
 async function pick(files: FileList | null | undefined) {
@@ -52,7 +54,7 @@ function onDrop(e: DragEvent) {
 }
 
 function leave() {
-	if (g.dirty && !confirm('Discard unsaved changes to this generator?')) return;
+	if (g.anyDirty && !confirm('Discard unsaved changes to this generator?')) return;
 	g.close();
 }
 

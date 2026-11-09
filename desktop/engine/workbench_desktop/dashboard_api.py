@@ -55,6 +55,8 @@ class Counts(BaseModel):
     rows: int = 0
     generators: int = 0
     gen_builds: int = 0
+    plc_panels: int = 0
+    plc_cards: int = 0
     latest_build_at: datetime | None = None
     open_workbooks: int = 0
 
@@ -183,6 +185,7 @@ def dashboard() -> Dashboard:
         if g.updated_at:
             events.append(Event(kind="generator", section="generators", id=g.id, title=g.name,
                                 detail=f"generator · {g.runs} runs · {g.templates} templates", at=g.updated_at))
+    c.plc_panels, c.plc_cards = gens.hardware_counts()
     for b in gens.all_builds():
         c.gen_builds += 1
         if c.latest_build_at is None or b.created_at > c.latest_build_at:

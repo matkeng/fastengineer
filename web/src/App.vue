@@ -47,7 +47,7 @@ const dirty: Partial<Record<string, () => boolean>> = {
 	symbols: () => sym.dirty,
 	mel: () => mel.dirty,
 	ref: () => rd.dirty,
-	generators: () => gens.dirty,
+	generators: () => gens.anyDirty,
 };
 const sectionLabel = computed(() => SECTIONS.find((s) => s.id === ui.tab)?.label ?? '');
 
