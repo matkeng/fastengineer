@@ -201,6 +201,13 @@ imported only when used). API: `desktop/engine/workbench_desktop/symbols_api.py`
    instrument-list fields (`tag`, `loop`, `instrument_type`, `signal_type`, …), whose saved
    rules re-apply after every re-analysis.
 
+**Scanned drawings (OCR) — known limit.** Searchable PDFs use their text layer and read
+every tag (11/11 on the sample). On scanned, image-only sheets Windows' built-in OCR reads
+loop numbers, longer codes and one-word tags (`1023`, `LIC-1030`, `PSV-1040`) but usually
+drops 2-letter function codes inside bubbles (`FT`, `PT`), so those tags come out as the
+number only; fix them with List-import overrides. Page text is OCR'd from a copy with the
+linework removed, and symbols with missing tag parts are re-read on their own, enlarged.
+
 Samples (`python scripts/make_sample_pid.py`, which also rebuilds the built-in example
 library `core/src/workbench_core/symbols/starter.py`):
 
