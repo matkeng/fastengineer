@@ -79,6 +79,36 @@ jobs:
             if (-not ($ex.rows | Where-Object { $_.strike -eq 'partial' })) { throw 'no partial strikes detected' }
           } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
 
+      - name: Smoke-test the portable app
+        run: |
+          $dir = Get-ChildItem dist -Directory -Filter '*-portable-x64' | Select-Object -First 1
+          $app = Start-Process (Join-Path $dir.FullName 'Drawing Workbench.exe') -PassThru
+          try {
+            # The shell should find workbench-engine.exe beside it and start it.
+            $engine = $null
+            for ($i = 0; $i -lt 60 -and -not $engine; $i++) {
+              Start-Sleep -Milliseconds 500
+              if ($app.HasExited) { throw "app exited early with code $($app.ExitCode)" }
+              $engine = Get-Process workbench-engine -ErrorAction SilentlyContinue
+            }
+            if (-not $engine) { throw 'portable app did not start its engine' }
+            "Portable app running (pid $($app.Id)); engine pid(s): $($engine.Id -join ', ')"
+          } finally {
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+            # The engine watches the app's PID and should exit by itself.
+            $left = Get-Process workbench-engine -ErrorAction SilentlyContinue
+            if ($left) { "Warning: engine still running after app exit: $($left.Id -join ', ')"; $left | Stop-Process -Force }
+            else { 'Engine exited with the app.' }
+          }
+
+      - name: Upload portable app
+        uses: actions/upload-artifact@v4
+        with:
+          name: drawing-workbench-portable
+          path: dist/Drawing-Workbench-*-portable-x64/
+          if-no-files-found: error
+
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
