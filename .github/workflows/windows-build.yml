@@ -1,0 +1,70 @@
+name: Drawing Workbench - Windows build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drawing-workbench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Cache Nuitka compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Nuitka
+          key: nuitka-${{ runner.os }}-${{ hashFiles('core/**/*.py', 'desktop/engine/**/*.py', 'desktop/engine/pyproject.toml') }}
+          restore-keys: nuitka-${{ runner.os }}-
+
+      - name: Build sidecar, front end and installers
+        run: ./scripts/build-windows.ps1
+
+      - name: Smoke-test the compiled engine
+        run: |
+          $exe = Get-ChildItem desktop/src-tauri/binaries/workbench-engine-*.exe | Select-Object -First 1
+          $p = Start-Process $exe.FullName -ArgumentList '--port','8799' -PassThru
+          try {
+            $ok = $false
+            for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+              try { $info = Invoke-RestMethod http://127.0.0.1:8799/api/info; $ok = $true } catch { Start-Sleep -Milliseconds 500 }
+            }
+            if (-not $ok) { throw 'engine did not start' }
+            $info | Format-List
+            if (-not $info.compiled) { throw 'engine is not Nuitka-compiled' }
+            (Invoke-RestMethod 'http://127.0.0.1:8799/api/hello?name=CI').message
+          } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: drawing-workbench-windows
+          path: |
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error

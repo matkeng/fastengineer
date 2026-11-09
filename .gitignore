@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+
+# Nuitka output
+*.build/
+*.dist/
+*.onefile-build/
+
+# Tauri / Rust
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+# Sidecar binaries are build outputs (copied in by scripts/build-*.ps1/sh)
+desktop/src-tauri/binaries/*
+!desktop/src-tauri/binaries/.gitkeep
