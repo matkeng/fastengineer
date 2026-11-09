@@ -11,7 +11,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from .excel_api import store as workbooks
-from .storage import get_ref, get_store
+from .storage import get_generators, get_ref, get_store
 from . import symbols_api  # looked up per request, so tests can stub its OCR provider
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -21,8 +21,8 @@ RUNS = 10
 
 
 class Event(BaseModel):
-    kind: str  # run | drawing | revision | recipe | enum | tree | table
-    section: str  # the app section to open: symbols | mel | ref
+    kind: str  # run | drawing | revision | recipe | enum | tree | table | generator | build
+    section: str  # the app section to open: symbols | mel | ref | generators
     id: str
     title: str
     detail: str = ""
@@ -53,6 +53,9 @@ class Counts(BaseModel):
     trees: int = 0
     tables: int = 0
     rows: int = 0
+    generators: int = 0
+    gen_builds: int = 0
+    latest_build_at: datetime | None = None
     open_workbooks: int = 0
 
 
@@ -170,6 +173,24 @@ def dashboard() -> Dashboard:
             bars.append(RunBar(id=run.id, at=at, status=run.status,
                                template=sum(v == "template" for v in seen.values()),
                                text_scan=sum(v != "template" for v in seen.values())))
+
+    # Deliverable generators and their builds
+    gens = get_generators()
+    names = {}
+    for g in gens.list():
+        c.generators += 1
+        names[g.id] = g.name
+        if g.updated_at:
+            events.append(Event(kind="generator", section="generators", id=g.id, title=g.name,
+                                detail=f"generator · {g.runs} runs · {g.templates} templates", at=g.updated_at))
+    for b in gens.all_builds():
+        c.gen_builds += 1
+        if c.latest_build_at is None or b.created_at > c.latest_build_at:
+            c.latest_build_at = b.created_at
+        diff = "" if b.added is None else f" · +{b.added} −{b.removed} ~{b.changed}"
+        events.append(Event(kind="build", section="generators", id=b.generator_id,
+                            title=f"{names.get(b.generator_id, '?')}: build {b.seq}",
+                            detail=f"{b.stats.rows_written} rows{diff}", at=b.created_at))
 
     db = st.path
     drawings_bytes, pngs = _size(sym.root)

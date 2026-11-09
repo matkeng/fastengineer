@@ -53,12 +53,18 @@ class ImportResult(BaseModel):
     baseline_rows: list[list[Scalar]] | None = None
 
 
-def _load(path: Path):
+def _load(source: Path | bytes):
+    import io
+
     import openpyxl
+    src = (lambda: io.BytesIO(source)) if isinstance(source, (bytes, bytearray)) else (lambda: source)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        wb_f = openpyxl.load_workbook(path, data_only=False, keep_vba=False)
-        wb_v = openpyxl.load_workbook(path, data_only=True, keep_vba=False)
+        try:
+            wb_f = openpyxl.load_workbook(src(), data_only=False, keep_vba=False)
+            wb_v = openpyxl.load_workbook(src(), data_only=True, keep_vba=False)
+        except Exception as exc:  # noqa: BLE001 - zip / xml errors from a file that is not a workbook
+            raise ValueError(f"Not an Excel workbook (.xlsx/.xlsm): {exc}") from exc
     return wb_f, wb_v
 
 
@@ -261,16 +267,19 @@ def _sheet_table(wb_v, name: str) -> RefTable | None:
     return RefTable(name=name, columns=cols, rows=rows, first_column=1)
 
 
-def import_workbook(path: str | Path, gen_id: str | None = None) -> ImportResult:
+def import_workbook(source: str | Path | bytes, gen_id: str | None = None, filename: str | None = None) -> ImportResult:
+    """Import from a path, or from the workbook's bytes (then give `filename`)."""
     import gc
     try:
-        return _import(Path(path), gen_id)
+        if isinstance(source, (bytes, bytearray)):
+            return _import(bytes(source), Path(filename or "workbook.xlsx"), gen_id)
+        return _import(Path(source), Path(source), gen_id)
     finally:
         gc.collect()  # openpyxl workbooks are reference cycles; free them now, not mid-build
 
 
-def _import(path: Path, gen_id: str | None) -> ImportResult:
-    wb_f, wb_v = _load(path)
+def _import(source: Path | bytes, path: Path, gen_id: str | None) -> ImportResult:
+    wb_f, wb_v = _load(source)
     title = ""
     ws_c, t_c = _find_table(wb_f, "tblConfig")
     if t_c is not None:

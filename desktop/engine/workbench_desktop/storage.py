@@ -21,6 +21,9 @@ from workbench_core.mel import Recipe, Revision
 from workbench_core.refdata import EnumList, RefRow, RefTable, RefTree, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
 from workbench_core.symbols import Drawing, Library, PageOverride, PageResult, RunInfo, Template
+from workbench_core.generators.editable import BuildInfo, BuildRecord, GenRecord, GenSummary, summarise
+from workbench_core.generators.models import BuildResult, Generator, RefTable as GenTable
+from workbench_core.generators.xlsx_import import ImportReport
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS recipes (
@@ -104,6 +107,30 @@ CREATE TABLE IF NOT EXISTS sym_runs (
     info TEXT NOT NULL,
     sheets TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL
+);
+-- Deliverable generators: the editable document, its (read-only) lookup tables, and builds.
+CREATE TABLE IF NOT EXISTS gen_generators (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    source_file TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    data TEXT NOT NULL,
+    report TEXT
+);
+CREATE TABLE IF NOT EXISTS gen_tables (
+    generator_id TEXT NOT NULL REFERENCES gen_generators(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    data TEXT NOT NULL,
+    PRIMARY KEY (generator_id, name)
+);
+CREATE TABLE IF NOT EXISTS gen_builds (
+    id TEXT PRIMARY KEY,
+    generator_id TEXT NOT NULL REFERENCES gen_generators(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    info TEXT NOT NULL,
+    data TEXT NOT NULL,
+    UNIQUE (generator_id, seq)
 );
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -627,6 +654,119 @@ class SymbolStore:
             self._db.execute("INSERT INTO settings VALUES ('symbols_seeded', '1') ON CONFLICT(key) DO NOTHING")
 
 
+class GeneratorStore:
+    """Generators and their builds. Shares the Store's connection and lock."""
+
+    def __init__(self, store: Store):
+        self._db, self._lock = store._db, store._lock
+
+    def create(self, name: str, kind: str, source_file: str, gen: Generator, tables: dict[str, GenTable],
+               report: ImportReport | None = None) -> GenRecord:
+        rid = uuid.uuid4().hex
+        now = _now()
+        gen = gen.model_copy(update={"tables": {}})
+        with self._lock, self._db:
+            self._db.execute("INSERT INTO gen_generators VALUES (?, ?, ?, ?, ?, ?, ?)",
+                             (rid, name, kind, source_file, now.isoformat(), gen.model_dump_json(),
+                              report.model_dump_json() if report else None))
+            self._db.executemany("INSERT INTO gen_tables VALUES (?, ?, ?)",
+                                 [(rid, n, t.model_dump_json()) for n, t in tables.items()])
+        return self.get(rid)
+
+    def list(self) -> list[GenSummary]:
+        with self._lock:
+            rows = self._db.execute("SELECT id, name, kind, source_file, updated_at, data FROM gen_generators "
+                                    "ORDER BY updated_at DESC").fetchall()
+            latest = {gid: info for gid, info in self._db.execute(
+                "SELECT b.generator_id, b.info FROM gen_builds b JOIN (SELECT generator_id, MAX(seq) m FROM gen_builds "
+                "GROUP BY generator_id) x ON x.generator_id = b.generator_id AND x.m = b.seq").fetchall()}
+        out = []
+        for i, n, k, src, u, data in rows:
+            g = Generator.model_validate_json(data)
+            out.append(GenSummary(id=i, name=n, kind=k, source_file=src, updated_at=u, runs=len(g.runsheet.rows),
+                                  templates=len({t.id for t in g.templates}),
+                                  last_build=BuildInfo.model_validate_json(latest[i]) if i in latest else None))
+        return out
+
+    def get(self, rid: str) -> GenRecord:
+        with self._lock:
+            row = self._db.execute("SELECT name, kind, source_file, updated_at, data, report FROM gen_generators "
+                                   "WHERE id = ?", (rid,)).fetchone()
+            trows = self._db.execute("SELECT name, data FROM gen_tables WHERE generator_id = ?", (rid,)).fetchall()
+        if not row:
+            raise NotFound(rid)
+        name, kind, src, upd, data, report = row
+        tables = {n: GenTable.model_validate_json(d) for n, d in trows}
+        return GenRecord(id=rid, name=name, kind=kind, source_file=src, updated_at=upd,
+                         generator=Generator.model_validate_json(data), tables=summarise(tables),
+                         import_report=ImportReport.model_validate_json(report) if report else None)
+
+    def tables(self, rid: str) -> dict[str, GenTable]:
+        self.get(rid)
+        with self._lock:
+            trows = self._db.execute("SELECT name, data FROM gen_tables WHERE generator_id = ?", (rid,)).fetchall()
+        return {n: GenTable.model_validate_json(d) for n, d in trows}
+
+    def save(self, rid: str, name: str, gen: Generator) -> GenRecord:
+        gen = gen.model_copy(update={"tables": {}})
+        with self._lock, self._db:
+            cur = self._db.execute("UPDATE gen_generators SET name = ?, data = ?, updated_at = ? WHERE id = ?",
+                                   (name, gen.model_dump_json(), _now().isoformat(), rid))
+        if cur.rowcount == 0:
+            raise NotFound(rid)
+        return self.get(rid)
+
+    def delete(self, rid: str) -> None:
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM gen_generators WHERE id = ?", (rid,))
+
+    # -- builds ------------------------------------------------------------------
+
+    def add_build(self, info: BuildInfo, result: BuildResult) -> BuildInfo:
+        with self._lock, self._db:
+            (latest,) = self._db.execute("SELECT COALESCE(MAX(seq), 0) FROM gen_builds WHERE generator_id = ?",
+                                         (info.generator_id,)).fetchone()
+            info = info.model_copy(update={"seq": latest + 1})
+            self._db.execute("INSERT INTO gen_builds VALUES (?, ?, ?, ?, ?)",
+                             (info.id, info.generator_id, info.seq, info.model_dump_json(), result.model_dump_json()))
+        return info
+
+    def list_builds(self, rid: str) -> list[BuildInfo]:
+        with self._lock:
+            rows = self._db.execute("SELECT info FROM gen_builds WHERE generator_id = ? ORDER BY seq DESC",
+                                    (rid,)).fetchall()
+        return [BuildInfo.model_validate_json(r[0]) for r in rows]
+
+    def latest_build(self, rid: str) -> BuildRecord | None:
+        with self._lock:
+            row = self._db.execute("SELECT info, data FROM gen_builds WHERE generator_id = ? ORDER BY seq DESC LIMIT 1",
+                                   (rid,)).fetchone()
+        return None if not row else BuildRecord(info=BuildInfo.model_validate_json(row[0]),
+                                                result=BuildResult.model_validate_json(row[1]))
+
+    def get_build(self, bid: str) -> BuildRecord:
+        with self._lock:
+            row = self._db.execute("SELECT info, data FROM gen_builds WHERE id = ?", (bid,)).fetchone()
+        if not row:
+            raise NotFound(bid)
+        return BuildRecord(info=BuildInfo.model_validate_json(row[0]), result=BuildResult.model_validate_json(row[1]))
+
+    def delete_build(self, bid: str) -> None:
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM gen_builds WHERE id = ?", (bid,))
+
+    def counts(self) -> tuple[int, int]:
+        with self._lock:
+            (g,) = self._db.execute("SELECT COUNT(*) FROM gen_generators").fetchone()
+            (b,) = self._db.execute("SELECT COUNT(*) FROM gen_builds").fetchone()
+        return g, b
+
+    def all_builds(self) -> list[BuildInfo]:
+        with self._lock:
+            rows = self._db.execute("SELECT info FROM gen_builds").fetchall()
+        return [BuildInfo.model_validate_json(r[0]) for r in rows]
+
+
 _store: Store | None = None
 
 
@@ -648,3 +788,7 @@ def get_ref() -> RefStore:
 
 def get_symbols() -> SymbolStore:
     return SymbolStore(get_store())
+
+
+def get_generators() -> GeneratorStore:
+    return GeneratorStore(get_store())

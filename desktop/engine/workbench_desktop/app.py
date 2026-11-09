@@ -16,6 +16,7 @@ from .excel_api import router as excel_router
 from .mel_api import router as mel_router
 from .symbols_api import router as symbols_router
 from .refdata_api import router as refdata_router
+from .generators_api import router as generators_router
 
 app = FastAPI(title="Drawing Workbench engine", version=workbench_core.__version__)
 
@@ -33,6 +34,7 @@ app.include_router(excel_router)
 app.include_router(mel_router)
 app.include_router(refdata_router)
 app.include_router(symbols_router)
+app.include_router(generators_router)
 app.include_router(dashboard_router)
 
 
