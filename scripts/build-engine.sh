@@ -9,6 +9,7 @@ cd "$root"
 .venv/bin/python -m nuitka --onefile --assume-yes-for-downloads \
   --include-package=uvicorn \
   --nofollow-import-to=watchfiles,uvloop,httptools,websockets,wsproto,winrt \
+  --noinclude-custom-mode=pymupdf.mupdf:bytecode \
   --output-dir=desktop/engine/build --output-filename=workbench-engine \
   desktop/engine/engine_main.py
 triple="$(rustc -vV | sed -n 's/^host: //p')"
