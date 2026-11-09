@@ -30,6 +30,7 @@ The app has two tabs:
   what changed between them (see below).
 - **MEL import**: turn an equipment list into a load list with a saved,
   re-applicable recipe of rules (see below).
+- **Lists & tables**: your own enumerated lists and typed tables (see below).
 - **Engine**: engine status (port, Python version, whether it's
   Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
   model objects.
@@ -199,6 +200,33 @@ Differences from the PRD's implementation, from its known-issues list (§11):
   warning, rather than replaced with `-9999`.
 - Not included: pushing into a load-list database (there isn't one here yet;
   export instead) and Transpose columns (not applied in the PRD either).
+
+## Lists & tables
+
+Reference data you define and keep (`core/src/workbench_core/refdata/`, API
+`desktop/engine/workbench_desktop/refdata_api.py`, UI `web/src/components/ref/`).
+
+- **Lists** (enums): a unique name, and items with a **code**, **value** and
+  **description**. Codes and values are unique within the list (ignoring case);
+  items can be reordered.
+- **Tables**: a unique name and columns of type **Text**, **List (enum)**,
+  **Whole number**, **Yes / No** or **Decimal**, each optionally *required* and/or
+  *unique*. Rows are added, edited and deleted in a form with the right input for
+  each type, and listed in a filterable grid (lists and Yes/No get drop-down
+  filters) with Copy/CSV.
+- Names are unique across lists and tables, ignoring case and extra spaces.
+- Values are validated by the engine: whole numbers and decimals must be numbers
+  (decimals are stored exactly, e.g. `2.50` -> `2.5`), list cells must be an item
+  of that list (a code or value is accepted and stored as the item).
+- List cells store the item's id, so renaming an item's code or value updates
+  every row that uses it. An item, or a list, that rows or columns use can't be
+  deleted; the message says where it's used.
+- Changing a column's type converts the existing rows (text `12` -> 12, list
+  item -> its code as text, a code -> an item of the new list); if any value
+  can't be converted, or a new required/unique rule doesn't hold, nothing is
+  saved and the problem values are listed.
+- Everything is stored in the same local database as MEL imports, so it's there
+  next time the app starts.
 
 ## Tests
 

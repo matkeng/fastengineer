@@ -108,6 +108,23 @@ jobs:
             "MEL load list: $($ll.rows.Count) rows; P-101 load_rating = $($p101.load_rating)"
             if ($p101.load_rating -ne 29.8) { throw 'calculated column wrong in the compiled engine' }
             "Data stored at $((Invoke-RestMethod "$mel/storage").path)"
+
+            # Lists & tables: a list, a typed table, a row (validated and coerced by the compiled engine).
+            $ref = 'http://127.0.0.1:8799/api/ref'
+            $en = Invoke-RestMethod -Method Post -Uri "$ref/enums" -Body '{"name":"Voltage"}' -ContentType 'application/json'
+            $en = Invoke-RestMethod -Method Put -Uri "$ref/enums/$($en.id)" -ContentType 'application/json' `
+              -Body (@{ name = 'Voltage'; items = @(@{ code = 'LV'; value = '400 V' }) } | ConvertTo-Json -Depth 4)
+            $tb = Invoke-RestMethod -Method Post -Uri "$ref/tables" -Body '{"name":"Motors"}' -ContentType 'application/json'
+            $cols = @(@{ name = 'Tag'; type = 'text'; required = $true; unique = $true }, @{ name = 'kW'; type = 'decimal' },
+                      @{ name = 'Voltage'; type = 'enum'; enum_id = $en.id })
+            $td = Invoke-RestMethod -Method Put -Uri "$ref/tables/$($tb.id)" -ContentType 'application/json' `
+              -Body (@{ name = 'Motors'; columns = $cols } | ConvertTo-Json -Depth 4)
+            $c = $td.table.columns
+            $vals = @{}; $vals[$c[0].id] = 'P-101'; $vals[$c[1].id] = '30.50'; $vals[$c[2].id] = 'LV'
+            $row = Invoke-RestMethod -Method Post -Uri "$ref/tables/$($tb.id)/rows" -ContentType 'application/json' `
+              -Body (@{ values = $vals } | ConvertTo-Json -Depth 4)
+            "Ref row: kW = $($row.values.($c[1].id)); voltage item = $($row.values.($c[2].id))"
+            if ($row.values.($c[1].id) -ne '30.5' -or $row.values.($c[2].id) -ne $en.items[0].id) { throw 'ref row not coerced' }
           } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
 
       - name: Smoke-test the portable app

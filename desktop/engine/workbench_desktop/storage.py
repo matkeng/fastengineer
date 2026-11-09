@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from workbench_core.mel import Recipe, Revision
+from workbench_core.refdata import EnumList, RefRow, RefTable, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
 
 SCHEMA = """
@@ -35,6 +36,27 @@ CREATE TABLE IF NOT EXISTS revisions (
     data TEXT NOT NULL,
     UNIQUE (recipe_id, rev)
 );
+-- Reference data. Lists and tables share one name space (name_key is unique).
+CREATE TABLE IF NOT EXISTS ref_names (
+    name_key TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    object_id TEXT NOT NULL UNIQUE
+);
+CREATE TABLE IF NOT EXISTS ref_enums (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ref_tables (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ref_rows (
+    id TEXT PRIMARY KEY,
+    table_id TEXT NOT NULL REFERENCES ref_tables(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    data TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ref_rows_table ON ref_rows(table_id, seq);
 """
 
 
@@ -141,6 +163,119 @@ class Store:
             self._db.execute("DELETE FROM revisions WHERE id = ? AND recipe_id = ?", (revision_id, recipe_id))
 
 
+class RefStore:
+    """Lists, tables and rows. Shares the Store's connection and lock."""
+
+    def __init__(self, store: Store):
+        self._db = store._db
+        self._lock = store._lock
+
+    def _claim_name(self, kind: str, object_id: str, name: str) -> None:
+        key = name_key(name)
+        row = self._db.execute("SELECT kind, object_id FROM ref_names WHERE name_key = ?", (key,)).fetchone()
+        if row and row[1] != object_id:
+            kind, other = row
+            table = "ref_enums" if kind == "enum" else "ref_tables"
+            data = self._db.execute(f"SELECT data FROM {table} WHERE id = ?", (other,)).fetchone()
+            existing = json.loads(data[0])["name"] if data else name
+            what = "list" if kind == "enum" else "table"
+            raise RefValidationError(f"There is already a {what} called '{existing}'. Names must be unique "
+                                     "across lists and tables (ignoring case).", {"name": "Name already used"})
+        self._db.execute("DELETE FROM ref_names WHERE object_id = ?", (object_id,))
+        self._db.execute("INSERT INTO ref_names VALUES (?, ?, ?)", (key, kind, object_id))
+
+    # lists
+    def enums(self) -> dict[str, EnumList]:
+        with self._lock:
+            rows = self._db.execute("SELECT data FROM ref_enums").fetchall()
+        return {e.id: e for e in (EnumList.model_validate_json(r[0]) for r in rows)}
+
+    def get_enum(self, enum_id: str) -> EnumList:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM ref_enums WHERE id = ?", (enum_id,)).fetchone()
+        if not row:
+            raise NotFound(enum_id)
+        return EnumList.model_validate_json(row[0])
+
+    def save_enum(self, enum: EnumList, create: bool = False) -> EnumList:
+        enum = enum.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            if not create and not self._db.execute("SELECT 1 FROM ref_enums WHERE id = ?", (enum.id,)).fetchone():
+                raise NotFound(enum.id)
+            self._claim_name("enum", enum.id, enum.name)
+            self._db.execute("INSERT INTO ref_enums VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (enum.id, enum.model_dump_json()))
+        return enum
+
+    def delete_enum(self, enum_id: str) -> None:
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM ref_enums WHERE id = ?", (enum_id,))
+            self._db.execute("DELETE FROM ref_names WHERE object_id = ?", (enum_id,))
+
+    # tables
+    def tables(self) -> list[RefTable]:
+        with self._lock:
+            rows = self._db.execute("SELECT data FROM ref_tables").fetchall()
+        return [RefTable.model_validate_json(r[0]) for r in rows]
+
+    def row_counts(self) -> dict[str, int]:
+        with self._lock:
+            return dict(self._db.execute("SELECT table_id, COUNT(*) FROM ref_rows GROUP BY table_id").fetchall())
+
+    def get_table(self, table_id: str) -> RefTable:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM ref_tables WHERE id = ?", (table_id,)).fetchone()
+        if not row:
+            raise NotFound(table_id)
+        return RefTable.model_validate_json(row[0])
+
+    def save_table(self, table: RefTable, rows: list[RefRow] | None = None, create: bool = False) -> RefTable:
+        """Save the table definition and, when given, the converted rows, in one transaction."""
+        table = table.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            if not create and not self._db.execute("SELECT 1 FROM ref_tables WHERE id = ?", (table.id,)).fetchone():
+                raise NotFound(table.id)
+            self._claim_name("table", table.id, table.name)
+            # Upsert, not INSERT OR REPLACE: REPLACE deletes first, which would cascade to the rows.
+            self._db.execute("INSERT INTO ref_tables VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (table.id, table.model_dump_json()))
+            for r in rows or []:
+                self._db.execute("UPDATE ref_rows SET data = ? WHERE id = ?", (r.model_dump_json(), r.id))
+        return table
+
+    def delete_table(self, table_id: str) -> None:
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM ref_tables WHERE id = ?", (table_id,))
+            self._db.execute("DELETE FROM ref_names WHERE object_id = ?", (table_id,))
+
+    # rows
+    def rows(self, table_id: str) -> list[RefRow]:
+        with self._lock:
+            rows = self._db.execute("SELECT data FROM ref_rows WHERE table_id = ? ORDER BY seq", (table_id,)).fetchall()
+        return [RefRow.model_validate_json(r[0]) for r in rows]
+
+    def add_row(self, table_id: str, row: RefRow) -> RefRow:
+        row = row.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            (seq,) = self._db.execute("SELECT COALESCE(MAX(seq), 0) + 1 FROM ref_rows WHERE table_id = ?",
+                                      (table_id,)).fetchone()
+            self._db.execute("INSERT INTO ref_rows VALUES (?, ?, ?, ?)", (row.id, table_id, seq, row.model_dump_json()))
+        return row
+
+    def update_row(self, table_id: str, row: RefRow) -> RefRow:
+        row = row.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            cur = self._db.execute("UPDATE ref_rows SET data = ? WHERE id = ? AND table_id = ?",
+                                   (row.model_dump_json(), row.id, table_id))
+        if cur.rowcount == 0:
+            raise NotFound(row.id)
+        return row
+
+    def delete_row(self, table_id: str, row_id: str) -> None:
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM ref_rows WHERE id = ? AND table_id = ?", (row_id, table_id))
+
+
 _store: Store | None = None
 
 
@@ -154,3 +289,7 @@ def configure(data_dir: Path | None) -> Store:
 
 def get_store() -> Store:
     return _store or configure(None)
+
+
+def get_ref() -> RefStore:
+    return RefStore(get_store())

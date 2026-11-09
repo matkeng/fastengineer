@@ -9,6 +9,13 @@ export const runningInTauri = isTauri();
 
 let engineUrl: Promise<string> | null = null;
 
+/** An engine error; `fields` maps a field (or column/item id) to its message. */
+export class ApiError extends Error {
+	constructor(message: string, public fields: Record<string, string> = {}) {
+		super(message);
+	}
+}
+
 export function resolveEngineUrl(): Promise<string> {
 	engineUrl ??= (runningInTauri ? invoke<string>('engine_url') : Promise.resolve(DEV_ENGINE_URL)).catch(
 		(err) => {
@@ -25,14 +32,16 @@ async function request<T>(path: string, init?: RequestInit, baseUrl?: string, as
 	if (!res.ok) {
 		// FastAPI errors look like {"detail": "..."}; show that to the user.
 		let detail = `${res.status} ${res.statusText}`;
+		let fields: Record<string, string> = {};
 		try {
 			const body = await res.json();
 			if (typeof body.detail === 'string') detail = body.detail;
 			else if (body.detail) detail = JSON.stringify(body.detail);
+			if (body.fields && typeof body.fields === 'object') fields = body.fields;
 		} catch {
 			/* not JSON */
 		}
-		throw new Error(detail);
+		throw new ApiError(detail, fields);
 	}
 	return (as === 'blob' ? await res.blob() : await res.json()) as T;
 }

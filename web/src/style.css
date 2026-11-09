@@ -303,3 +303,35 @@ dialog.modal::backdrop { background: rgb(0 0 0 / 0.35); }
 .modal-foot { display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border); }
 td.calc-col, th.calc-col { background: color-mix(in srgb, #1565c0 8%, transparent); }
 td.calc-col.err { background: color-mix(in srgb, #c62828 16%, transparent); }
+
+/* ---- Lists & tables ---- */
+.ref-layout { display: grid; grid-template-columns: minmax(200px, 260px) 1fr; gap: 12px; align-items: start; }
+@media (max-width: 760px) { .ref-layout { grid-template-columns: 1fr; } }
+main.fill > .ref { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+main.fill > .ref > .ref-layout { flex: 1; min-height: 0; align-items: stretch; }
+main.fill .ref-side { overflow: auto; margin: 0; }
+main.fill .ref-editor { margin: 0; display: flex; flex-direction: column; min-height: 0; padding: 12px 16px; overflow: auto; }
+main.fill .ref-editor.rows-mode { overflow: hidden; }
+main.fill .ref-empty { margin: 0; }
+.ref-side h3 { margin: 0 0 2px; font-size: 0.95rem; }
+.ref-side section + section { margin-top: 18px; }
+.ref-side .hint { margin: 0 0 6px; font-size: 0.8rem; }
+.ref-nav { list-style: none; padding: 0; margin: 0 0 8px; }
+.ref-nav li { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+.ref-nav li:hover { background: var(--bg); }
+.ref-nav li.current { background: color-mix(in srgb, var(--accent) 14%, transparent); font-weight: 600; }
+.ref-nav .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-nav .count { font-size: 0.72rem; padding: 0 6px; border-radius: 999px; background: var(--border); }
+.row.tight { gap: 4px; flex-wrap: nowrap; }
+.row.tight input { min-width: 0; }
+.desc-input { width: 100%; margin-bottom: 8px; }
+.enum-items input, .cols-def input:not([type='checkbox']), .cols-def select { width: 100%; min-width: 80px; }
+.enum-items td.num, .cols-def td.num { width: 24px; color: var(--muted); }
+td.center, th.center { text-align: center; }
+input.invalid, select.invalid { border-color: var(--accent) !important; outline: 1px solid var(--accent); }
+.req { color: var(--accent); }
+.kind.table { background: #1565c0; color: #fff; }
+.form-grid { display: grid; gap: 4px; }
+.ref-rows tbody tr { cursor: pointer; }
+.ref-rows .yes { color: var(--ok); font-weight: 700; }
+.ref-rows .no { color: var(--muted); }
