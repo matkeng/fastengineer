@@ -26,6 +26,8 @@ The app has two tabs:
 
 - **Excel query**: a step-by-step wizard that turns a worksheet or Excel table
   into a reviewable, keyed table (see below).
+- **Compare tables**: pick an old and a new table with the same wizard and see
+  what changed between them (see below).
 - **Engine**: engine status (port, Python version, whether it's
   Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
   model objects.
@@ -99,6 +101,38 @@ python -m venv .venv && .venv/bin/pip install -e core -e desktop/engine   # Wind
 .venv/bin/python -m workbench_desktop --port 8765
 cd web && npm install && npm run dev        # open http://localhost:5173
 ```
+
+## Compare tables
+
+Choose the **old** table and then the **new** table, each with the import wizard
+(workbook, sheet or table, header row, key column). They can come from two
+workbooks or two sheets of one ("Use the same workbook as the old table").
+Samples: `samples/cable-schedule-sample.xlsx` (Rev C) and
+`samples/cable-schedule-sample-revD.xlsx` (Rev D).
+
+Rows are matched by **key value** and columns by **header name**, so row and
+column order don't matter. Each row gets a status:
+
+| Status | Meaning |
+|---|---|
+| Added | key only in the new table |
+| Deleted | key only in the old table |
+| Struck out | marked deleted in the new table (every filled cell, or the key cell, fully struck through) but not in the old |
+| Restored | struck out in the old table, no longer in the new |
+| Changed | one or more cells differ in value or in strikethrough |
+| Unchanged | |
+
+Changed cells show `old → new`. Added and removed columns are labelled in the
+header. The grid opens on **Any change**; the summary chips filter by status,
+**Changed columns only** hides columns with no differences, and Copy/CSV export
+what's visible (changed cells as `old → new`).
+
+Comparison rules (`core/src/workbench_core/excel/compare.py`): keys, header names
+and text are compared ignoring case and extra spaces (switchable); numbers are
+compared as numbers (`2.50` = `2.5`); a change in strikethrough counts as a
+change (switchable), but not on rows that were struck out or restored as a
+whole, where the row status already says so. Duplicate keys are paired in the
+order they appear, with a warning.
 
 ## Tests
 

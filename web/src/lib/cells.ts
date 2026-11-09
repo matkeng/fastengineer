@@ -1,4 +1,4 @@
-import type { Cell } from './types';
+import type { Cell, RowStatus } from './types';
 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
@@ -18,3 +18,14 @@ export function cellHtml(cell: Cell): string {
 }
 
 export const STRIKE_LABELS = { none: 'No strike', partial: 'Partly struck', full: 'Struck out' } as const;
+
+export type StatusFilter = '' | 'changes' | RowStatus;
+
+export const STATUS_LABELS: Record<RowStatus, string> = {
+	added: 'Added',
+	deleted: 'Deleted',
+	struck: 'Struck out',
+	restored: 'Restored',
+	changed: 'Changed',
+	unchanged: 'Unchanged',
+};

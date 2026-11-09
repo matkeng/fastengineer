@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { useExcelWizard } from '../../stores/excelWizard';
+import { useWizardContext } from '../../lib/wizardContext';
 
-const wiz = useExcelWizard();
+const { wiz } = useWizardContext();
 </script>
 
 <template>

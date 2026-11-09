@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { cellHtml } from '../../lib/cells';
-import { useExcelWizard } from '../../stores/excelWizard';
+import { useWizardContext } from '../../lib/wizardContext';
 
-const wiz = useExcelWizard();
+const { wiz } = useWizardContext();
 const pv = computed(() => wiz.preview);
 
 const lastHeader = computed(() => (wiz.headerRow ?? 0) + wiz.headerRows - 1);

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useExcelWizard } from '../../stores/excelWizard';
+import { useWizardContext } from '../../lib/wizardContext';
 import ResultTable from './ResultTable.vue';
 
-const wiz = useExcelWizard();
+const { wiz } = useWizardContext();
 const r = computed(() => wiz.result);
 const otherWarnings = computed(() => (r.value?.warnings ?? []).filter((w) => !w.includes('appear more than once')));
 const counts = computed(() => {

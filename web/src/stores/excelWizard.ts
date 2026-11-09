@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia';
-import { computed, ref } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import { apiDelete, apiGet, apiPostBytes, apiPostJson } from '../lib/engine';
 import type { ColumnsResult, ExtractResult, PreviewResult, WorkbookSummary } from '../lib/types';
 
 export const STEPS = ['Workbook', 'Sheet or table', 'Header row', 'Key column', 'Results'] as const;
 
-export const useExcelWizard = defineStore('excelWizard', () => {
+// One wizard store per use: the Excel query tab, and the old/new tables of a comparison.
+function setup() {
 	const step = ref(0);
 	const busy = ref(false);
 	const error = ref<string | null>(null);
@@ -19,6 +20,8 @@ export const useExcelWizard = defineStore('excelWizard', () => {
 	const keyColumn = ref<number | null>(null);
 	const skipBlankKeys = ref(true);
 	const result = ref<ExtractResult | null>(null);
+	// Kept so another wizard can reuse the same file ("same workbook as the old table").
+	const file = shallowRef<{ blob: Blob; name: string } | null>(null);
 
 	const source = computed(() => workbook.value?.sources.find((s) => s.id === sourceId.value) ?? null);
 	const base = computed(() => `/api/excel/workbooks/${workbook.value?.id}`);
@@ -53,15 +56,16 @@ export const useExcelWizard = defineStore('excelWizard', () => {
 		result.value = null;
 	}
 
-	async function openFile(file: Blob, filename: string) {
+	async function openFile(file_: Blob, filename: string) {
 		if (workbook.value) void apiDelete(base.value).catch(() => undefined);
 		workbook.value = null;
 		clearFrom(1);
 		const summary = await run(() =>
-			apiPostBytes<WorkbookSummary>(`/api/excel/workbooks?filename=${encodeURIComponent(filename)}`, file),
+			apiPostBytes<WorkbookSummary>(`/api/excel/workbooks?filename=${encodeURIComponent(filename)}`, file_),
 		);
 		if (!summary) return;
 		workbook.value = summary;
+		file.value = { blob: file_, name: filename };
 		// One source only (e.g. a single sheet): pick it for the user.
 		if (summary.sources.length === 1) sourceId.value = summary.sources[0].id;
 	}
@@ -133,6 +137,20 @@ export const useExcelWizard = defineStore('excelWizard', () => {
 		result.value = null;
 	}
 
+	/** The choices that define the extracted table, for the compare endpoint. */
+	const spec = computed(() =>
+		result.value && workbook.value
+			? {
+					workbook_id: workbook.value.id,
+					source: sourceId.value!,
+					header_row: headerRow.value!,
+					header_rows: headerRows.value,
+					key_column: keyColumn.value!,
+					skip_blank_keys: skipBlankKeys.value,
+				}
+			: null,
+	);
+
 	function reset() {
 		if (workbook.value) void apiDelete(base.value).catch(() => undefined);
 		workbook.value = null;
@@ -142,8 +160,20 @@ export const useExcelWizard = defineStore('excelWizard', () => {
 	}
 
 	return {
-		step, busy, error, workbook, sourceId, source, preview, headerRow, headerRows, columns,
-		keyColumn, skipBlankKeys, result, canAdvance,
+		step, busy, error, workbook, file, sourceId, source, preview, headerRow, headerRows, columns,
+		keyColumn, skipBlankKeys, result, spec, canAdvance,
 		openFile, chooseSource, chooseHeader, chooseKey, setSkipBlankKeys, next, back, goTo, reset,
 	};
-});
+}
+
+const stores = new Map<string, ReturnType<typeof makeStore>>();
+const makeStore = (id: string) => defineStore(`tableWizard:${id}`, setup);
+
+export function tableWizardStore(id: string) {
+	if (!stores.has(id)) stores.set(id, makeStore(id));
+	return stores.get(id)!;
+}
+
+export type TableWizard = ReturnType<ReturnType<typeof tableWizardStore>>;
+
+export const useExcelWizard = tableWizardStore('query');

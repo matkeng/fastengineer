@@ -5,6 +5,7 @@ partial strikethrough, so a worksheet or Excel table can be turned into a
 keyed table for review.
 """
 
+from .compare import CompareOptions, CompareResult, compare_tables
 from .models import (
     CellOut,
     ColumnInfo,
@@ -18,6 +19,9 @@ from .models import (
 from .reader import ExcelError, Workbook
 
 __all__ = [
+    "CompareOptions",
+    "CompareResult",
+    "compare_tables",
     "CellOut",
     "ColumnInfo",
     "ColumnsResult",

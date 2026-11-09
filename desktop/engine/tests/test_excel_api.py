@@ -41,3 +41,29 @@ def test_errors() -> None:
     assert res.status_code == 400 and ".xlsx" in res.json()["detail"]
     res = client.post("/api/excel/workbooks", params={"filename": "a.xlsx"}, content=b"junk")
     assert res.status_code == 400
+
+
+REV_D = SAMPLE.with_name("cable-schedule-sample-revD.xlsx")
+
+
+def _open(path: Path) -> str:
+    res = client.post("/api/excel/workbooks", params={"filename": path.name}, content=path.read_bytes())
+    assert res.status_code == 200, res.text
+    return res.json()["id"]
+
+
+@pytest.mark.skipif(not REV_D.exists(), reason="sample workbooks not generated")
+def test_compare_flow() -> None:
+    spec = {"source": "sheet:Cable Schedule", "header_row": 4, "header_rows": 2, "key_column": 0}
+    res = client.post("/api/excel/compare", json={
+        "a": {**spec, "workbook_id": _open(SAMPLE)},
+        "b": {**spec, "workbook_id": _open(REV_D)},
+    })
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["summary"]["added"] == 1 and body["summary"]["struck"] == 1
+    assert body["a_label"] == "cable-schedule-sample.xlsx · Cable Schedule"
+
+    gone = client.post("/api/excel/compare", json={
+        "a": {**spec, "workbook_id": "nope"}, "b": {**spec, "workbook_id": "nope"}})
+    assert gone.status_code == 404

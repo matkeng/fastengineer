@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useExcelWizard } from '../../stores/excelWizard';
+import { useWizardContext } from '../../lib/wizardContext';
 
-const wiz = useExcelWizard();
+const { wiz } = useWizardContext();
 const cols = computed(() => wiz.columns);
 </script>
 

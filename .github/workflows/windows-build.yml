@@ -77,6 +77,16 @@ jobs:
             "Extracted $($ex.rows.Count) rows; duplicate keys: $($ex.duplicate_keys -join ', ')"
             if ($ex.rows.Count -ne 13) { throw "expected 13 rows, got $($ex.rows.Count)" }
             if (-not ($ex.rows | Where-Object { $_.strike -eq 'partial' })) { throw 'no partial strikes detected' }
+
+            # Compare Rev C with Rev D.
+            $wbD = Invoke-RestMethod -Method Post -Uri "$base`?filename=cable-schedule-sample-revD.xlsx" `
+              -InFile samples/cable-schedule-sample-revD.xlsx -ContentType 'application/octet-stream'
+            $side = @{ source = 'sheet:Cable Schedule'; header_row = 4; header_rows = 2; key_column = 0 }
+            $cmpBody = @{ a = $side + @{ workbook_id = $wb.id }; b = $side + @{ workbook_id = $wbD.id } } | ConvertTo-Json -Depth 4
+            $cmp = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8799/api/excel/compare' -Body $cmpBody -ContentType 'application/json'
+            $cmp.summary | Format-List
+            $s = $cmp.summary
+            if ("$($s.added),$($s.deleted),$($s.struck),$($s.restored),$($s.changed)" -ne '1,1,1,1,4') { throw 'unexpected compare summary' }
           } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
 
       - name: Smoke-test the portable app

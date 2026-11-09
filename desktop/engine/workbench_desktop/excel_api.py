@@ -12,11 +12,14 @@ from pydantic import BaseModel
 
 from workbench_core.excel import (
     ColumnsResult,
+    CompareOptions,
+    CompareResult,
     ExcelError,
     ExtractResult,
     PreviewResult,
     Workbook,
     WorkbookSummary,
+    compare_tables,
 )
 
 router = APIRouter(prefix="/api/excel", tags=["excel"])
@@ -114,3 +117,32 @@ def extract(workbook_id: str, req: ExtractRequest) -> ExtractResult:
 def close_workbook(workbook_id: str) -> dict[str, str]:
     store.remove(workbook_id)
     return {"status": "closed"}
+
+
+class TableSpec(ExtractRequest):
+    """One side of a comparison: the same choices as the extract step."""
+
+    workbook_id: str
+
+
+class CompareRequest(BaseModel):
+    a: TableSpec  # old / base table
+    b: TableSpec  # new / revised table
+    options: CompareOptions = CompareOptions()
+
+
+def _extract(spec: TableSpec) -> tuple[str, ExtractResult]:
+    wb = store.get(spec.workbook_id)
+    result = wb.extract(spec.source, spec.header_row, spec.key_column,
+                        header_rows=spec.header_rows, skip_blank_keys=spec.skip_blank_keys)
+    return f"{wb.filename} · {result.source.name}", result
+
+
+@router.post("/compare", response_model=CompareResult)
+def compare(req: CompareRequest) -> CompareResult:
+    try:
+        a_label, a = _extract(req.a)
+        b_label, b = _extract(req.b)
+    except ExcelError as exc:
+        raise _bad_request(exc) from exc
+    return compare_tables(a, b, req.options, a_label=a_label, b_label=b_label)

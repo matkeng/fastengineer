@@ -109,3 +109,55 @@ export interface ExtractResult {
 	duplicate_keys: string[];
 	warnings: string[];
 }
+
+// ---- Table compare (mirrors workbench_core.excel.compare) ----
+
+export type RowStatus = 'added' | 'deleted' | 'struck' | 'restored' | 'changed' | 'unchanged';
+export type CellChange = 'none' | 'value' | 'strike' | 'both';
+
+export interface CompareColumn {
+	name: string;
+	old_name: string | null;
+	a_index: number | null;
+	b_index: number | null;
+	status: 'same' | 'added' | 'deleted';
+	is_key: boolean;
+	changed_cells: number;
+}
+
+export interface CompareCell {
+	a: Cell | null;
+	b: Cell | null;
+	change: CellChange;
+}
+
+export interface CompareRow {
+	key: string;
+	status: RowStatus;
+	a_row: number | null;
+	b_row: number | null;
+	changed_cells: number;
+	duplicate_key: boolean;
+	cells: CompareCell[];
+}
+
+export interface CompareSummary {
+	added: number;
+	deleted: number;
+	struck: number;
+	restored: number;
+	changed: number;
+	unchanged: number;
+	changed_cells: number;
+	columns_added: number;
+	columns_deleted: number;
+}
+
+export interface CompareResult {
+	a_label: string;
+	b_label: string;
+	columns: CompareColumn[];
+	rows: CompareRow[];
+	summary: CompareSummary;
+	warnings: string[];
+}

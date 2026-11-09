@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import sampleUrl from '../../../../samples/cable-schedule-sample.xlsx?url';
-import { useExcelWizard } from '../../stores/excelWizard';
+import { type SampleFile, useWizardContext } from '../../lib/wizardContext';
 
-const wiz = useExcelWizard();
+const { wiz, samples, reuseFrom } = useWizardContext();
 const dragging = ref(false);
 const input = ref<HTMLInputElement | null>(null);
 
@@ -16,9 +15,14 @@ function onDrop(e: DragEvent) {
 	open(e.dataTransfer?.files[0]);
 }
 
-async function useSample() {
-	const blob = await (await fetch(sampleUrl)).blob();
-	await wiz.openFile(blob, 'cable-schedule-sample.xlsx');
+async function useSample(s: SampleFile) {
+	const blob = await (await fetch(s.url)).blob();
+	await wiz.openFile(blob, s.filename);
+}
+
+function reuse() {
+	const f = reuseFrom?.file;
+	if (f) void wiz.openFile(f.blob, f.name);
 }
 </script>
 
@@ -47,8 +51,19 @@ async function useSample() {
 			/>
 		</div>
 		<p class="sample">
-			No workbook to hand?
-			<button class="link" type="button" :disabled="wiz.busy" @click="useSample">Use the sample cable schedule</button>
+			<template v-if="reuseFrom?.file">
+				<button class="link" type="button" :disabled="wiz.busy" @click="reuse">
+					Use the same workbook as the old table ({{ reuseFrom.file.name }})
+				</button>
+				·
+			</template>
+			<template v-if="samples.length">
+				No workbook to hand?
+				<template v-for="(s, i) in samples" :key="s.url">
+					<template v-if="i"> or </template>
+					<button class="link" type="button" :disabled="wiz.busy" @click="useSample(s)">{{ s.label }}</button>
+				</template>
+			</template>
 		</p>
 
 		<div v-if="wiz.workbook" class="loaded">

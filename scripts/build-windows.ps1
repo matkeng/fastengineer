@@ -30,7 +30,7 @@ if (Test-Path $portable) { Remove-Item $portable -Recurse -Force }
 New-Item -ItemType Directory -Path $portable | Out-Null
 Copy-Item (Join-Path $release 'drawing-workbench.exe') (Join-Path $portable 'Drawing Workbench.exe')
 Copy-Item (Join-Path $release 'workbench-engine.exe') (Join-Path $portable 'workbench-engine.exe')
-Copy-Item (Join-Path $root 'samples/cable-schedule-sample.xlsx') $portable
+Copy-Item (Join-Path $root 'samples/*.xlsx') $portable
 @"
 Drawing Workbench $version (portable)
 
@@ -42,7 +42,8 @@ Keep workbench-engine.exe in the same folder: it is the Python engine the app st
 - Needs the Microsoft Edge WebView2 Runtime, already present on most
   Windows 10/11 PCs. If the window stays blank, install it from
   https://developer.microsoft.com/microsoft-edge/webview2/
-- cable-schedule-sample.xlsx is synthetic sample data for the Excel query tab.
+- cable-schedule-sample*.xlsx are synthetic sample data (Rev C and Rev D) for
+  the Excel query and Compare tables tabs.
 - If the engine does not start, see %TEMP%\workbench-engine.log
 "@ | Set-Content (Join-Path $portable 'README.txt') -Encoding utf8
 Compress-Archive -Path "$portable/*" -DestinationPath "$portable.zip" -Force
