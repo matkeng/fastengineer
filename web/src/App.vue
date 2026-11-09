@@ -1,77 +1,43 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { runningInTauri } from './lib/engine';
+import EnginePanel from './components/EnginePanel.vue';
+import ExcelWizard from './components/excel/ExcelWizard.vue';
 import { useWorkbench } from './stores/workbench';
 
 const wb = useWorkbench();
-const name = ref('world');
+const tab = ref<'excel' | 'engine'>('excel');
 
 onMounted(() => wb.connect());
 </script>
 
 <template>
 	<main>
-		<header>
-			<h1>Drawing Workbench</h1>
-			<p class="sub">Hello-world proof of concept · Tauri 2 shell · Vue 3 + Pinia · Python engine sidecar</p>
+		<header class="top">
+			<div>
+				<h1>Drawing Workbench</h1>
+				<p class="sub">Proof of concept · Tauri 2 shell · Vue 3 + Pinia · Python engine sidecar</p>
+			</div>
+			<span class="pill" :class="wb.status" :title="wb.error ?? ''">
+				<span class="dot" />
+				{{ wb.status === 'ready' ? 'Engine ready' : wb.status === 'connecting' ? 'Starting engine…' : 'Engine error' }}
+			</span>
 		</header>
 
-		<section class="card">
-			<h2>Engine</h2>
-			<p class="status" :class="wb.status">
-				<span class="dot" />
-				<template v-if="wb.status === 'connecting'">Starting Python engine…</template>
-				<template v-else-if="wb.status === 'ready'">Connected in {{ wb.connectMs }} ms</template>
-				<template v-else>Engine unavailable</template>
-			</p>
-			<p v-if="wb.error" class="error">{{ wb.error }}</p>
-			<button v-if="wb.status === 'error'" @click="wb.connect()">Retry</button>
-			<dl v-if="wb.info">
-				<dt>Shell</dt>
-				<dd>{{ runningInTauri ? 'Tauri desktop' : 'Browser (dev)' }}</dd>
-				<dt>Engine URL</dt>
-				<dd><code>{{ wb.baseUrl }}</code></dd>
-				<dt>Core version</dt>
-				<dd>{{ wb.info.core_version }}</dd>
-				<dt>Python</dt>
-				<dd>{{ wb.info.python }} {{ wb.info.compiled ? '(Nuitka-compiled)' : '(interpreted)' }}</dd>
-				<dt>Platform</dt>
-				<dd>{{ wb.info.platform }}</dd>
-				<dt>Engine PID</dt>
-				<dd>{{ wb.info.pid }}</dd>
-			</dl>
-		</section>
+		<nav class="tabs">
+			<button type="button" :class="{ active: tab === 'excel' }" @click="tab = 'excel'">Excel query</button>
+			<button type="button" :class="{ active: tab === 'engine' }" @click="tab = 'engine'">Engine</button>
+		</nav>
 
-		<section class="card">
-			<h2>Say hello</h2>
-			<form class="row" @submit.prevent="wb.sayHello(name)">
-				<input v-model="name" placeholder="Your name" :disabled="wb.status !== 'ready'" />
-				<button type="submit" :disabled="wb.status !== 'ready'">Send to engine</button>
-			</form>
-			<p v-if="wb.greeting" class="greeting">
-				{{ wb.greeting.message }}
-				<small>{{ new Date(wb.greeting.at).toLocaleTimeString() }}</small>
-			</p>
-		</section>
-
-		<section class="card">
-			<h2>Shared document model</h2>
-			<p class="hint">One object, many views: these come from Pydantic models in <code>workbench_core</code>.</p>
-			<button :disabled="wb.status !== 'ready'" @click="wb.loadDemoModel()">Load demo objects</button>
-			<table v-if="wb.equipment.length">
-				<thead>
-					<tr><th>Tag</th><th>Description</th><th>kW</th><th>Views</th><th>UUID</th></tr>
-				</thead>
-				<tbody>
-					<tr v-for="eq in wb.equipment" :key="eq.id">
-						<td><strong>{{ eq.tag }}</strong></td>
-						<td>{{ eq.description }}</td>
-						<td>{{ eq.rating_kw ?? '—' }}</td>
-						<td>{{ eq.views.join(', ') }}</td>
-						<td><code>{{ eq.id.slice(0, 8) }}…</code></td>
-					</tr>
-				</tbody>
-			</table>
-		</section>
+		<template v-if="tab === 'excel'">
+			<ExcelWizard v-if="wb.status === 'ready'" />
+			<section v-else class="card">
+				<p v-if="wb.status === 'connecting'">Waiting for the Python engine to start…</p>
+				<template v-else>
+					<p class="error">{{ wb.error }}</p>
+					<button type="button" @click="wb.connect()">Retry</button>
+				</template>
+			</section>
+		</template>
+		<EnginePanel v-else />
 	</main>
 </template>

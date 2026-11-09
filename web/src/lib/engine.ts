@@ -7,15 +7,63 @@ const DEV_ENGINE_URL = import.meta.env.VITE_ENGINE_URL ?? 'http://127.0.0.1:8765
 
 export const runningInTauri = isTauri();
 
-export async function resolveEngineUrl(): Promise<string> {
-	if (runningInTauri) return invoke<string>('engine_url');
-	return DEV_ENGINE_URL;
+let engineUrl: Promise<string> | null = null;
+
+export function resolveEngineUrl(): Promise<string> {
+	engineUrl ??= (runningInTauri ? invoke<string>('engine_url') : Promise.resolve(DEV_ENGINE_URL)).catch(
+		(err) => {
+			engineUrl = null; // allow a retry
+			throw err;
+		},
+	);
+	return engineUrl;
 }
 
-export async function getJson<T>(baseUrl: string, path: string): Promise<T> {
-	const res = await fetch(`${baseUrl}${path}`);
-	if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${path}`);
+async function request<T>(path: string, init?: RequestInit, baseUrl?: string): Promise<T> {
+	const base = baseUrl ?? (await resolveEngineUrl());
+	const res = await fetch(`${base}${path}`, init);
+	if (!res.ok) {
+		// FastAPI errors look like {"detail": "..."}; show that to the user.
+		let detail = `${res.status} ${res.statusText}`;
+		try {
+			const body = await res.json();
+			if (typeof body.detail === 'string') detail = body.detail;
+			else if (body.detail) detail = JSON.stringify(body.detail);
+		} catch {
+			/* not JSON */
+		}
+		throw new Error(detail);
+	}
 	return (await res.json()) as T;
+}
+
+export function getJson<T>(baseUrl: string, path: string): Promise<T> {
+	return request<T>(path, undefined, baseUrl);
+}
+
+export function apiGet<T>(path: string, params?: Record<string, string | number>): Promise<T> {
+	const qs = params ? `?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]))}` : '';
+	return request<T>(`${path}${qs}`);
+}
+
+export function apiPostJson<T>(path: string, body: unknown): Promise<T> {
+	return request<T>(path, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	});
+}
+
+export function apiPostBytes<T>(path: string, body: Blob | ArrayBuffer): Promise<T> {
+	return request<T>(path, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/octet-stream' },
+		body,
+	});
+}
+
+export function apiDelete(path: string): Promise<unknown> {
+	return request(path, { method: 'DELETE' });
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

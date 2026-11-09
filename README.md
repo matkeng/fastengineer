@@ -19,11 +19,44 @@ What it demonstrates:
 | §5 Framework-free `workbench_core` with a thin FastAPI adapter | `core/`, `desktop/engine/workbench_desktop/app.py` |
 | §4 Vue 3 + Pinia shared store | `web/src/stores/workbench.ts` |
 | §7 Pydantic document model with stable UUIDs | `core/src/workbench_core/model.py` |
+| §6 Excel table extraction (openpyxl) with a DataTables review grid | `core/src/workbench_core/excel/`, `web/src/components/excel/` |
 | §12 GitHub Actions build on `windows-latest` | `.github/workflows/windows-build.yml` |
 
-The window shows engine status (port, Python version, whether it's
-Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
-model objects.
+The app has two tabs:
+
+- **Excel query**: a step-by-step wizard that turns a worksheet or Excel table
+  into a reviewable, keyed table (see below).
+- **Engine**: engine status (port, Python version, whether it's
+  Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
+  model objects.
+
+## Excel query wizard
+
+| Step | What happens |
+|---|---|
+| 1. Workbook | Drop or browse for an `.xlsx`/`.xlsm` file, or use the bundled sample (`samples/cable-schedule-sample.xlsx`). The engine reads it locally. |
+| 2. Sheet or table | Pick a whole worksheet or a defined Excel table. |
+| 3. Header row | Pick the header row from a list or by clicking it in a preview grid. A suggestion is pre-selected. Stacked headers ("Cable" above "Size" and "Cores") can span up to 4 rows and are joined into "Cable Size", "Cable Cores". |
+| 4. Key column | Pick the key index column (e.g. tag or cable number). Fill, uniqueness and duplicate counts are shown for each column, and a likely key is suggested. Rows with a blank key can be skipped. |
+| 5. Results | A DataTables grid with paging, sorting, a global search, a filter on every column, a strike filter, a **Columns** button to show or hide columns, and Copy/CSV export. |
+
+How cells are read (`core/src/workbench_core/excel/`):
+
+- **Values, not formulas.** The engine reads the results Excel calculated and
+  saved in the file. If a formula has no saved result (for example the file was
+  written by a script and never opened in Excel), the cell is blank and a
+  warning says how many. Open and save the file in Excel to fix that.
+- **Merged cells** are split out: every cell in a merged range gets the
+  top-left value. Copied values are shown in italics in the preview.
+- **Strikethrough** is detected per cell as *none*, *partial* (only some of
+  the text is struck, e.g. `~~16~~ 25 mm²`) or *full*, and shown as struck
+  text in the grid. Each row also gets a status: *Struck out* if every filled
+  cell is fully struck, *Partly struck* if any cell is struck.
+- Duplicate keys are flagged with ⚠, and every row keeps its Excel row number.
+
+Not covered yet: `.xls` and `.xlsb` (no formatting information, so strike
+can't be detected), strikethrough applied by conditional formatting, and very
+large sheets (the whole sheet is loaded into memory).
 
 ## Getting the Windows installer
 
@@ -66,6 +99,17 @@ python -m venv .venv && .venv/bin/pip install -e core -e desktop/engine   # Wind
 .venv/bin/python -m workbench_desktop --port 8765
 cd web && npm install && npm run dev        # open http://localhost:5173
 ```
+
+## Tests
+
+```bash
+.venv/bin/pip install -e core -e "desktop/engine[test]"
+.venv/bin/python -m pytest core/tests desktop/engine/tests
+```
+
+CI also drives the Excel flow against the compiled engine. To regenerate the
+sample workbook (uses LibreOffice, if installed, to calculate formula results):
+`python scripts/make_sample_workbook.py`.
 
 ## Things to check on a Windows test machine
 
