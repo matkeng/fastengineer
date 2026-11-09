@@ -322,6 +322,13 @@ Reference data you define and keep (`core/src/workbench_core/refdata/`, API
 - Everything is stored in the same local database as MEL imports, so it's there
   next time the app starts.
 
+## Deliverable generators
+
+Phase 1 is the engine (`core/src/workbench_core/generators`). It reproduces the
+Excel/VBA cable schedule, device list and IO list generator workbooks cell for cell, with a
+command line (`python -m workbench_core.generators import|check|build|diff|export|golden`).
+See [docs/GENERATORS.md](docs/GENERATORS.md). The app screens come in phase 2.
+
 ## Tests
 
 ```bash

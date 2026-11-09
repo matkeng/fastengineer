@@ -1,0 +1,97 @@
+# Deliverable generators, phase 1: engine parity
+
+`workbench_core.generators` re-implements the Excel/VBA generator workbooks: cable schedules,
+an instrument device list and a PLC IO list. It is a pure Python engine. It takes a runsheet
+(one row per run) and template blocks of `<<TAG>>` cells, and produces the output schedule
+cell for cell, in **compatibility mode**.
+
+| Module | What it does |
+|---|---|
+| `models.py` | Generator, config, runsheet, templates, computed columns, build result |
+| `text.py` | value to text (VBA `CStr`), case-insensitive literal replace, space collapse, "as typed" cell reading |
+| `expr.py` | safe expression language for late formulas (`F=<<LEN2>>*<<QTY>>`): Excel precedence, no `eval` |
+| `computed.py` | computed columns that replace template formulas: `concat`, `exists`, `lookup`, `expr`, `count` |
+| `expand.py` | `build()`: tag discovery, run selection, expansion, derived tags, locked runs, freeze-and-expand, output assembly |
+| `check.py` | `check()`: rules C1-C20 and the template index |
+| `diff.py` | change report keyed on DiffKey (`key`, `key#2`, ...), columns matched by name |
+| `xlsx_import.py` | imports a generator workbook; maps the known template formulas to computed columns, flags the rest, reports data issues |
+| `xlsx_export.py` | `.xlsx` ("Schedule", bold frozen filtered header, document properties) and `.csv` |
+| `golden.py` | golden tests against real workbooks kept outside the repository |
+
+## Command line
+
+```bash
+python -m workbench_core.generators import  <workbook.xlsm> -o gen.json --report import-report.json
+python -m workbench_core.generators check   gen.json
+python -m workbench_core.generators build   gen.json -o build.json [--from N --upto N] [--prev old-build.json]
+python -m workbench_core.generators diff    old-build.json build.json
+python -m workbench_core.generators export  build.json --gen gen.json -o schedule.xlsx
+python -m workbench_core.generators golden  <folder with workbooks and expected.json>
+```
+
+`--upto` is exclusive, as in the workbooks ("run below").
+
+## Golden tests (real workbooks, kept local)
+
+Project workbooks are **never committed**: this repository is public, and the workbooks hold project data.
+Keep them in `samples/generators-local/` (git-ignored) or anywhere else, and point
+`GENERATOR_FIXTURES` at that folder. Put an `expected.json` next to them:
+
+```json
+{"<generator id>": {"runs": 0, "rows": 0, "output_rows": 0, "cells": 0, "unresolved": 0, "no_template": 0, "duplicate_ids": []}}
+```
+
+Any subset of keys may be given. The golden runner:
+- builds each workbook with its stored config and compares the counts;
+- checks that a rebuild with unchanged inputs reports no changes;
+- when a workbook holds a stored `Output`, compares it cell by cell by header, including type.
+
+`core/tests/test_generators_io.py::test_golden_workbooks` is skipped when no workbooks are present.
+All other tests use invented data.
+
+## Import notes
+
+- Template formulas map to computed columns:
+  - `&` concatenation;
+  - `EXACT(VLOOKUP(x, range, 1), x)` existence checks;
+  - `VLOOKUP(..., 0)`, plain or `IF(x="","",...)` / `IF(x<>"",...,"")`-guarded;
+  - `COUNTIF`.
+
+  Any other formula is kept as text and listed as unmapped.
+- Lookup sheets are imported whole, with columns named by letter, so `VLOOKUP(U2,Sheet!B:I,6,0)` becomes key column `B`, return column `G`.
+- Runsheet formula columns use their cached values; the formula is kept on the column.
+- An annotations row of input kinds (`Model / Number / Choice / Inbuilt`) becomes column `source` metadata.
+- A column used as the key of a lookup whose table keys hold tag patterns is marked **raw**: written unexpanded, so the lookup matches the pattern.
+- Reported data issues:
+  - duplicate lookup keys;
+  - template IDs in more than one block;
+  - duplicate run numbers;
+  - blank raw key columns;
+  - runsheet values that look like tags.
+
+## Behaviours kept in compatibility mode (PRD Appendix D)
+
+- A blank value becomes `<<No Value Found>>`.
+- `RunUpTo` is exclusive, and a non-numeric run counts as 0.
+- Values are inserted unescaped, and later tags expand them.
+- The parent lookup is case-sensitive.
+- The existence check uses an approximate-match VLOOKUP.
+- Space collapse runs three passes.
+- `F=` is replaced anywhere in the text.
+- Row directives pass through.
+- The first template block wins.
+- Literal template text keeps its stored type.
+- The parent text ends in a trailing space.
+
+`mode = "standard"` already applies these fixes:
+- case-insensitive parents;
+- an exact existence check;
+- a full space collapse;
+- leading `F=` only;
+- `<<DELETE ROW>>` drops the row and `<<MANUAL ROW>>` is flagged;
+- the parent text is trimmed;
+- a non-numeric run is a Check error.
+
+Still open:
+- the `NO_PLC` behaviour;
+- one-level nesting.

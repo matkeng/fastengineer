@@ -26,3 +26,7 @@ web/dist/
 
 # Portable build output
 dist/
+
+# Real generator workbooks hold project data: keep them local (golden tests read
+# them from here or from $GENERATOR_FIXTURES), never commit them to this public repo
+samples/generators-local/
