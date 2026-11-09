@@ -17,6 +17,27 @@ ELEC_LOAD_FIELDS: list[str] = [
 ]
 NUMERIC_FIELDS = {"equip_qty", "standby_qty", "load_rating", "load_voltage", "csv_row_num", "phases"}
 
+# Instrument-list fields a PIL recipe maps onto (fed by the P&ID tags list).
+INSTRUMENT_FIELDS: list[str] = [
+    "tag", "function", "loop", "suffix", "desc", "service", "instrument_type", "area",
+    "pid_drawing", "pid_sheet", "line_number", "equipment", "signal_type", "io_system",
+    "range_min", "range_max", "units", "manufacturer", "model", "status", "is_deleted",
+]
+
+# What each target list maps onto. Targets without their own list use the load list.
+TARGET_FIELDS: dict[str, list[str]] = {"MEL": ELEC_LOAD_FIELDS, "PIL": INSTRUMENT_FIELDS}
+TARGET_NUMERIC: dict[str, set[str]] = {"MEL": NUMERIC_FIELDS, "PIL": {"range_min", "range_max"}}
+TARGET_BOOLEAN: dict[str, set[str]] = {"MEL": {"is_a_loadcentre", "is_deleted"}, "PIL": {"is_deleted"}}
+TARGET_OUTPUT: dict[str, str] = {"MEL": "Load list", "PIL": "Instrument list"}
+
+
+def fields_for(target: str) -> list[str]:
+    return TARGET_FIELDS.get(target, ELEC_LOAD_FIELDS)
+
+
+def output_name(target: str) -> str:
+    return TARGET_OUTPUT.get(target, "Load list")
+
 
 class ColumnRule(BaseModel):
     """Hide and/or rename a source column (PRD 5.4). Keyed by the source header."""

@@ -11,6 +11,7 @@ from workbench_core.model import Equipment
 
 from .excel_api import router as excel_router
 from .mel_api import router as mel_router
+from .pid_api import router as pid_router
 from .refdata_api import router as refdata_router
 
 app = FastAPI(title="Drawing Workbench engine", version=workbench_core.__version__)
@@ -28,6 +29,7 @@ app.add_middleware(
 app.include_router(excel_router)
 app.include_router(mel_router)
 app.include_router(refdata_router)
+app.include_router(pid_router)
 
 
 @app.get("/api/health")

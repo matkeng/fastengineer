@@ -1,4 +1,4 @@
-"""Export the MEL result (combined table or load list) as CSV or .xlsx."""
+"""Export the import result (combined table, or the load / instrument list) as CSV or .xlsx."""
 
 from __future__ import annotations
 
@@ -81,10 +81,10 @@ def combined_xlsx(result: PipelineResult, auto_columns: list[str], title: str) -
     return buf.getvalue()
 
 
-def load_list_xlsx(ll: LoadListResult, result: PipelineResult, title: str) -> bytes:
+def load_list_xlsx(ll: LoadListResult, result: PipelineResult, title: str, sheet: str = "Load list") -> bytes:
     wb = Workbook()
     ws = wb.active
-    ws.title = "Load list"
+    ws.title = sheet
     _header(ws, ll.fields)
     for i, r in enumerate(ll.rows, start=2):
         for c, f in enumerate(ll.fields, start=1):

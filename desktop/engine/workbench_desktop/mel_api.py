@@ -13,11 +13,12 @@ from pydantic import BaseModel
 
 from workbench_core.excel import ExcelError
 from workbench_core.mel import (
-    ELEC_LOAD_FIELDS,
     IngestError,
     PipelineResult,
     Recipe,
-    load_list,
+    fields_for,
+    output_list,
+    output_name,
     parse_csv,
     rows_from_extract,
     run_pipeline,
@@ -61,7 +62,8 @@ class NewRecipe(BaseModel):
 class RecipeDetail(BaseModel):
     recipe: Recipe
     revisions: list[RevisionInfo]
-    fields: list[str] = ELEC_LOAD_FIELDS
+    fields: list[str]  # what the recipe's target maps onto
+    output_name: str  # "Load list" (MEL) or "Instrument list" (PIL)
 
 
 @router.get("/storage")
@@ -82,7 +84,9 @@ def create_recipe(body: NewRecipe) -> Recipe:
 
 @router.get("/recipes/{recipe_id}", response_model=RecipeDetail)
 def get_recipe(recipe_id: str) -> RecipeDetail:
-    return RecipeDetail(recipe=_recipe(recipe_id), revisions=get_store().list_revisions(recipe_id))
+    recipe = _recipe(recipe_id)
+    return RecipeDetail(recipe=recipe, revisions=get_store().list_revisions(recipe_id),
+                        fields=fields_for(recipe.target), output_name=output_name(recipe.target))
 
 
 @router.put("/recipes/{recipe_id}", response_model=Recipe)
@@ -180,6 +184,24 @@ def upload_excel(recipe_id: str, body: ExcelSource) -> RevisionInfo:
     return _add(recipe_id, wb.filename, f"excel: {ex.source.name}", key, original, headers, rows, list(ex.warnings))
 
 
+class PidSource(BaseModel):
+    run_id: str
+
+
+@router.post("/recipes/{recipe_id}/revisions/pid", response_model=RevisionInfo)
+def upload_pid(recipe_id: str, body: PidSource) -> RevisionInfo:
+    """Add the P&ID tags list from a finished analysis run as a new revision."""
+    from .pid_api import run_tags
+    run, sheets, table = run_tags(body.run_id)
+    if not table.rows:
+        raise HTTPException(400, "That run found no tags, so there is nothing to import.")
+    drawings = len({s.file_name for s in sheets})
+    name = f"P&ID tags {run.finished_at:%Y-%m-%d %H:%M}" if run.finished_at else "P&ID tags"
+    rows = [dict(r) for r in table.rows]
+    return _add(recipe_id, name, f"pid: {drawings} drawing(s), {len(sheets)} sheet(s)", "Tag",
+                list(table.headers), list(table.headers), rows, list(run.warnings[:20]))
+
+
 @router.delete("/recipes/{recipe_id}/revisions/{revision_id}")
 def delete_revision(recipe_id: str, revision_id: str) -> dict[str, str]:
     get_store().delete_revision(recipe_id, revision_id)
@@ -205,7 +227,7 @@ def run(recipe_id: str, body: RunRequest) -> PipelineResult:
 @router.post("/recipes/{recipe_id}/loadlist", response_model=LoadListResult)
 def loadlist(recipe_id: str, body: RunRequest) -> LoadListResult:
     recipe = _draft(recipe_id, body.recipe)
-    return load_list(run_pipeline(_latest(recipe_id), recipe), recipe)
+    return output_list(run_pipeline(_latest(recipe_id), recipe), recipe)
 
 
 class ExportRequest(BaseModel):
@@ -231,8 +253,8 @@ def export(recipe_id: str, body: ExportRequest, request: Request):
         auto = [a.name for a in recipe.auto_columns]
         data = combined_csv(result) if body.format == "csv" else combined_xlsx(result, auto, title)
     else:
-        ll = load_list(result, recipe)
-        data = load_list_csv(ll) if body.format == "csv" else load_list_xlsx(ll, result, title)
+        ll = output_list(result, recipe)
+        data = load_list_csv(ll) if body.format == "csv" else load_list_xlsx(ll, result, title, output_name(recipe.target))
     if body.path is None:
         name = f"{recipe.target}-{body.table}.{body.format}"
         return Response(data, media_type=MEDIA[body.format],

@@ -21,7 +21,7 @@ from typing import Literal
 from asteval import Interpreter
 from pydantic import BaseModel, Field
 
-from .models import ELEC_LOAD_FIELDS, NUMERIC_FIELDS, Recipe, Revision
+from .models import NUMERIC_FIELDS, TARGET_BOOLEAN, TARGET_NUMERIC, Recipe, Revision, fields_for
 
 Stage = Literal["source", "columns", "rows", "text", "overrides", "custom", "auto"]
 STAGES: list[Stage] = ["source", "columns", "rows", "text", "overrides", "custom", "auto"]
@@ -260,10 +260,13 @@ class LoadListResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-def load_list(result: PipelineResult, recipe: Recipe) -> LoadListResult:
-    """Map the final table onto load-list fields (PRD 5.11 / 5.13)."""
+def output_list(result: PipelineResult, recipe: Recipe) -> LoadListResult:
+    """Map the final table onto the target's fields (PRD 5.11 / 5.13): the load list for
+    MEL, the instrument list for PIL."""
     maps = {m.field: m for m in recipe.mapping if m.column or m.manual is not None}
-    fields = [f for f in ELEC_LOAD_FIELDS if f in maps]
+    fields = [f for f in fields_for(recipe.target) if f in maps]
+    numeric = TARGET_NUMERIC.get(recipe.target, NUMERIC_FIELDS)
+    boolean = TARGET_BOOLEAN.get(recipe.target, {"is_a_loadcentre", "is_deleted"})
     warnings: list[str] = []
     for f in fields:
         m = maps[f]
@@ -278,17 +281,20 @@ def load_list(result: PipelineResult, recipe: Recipe) -> LoadListResult:
             raw = m.manual if not m.column else row.values.get(m.column, "")
             raw = "" if raw is None else str(raw).strip()
             value: str | float | int | bool | None = raw
-            if f in NUMERIC_FIELDS:
+            if f in numeric:
                 if raw in ("", "-"):
                     value = None
                 elif NUMBER.match(raw):
                     value = _as_value(raw)  # type: ignore[assignment]
                 else:
                     bad[f] = bad.get(f, 0) + 1  # kept as text so nothing is lost
-            elif f in ("is_a_loadcentre", "is_deleted"):
+            elif f in boolean:
                 value = raw.lower() in ("true", "yes", "y", "1", "x")
             rec[f] = value
         out.append(rec)
     for f, n in bad.items():
         warnings.append(f"{n} row(s) have a non-numeric '{f}'; kept as text.")
     return LoadListResult(fields=fields, rows=out, warnings=warnings)
+
+
+load_list = output_list  # the original name, for MEL callers

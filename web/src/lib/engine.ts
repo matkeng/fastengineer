@@ -55,6 +55,11 @@ export function apiGet<T>(path: string, params?: Record<string, string | number>
 	return request<T>(`${path}${qs}`);
 }
 
+/** GET a file (e.g. a page image) as a Blob. */
+export function apiGetBlob(path: string): Promise<Blob> {
+	return request<Blob>(path, undefined, undefined, 'blob');
+}
+
 export function apiPostJson<T>(path: string, body: unknown): Promise<T> {
 	return request<T>(path, {
 		method: 'POST',

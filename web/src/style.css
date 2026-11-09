@@ -335,3 +335,78 @@ input.invalid, select.invalid { border-color: var(--accent) !important; outline:
 .ref-rows tbody tr { cursor: pointer; }
 .ref-rows .yes { color: var(--ok); font-weight: 700; }
 .ref-rows .no { color: var(--muted); }
+
+/* -- P&ID analysis ----------------------------------------------------------------- */
+.pid-layout { display: grid; grid-template-columns: minmax(220px, 270px) minmax(0, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 860px) {
+	.pid-layout { grid-template-columns: 1fr; }
+	main.fill > .pid > .pid-layout { grid-template-rows: auto minmax(0, 1fr); }
+	main.fill .pid-sidebar { max-height: 210px; }
+	main.fill .pid-main { min-height: 420px; }
+}
+main.fill > .pid { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+main.fill > .pid > .pid-layout { flex: 1; min-height: 0; align-items: stretch; }
+main.fill .pid-sidebar { overflow: auto; margin: 0; }
+main.fill .pid-main { margin: 0; display: flex; flex-direction: column; min-height: 0; padding: 12px 16px; overflow: auto; }
+main.fill .pid-viewer, main.fill .pid-run { overflow: hidden; }
+.pid-main h3 { margin: 0; font-size: 1rem; }
+.pid-main h4 { margin: 14px 0 4px; font-size: 0.9rem; }
+.pid-sidebar input.short { width: 56px; flex: 0 0 56px; min-width: 0; padding-left: 6px; padding-right: 6px; }
+.pid-main input.short { width: 70px; flex: 0 0 70px; min-width: 0; }
+.pid-sidebar .ref-nav li input[type=checkbox] { margin: 0; }
+.pid-sidebar .ref-nav li.off .name { color: var(--muted); text-decoration: line-through; }
+.pid-sidebar .count.bad, .pid-main .chip.error { background: var(--danger, #dc2626); color: #fff; }
+.pid-sidebar .link.strong { font-weight: 700; }
+.pid-tlist { list-style: none; }
+.pid-tlist .link[disabled] { opacity: 0.25; cursor: default; }
+.pid-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; flex-shrink: 0; }
+.pid-toolbar .name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pid-toolbar .seg button { margin: 0; }
+.pid-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; margin-bottom: 8px; border-radius: 6px;
+	background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); flex-shrink: 0; }
+.pid-banner.floating { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 2; background: var(--card); box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+.pid-banner.test { background: #fff7ed; border-color: #fdba74; }
+.pid-banner.ok { background: color-mix(in srgb, var(--ok) 12%, transparent); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.pid-banner input { min-width: 200px; }
+.pid-body { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 10px; min-height: 0; flex: 1; }
+.pid-body.no-side { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 1100px) { .pid-body { grid-template-columns: 1fr; } .pid-side { max-height: 260px; } }
+.pid-canvas-host { position: relative; min-height: 360px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: #e5e7eb; }
+.pid-canvas-host canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.pid-canvas-host.mode-template canvas, .pid-canvas-host.mode-exclude canvas { cursor: crosshair; }
+.pid-overlay-msg { position: absolute; top: 12px; left: 12px; margin: 0; padding: 4px 10px; background: var(--card); border-radius: 6px; }
+.pid-side { overflow: auto; min-height: 0; font-size: 0.86rem; }
+.pid-side h4:first-of-type { margin-top: 8px; }
+.pid-side input.num, .pid-template input.num { width: 72px; }
+.pid-picked { margin: 8px 0; padding: 6px 8px; border-left: 3px solid #facc15; background: #fefce8; color: #1f2937; }
+.pid-taglist { list-style: none; padding: 0; margin: 0; max-height: 220px; overflow: auto; }
+.pid-taglist li { display: flex; gap: 6px; padding: 2px 4px; cursor: pointer; border-radius: 4px; }
+.pid-taglist li:hover { background: var(--bg); }
+.pid-taglist .tag { font-weight: 600; min-width: 80px; }
+.pid-taglist .src { color: var(--muted); font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pid-taglist .src.pattern { color: #7c3aed; }
+.ov-table { width: 100%; table-layout: fixed; }
+.ov-table th:nth-child(2), .ov-table td:nth-child(2) { width: 74px; }
+.ov-table th:nth-child(3), .ov-table td:nth-child(3) { width: 58px; }
+.ov-table td { padding: 2px 4px; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; }
+.pid-side .ov-table input.num { width: 64px; min-width: 0; padding: 3px 5px; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+.pid-template-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
+@media (max-width: 1000px) { .pid-template-body { grid-template-columns: 1fr; } }
+.pid-template-canvas { overflow: auto; max-height: 460px; margin: 6px 0; border: 1px solid var(--border); border-radius: 6px; background: #f1f5f9; }
+.pid-template-canvas canvas { display: block; cursor: crosshair; touch-action: none; }
+.pid-template-form .field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
+.pid-template-form fieldset.variants { border: 1px solid var(--border); border-radius: 6px; margin: 0 0 10px; padding: 4px 8px 6px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.points-table tr.current td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.points-table input:not([type=checkbox]) { width: 100%; min-width: 60px; }
+.danger-zone { margin-top: 16px; }
+.pid-progress { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-shrink: 0; }
+.pid-progress progress { flex: 1; height: 14px; }
+.pid-warnings { flex-shrink: 0; max-height: 150px; overflow: auto; }
+.pid-warnings ul { margin: 2px 0 6px; padding-left: 18px; }
+.pid-settings .mono { font-family: ui-monospace, Consolas, monospace; width: 100%; }
+.pid-settings .chip.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); }
+.pid-settings .chip.muted { opacity: 0.7; }
+.pid-excl { border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; }
+.pid-empty .steps-help { line-height: 1.6; padding-left: 20px; }
+.row.wrap { flex-wrap: wrap; }

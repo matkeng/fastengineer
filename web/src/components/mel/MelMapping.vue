@@ -51,7 +51,7 @@ function suggest() {
 
 <template>
 	<div>
-		<p class="hint">Choose which column fills each load-list field, or type a fixed value. Unmapped fields are left out of the load list.</p>
+		<p class="hint">Choose which column fills each {{ mel.outputName.toLowerCase() }} field, or type a fixed value. Unmapped fields are left out of the {{ mel.outputName.toLowerCase() }}.</p>
 		<div class="row"><button type="button" class="secondary small" @click="suggest">Suggest mapping for unmapped fields</button></div>
 		<div class="grid-wrap">
 			<table class="grid simple mapping">

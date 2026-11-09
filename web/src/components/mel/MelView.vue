@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { TARGETS, type TargetList } from '../../lib/melTypes';
+import { TARGET_LABELS, TARGETS, type TargetList } from '../../lib/melTypes';
 import { type MelTab, useMel } from '../../stores/mel';
 import MelAuto from './MelAuto.vue';
 import MelColumns from './MelColumns.vue';
@@ -53,17 +53,18 @@ onMounted(() => mel.refreshList());
 	<div class="mel">
 		<!-- Saved imports -->
 		<section v-if="!mel.draft" class="card">
-			<h2>Equipment list imports</h2>
+			<h2>List imports</h2>
 			<p class="hint">
-				Turn a Mechanical Equipment List (or another list) into a load list with a saved recipe of rules. The
-				source file is never changed, and the same rules re-apply when you upload a revised file.
+				Turn a Mechanical Equipment List into a load list, or a P&amp;ID tags list (from the P&amp;ID analysis tab, or a
+				CSV) into an instrument list, with a saved recipe of rules. The source file is never changed, and the same rules
+				re-apply when you upload a revision.
 			</p>
 			<table v-if="mel.recipes.length" class="grid simple">
 				<thead><tr><th>Name</th><th>List</th><th>Files</th><th>Last changed</th><th /></tr></thead>
 				<tbody>
 					<tr v-for="r in mel.recipes" :key="r.id" @click="mel.open(r.id)">
 						<td><strong>{{ r.name }}</strong></td>
-						<td>{{ r.target }}</td>
+						<td>{{ TARGET_LABELS[r.target] }}</td>
 						<td>{{ r.revisions ? `${r.revisions} (latest rev ${r.latest_rev})` : 'none yet' }}</td>
 						<td>{{ new Date(r.updated_at).toLocaleString() }}</td>
 						<td class="actions">
@@ -76,7 +77,7 @@ onMounted(() => mel.refreshList());
 			<form class="row create" @submit.prevent="create">
 				<input v-model="newName" placeholder="New import name, e.g. Plant MEL" />
 				<select v-model="newTarget" aria-label="List type">
-					<option v-for="t in TARGETS" :key="t" :value="t">{{ t }}</option>
+					<option v-for="t in TARGETS" :key="t" :value="t">{{ TARGET_LABELS[t] }}</option>
 				</select>
 				<button type="submit" :disabled="mel.busy">Create</button>
 			</form>
@@ -88,7 +89,7 @@ onMounted(() => mel.refreshList());
 			<div class="mel-head">
 				<button type="button" class="secondary small" @click="leave">← All imports</button>
 				<input v-model="mel.draft.name" class="name-input" aria-label="Import name" />
-				<span class="chip">{{ mel.draft.target }}</span>
+				<span class="chip" :title="TARGET_LABELS[mel.draft.target]">{{ mel.draft.target }} → {{ mel.outputName.toLowerCase() }}</span>
 				<span v-if="mel.latest" class="chip" :title="mel.latest.file_name">
 					rev {{ mel.latest.rev }} · {{ mel.latest.num_rows }} rows · key {{ mel.latest.key_header }}
 				</span>

@@ -18,6 +18,7 @@ from pathlib import Path
 from workbench_core.mel import Recipe, Revision
 from workbench_core.refdata import EnumList, RefRow, RefTable, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
+from workbench_core.pid import Drawing, PageOverride, PageResult, RunInfo, Settings, Template
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS recipes (
@@ -57,6 +58,44 @@ CREATE TABLE IF NOT EXISTS ref_rows (
     data TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ref_rows_table ON ref_rows(table_id, seq);
+-- P&ID analysis. Page renders and words are files under <data dir>/pid/<drawing id>/.
+CREATE TABLE IF NOT EXISTS pid_drawings (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS pid_templates (
+    id TEXT PRIMARY KEY,
+    drawing_type TEXT NOT NULL,
+    block_set TEXT NOT NULL,
+    priority INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    image BLOB NOT NULL,
+    UNIQUE (drawing_type, block_set, priority)
+);
+CREATE TABLE IF NOT EXISTS pid_overrides (
+    doc_id TEXT NOT NULL REFERENCES pid_drawings(id) ON DELETE CASCADE,
+    page INTEGER NOT NULL,
+    template_id TEXT NOT NULL REFERENCES pid_templates(id) ON DELETE CASCADE,
+    data TEXT NOT NULL,
+    PRIMARY KEY (doc_id, page, template_id)
+);
+CREATE TABLE IF NOT EXISTS pid_results (
+    doc_id TEXT NOT NULL REFERENCES pid_drawings(id) ON DELETE CASCADE,
+    page INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    PRIMARY KEY (doc_id, page)
+);
+CREATE TABLE IF NOT EXISTS pid_runs (
+    id TEXT PRIMARY KEY,
+    info TEXT NOT NULL,
+    sheets TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    data TEXT NOT NULL
+);
 """
 
 
@@ -276,6 +315,214 @@ class RefStore:
             self._db.execute("DELETE FROM ref_rows WHERE id = ? AND table_id = ?", (row_id, table_id))
 
 
+class PidStore:
+    """P&ID drawings, templates, overrides, page results and runs. Shares the Store's
+    connection and lock; big files (PDF, page PNGs, words) live next to the database."""
+
+    def __init__(self, store: Store):
+        self._db = store._db
+        self._lock = store._lock
+        self.root = store.path.parent / "pid"
+
+    # -- files ---------------------------------------------------------------
+
+    def doc_dir(self, doc_id: str) -> Path:
+        if not doc_id.isalnum():
+            raise NotFound(doc_id)
+        return self.root / doc_id
+
+    def page_png(self, doc_id: str, n: int) -> Path:
+        return self.doc_dir(doc_id) / f"page-{n}.png"
+
+    def words_file(self, doc_id: str, n: int, kind: str = "pdf") -> Path:
+        return self.doc_dir(doc_id) / f"page-{n}.{kind}.json"
+
+    # -- drawings --------------------------------------------------------------
+
+    def add_drawing(self, drawing: Drawing, pdf: bytes) -> Drawing:
+        d = self.doc_dir(drawing.id)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "source.pdf").write_bytes(pdf)
+        with self._lock, self._db:
+            self._db.execute("INSERT INTO pid_drawings VALUES (?, ?, ?)",
+                             (drawing.id, drawing.model_dump_json(), _now().isoformat()))
+        return drawing
+
+    def save_drawing(self, drawing: Drawing) -> Drawing:
+        with self._lock, self._db:
+            cur = self._db.execute("UPDATE pid_drawings SET data = ? WHERE id = ?", (drawing.model_dump_json(), drawing.id))
+        if cur.rowcount == 0:
+            raise NotFound(drawing.id)
+        return drawing
+
+    def drawings(self) -> list[Drawing]:
+        with self._lock:
+            rows = self._db.execute("SELECT data FROM pid_drawings ORDER BY created_at").fetchall()
+        return [Drawing.model_validate_json(r[0]) for r in rows]
+
+    def get_drawing(self, doc_id: str) -> Drawing:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM pid_drawings WHERE id = ?", (doc_id,)).fetchone()
+        if not row:
+            raise NotFound(doc_id)
+        return Drawing.model_validate_json(row[0])
+
+    def delete_drawing(self, doc_id: str) -> None:
+        import shutil
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM pid_drawings WHERE id = ?", (doc_id,))
+        shutil.rmtree(self.doc_dir(doc_id), ignore_errors=True)
+
+    # -- templates -------------------------------------------------------------
+
+    def templates(self, drawing_type: str | None = None, block_set: str | None = None) -> list[Template]:
+        sql, args = "SELECT data FROM pid_templates", []
+        if drawing_type is not None and block_set is not None:
+            sql, args = sql + " WHERE drawing_type = ? AND block_set = ?", [drawing_type, block_set]
+        with self._lock:
+            rows = self._db.execute(sql + " ORDER BY drawing_type, block_set, priority", args).fetchall()
+        return [Template.model_validate_json(r[0]) for r in rows]
+
+    def get_template(self, template_id: str) -> Template:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM pid_templates WHERE id = ?", (template_id,)).fetchone()
+        if not row:
+            raise NotFound(template_id)
+        return Template.model_validate_json(row[0])
+
+    def template_image(self, template_id: str) -> bytes:
+        with self._lock:
+            row = self._db.execute("SELECT image FROM pid_templates WHERE id = ?", (template_id,)).fetchone()
+        if not row:
+            raise NotFound(template_id)
+        return bytes(row[0])
+
+    def add_template(self, t: Template, png: bytes, priority: int | None = None) -> Template:
+        """Append to its library (or insert at `priority`, shifting the rest down)."""
+        with self._lock, self._db:
+            (count,) = self._db.execute("SELECT COUNT(*) FROM pid_templates WHERE drawing_type = ? AND block_set = ?",
+                                        (t.drawing_type, t.block_set)).fetchone()
+            t = t.model_copy(update={"priority": count})
+            self._db.execute("INSERT INTO pid_templates VALUES (?, ?, ?, ?, ?, ?)",
+                             (t.id, t.drawing_type, t.block_set, t.priority, t.model_dump_json(), png))
+        if priority is not None and priority < count:
+            t = self.move_template(t.id, priority)
+        return t
+
+    def save_template(self, t: Template) -> Template:
+        """Edit fields. Moving library re-appends it there; priority changes go through move."""
+        old = self.get_template(t.id)
+        if (old.drawing_type, old.block_set) != (t.drawing_type, t.block_set):
+            png = self.template_image(t.id)
+            with self._lock, self._db:
+                self._db.execute("DELETE FROM pid_templates WHERE id = ?", (t.id,))
+                self._renumber(old.drawing_type, old.block_set)
+            return self.add_template(t, png)
+        t = t.model_copy(update={"priority": old.priority, "width": old.width, "height": old.height})
+        with self._lock, self._db:
+            self._db.execute("UPDATE pid_templates SET data = ? WHERE id = ?", (t.model_dump_json(), t.id))
+        return t
+
+    def _renumber(self, drawing_type: str, block_set: str, order: list[str] | None = None) -> None:
+        """Rewrite priorities 0..n-1 (caller holds the lock and transaction). Two passes keep
+        the (type, set, priority) unique constraint satisfied throughout."""
+        ids = order or [r[0] for r in self._db.execute(
+            "SELECT id FROM pid_templates WHERE drawing_type = ? AND block_set = ? ORDER BY priority",
+            (drawing_type, block_set))]
+        for i, tid in enumerate(ids):
+            self._db.execute("UPDATE pid_templates SET priority = ? WHERE id = ?", (-1 - i, tid))
+        for i, tid in enumerate(ids):
+            (data,) = self._db.execute("SELECT data FROM pid_templates WHERE id = ?", (tid,)).fetchone()
+            t = Template.model_validate_json(data).model_copy(update={"priority": i})
+            self._db.execute("UPDATE pid_templates SET priority = ?, data = ? WHERE id = ?", (i, t.model_dump_json(), tid))
+
+    def move_template(self, template_id: str, index: int) -> Template:
+        t = self.get_template(template_id)
+        with self._lock, self._db:
+            ids = [r[0] for r in self._db.execute(
+                "SELECT id FROM pid_templates WHERE drawing_type = ? AND block_set = ? ORDER BY priority",
+                (t.drawing_type, t.block_set))]
+            ids.remove(template_id)
+            ids.insert(max(0, min(index, len(ids))), template_id)
+            self._renumber(t.drawing_type, t.block_set, ids)
+        return self.get_template(template_id)
+
+    def delete_template(self, template_id: str) -> None:
+        t = self.get_template(template_id)
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM pid_templates WHERE id = ?", (template_id,))
+            self._renumber(t.drawing_type, t.block_set)
+
+    # -- overrides and results ---------------------------------------------------
+
+    def overrides(self, doc_id: str, page: int) -> dict[str, PageOverride]:
+        with self._lock:
+            rows = self._db.execute("SELECT data FROM pid_overrides WHERE doc_id = ? AND page = ?", (doc_id, page)).fetchall()
+        return {o.template_id: o for o in (PageOverride.model_validate_json(r[0]) for r in rows)}
+
+    def set_override(self, doc_id: str, page: int, ov: PageOverride) -> PageOverride:
+        self.get_drawing(doc_id)
+        self.get_template(ov.template_id)
+        with self._lock, self._db:
+            self._db.execute("INSERT INTO pid_overrides VALUES (?, ?, ?, ?) ON CONFLICT(doc_id, page, template_id) "
+                             "DO UPDATE SET data = excluded.data", (doc_id, page, ov.template_id, ov.model_dump_json()))
+        return ov
+
+    def delete_override(self, doc_id: str, page: int, template_id: str) -> None:
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM pid_overrides WHERE doc_id = ? AND page = ? AND template_id = ?",
+                             (doc_id, page, template_id))
+
+    def save_result(self, doc_id: str, result: PageResult) -> None:
+        with self._lock, self._db:
+            self._db.execute("INSERT INTO pid_results VALUES (?, ?, ?) ON CONFLICT(doc_id, page) "
+                             "DO UPDATE SET data = excluded.data", (doc_id, result.page, result.model_dump_json()))
+
+    def result(self, doc_id: str, page: int) -> PageResult | None:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM pid_results WHERE doc_id = ? AND page = ?", (doc_id, page)).fetchone()
+        return PageResult.model_validate_json(row[0]) if row else None
+
+    # -- runs ------------------------------------------------------------------
+
+    def save_run(self, run: RunInfo, sheets: list[dict] | None = None) -> RunInfo:
+        with self._lock, self._db:
+            self._db.execute("INSERT INTO pid_runs (id, info, created_at) VALUES (?, ?, ?) ON CONFLICT(id) "
+                             "DO UPDATE SET info = excluded.info", (run.id, run.model_dump_json(), _now().isoformat()))
+            if sheets is not None:
+                self._db.execute("UPDATE pid_runs SET sheets = ? WHERE id = ?", (json.dumps(sheets), run.id))
+        return run
+
+    def runs(self) -> list[RunInfo]:
+        with self._lock:
+            rows = self._db.execute("SELECT info FROM pid_runs ORDER BY created_at DESC").fetchall()
+        return [RunInfo.model_validate_json(r[0]) for r in rows]
+
+    def get_run(self, run_id: str) -> tuple[RunInfo, list[dict]]:
+        with self._lock:
+            row = self._db.execute("SELECT info, sheets FROM pid_runs WHERE id = ?", (run_id,)).fetchone()
+        if not row:
+            raise NotFound(run_id)
+        return RunInfo.model_validate_json(row[0]), json.loads(row[1])
+
+    def delete_run(self, run_id: str) -> None:
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM pid_runs WHERE id = ?", (run_id,))
+
+    # -- settings --------------------------------------------------------------
+
+    def settings(self) -> Settings:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM settings WHERE key = 'pid'").fetchone()
+        return Settings.model_validate_json(row[0]) if row else Settings()
+
+    def save_settings(self, s: Settings) -> Settings:
+        with self._lock, self._db:
+            self._db.execute("INSERT INTO settings VALUES ('pid', ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data",
+                             (s.model_dump_json(),))
+        return s
+
+
 _store: Store | None = None
 
 
@@ -293,3 +540,7 @@ def get_store() -> Store:
 
 def get_ref() -> RefStore:
     return RefStore(get_store())
+
+
+def get_pid() -> PidStore:
+    return PidStore(get_store())

@@ -50,6 +50,14 @@ jobs:
           .venv\Scripts\python -m pip install -e "desktop/engine[test]"
           .venv\Scripts\python -m pytest -q core/tests desktop/engine/tests
 
+      - name: Make sure Windows OCR (en-US) is installed
+        # Desktop Windows has it; server images may not. The smoke test reports if it stays missing.
+        continue-on-error: true
+        run: |
+          $cap = Get-WindowsCapability -Online -Name 'Language.OCR~~~en-US*' | Select-Object -First 1
+          "OCR capability: $($cap.Name) is $($cap.State)"
+          if ($cap -and $cap.State -ne 'Installed') { Add-WindowsCapability -Online -Name $cap.Name | Out-Null; "Installed $($cap.Name)" }
+
       - name: Smoke-test the compiled engine
         run: |
           $exe = Get-ChildItem desktop/src-tauri/binaries/workbench-engine-*.exe | Select-Object -First 1
@@ -125,6 +133,58 @@ jobs:
               -Body (@{ values = $vals } | ConvertTo-Json -Depth 4)
             "Ref row: kW = $($row.values.($c[1].id)); voltage item = $($row.values.($c[2].id))"
             if ($row.values.($c[1].id) -ne '30.5' -or $row.values.($c[2].id) -ne $en.items[0].id) { throw 'ref row not coerced' }
+
+            # P&ID analysis: PyMuPDF render, OpenCV matching and tag reading in the compiled engine.
+            $pidApi = 'http://127.0.0.1:8799/api/pid'
+            function Wait-Job2($url) {
+              for ($i = 0; $i -lt 480; $i++) {
+                $o = Invoke-RestMethod $url
+                if ($o.status -notin @('rendering', 'queued', 'running')) { return $o }
+                Start-Sleep -Milliseconds 500
+              }
+              throw "timed out waiting for $url"
+            }
+            $null = Invoke-RestMethod -Method Post -Uri "$pidApi/templates/import" -ContentType 'application/json' `
+              -Body (Get-Content samples/pid-templates.json -Raw)
+            $dw = Invoke-RestMethod -Method Post -Uri "$pidApi/drawings?filename=pid-sample.pdf" `
+              -InFile samples/pid-sample.pdf -ContentType 'application/octet-stream'
+            $dw = Wait-Job2 "$pidApi/drawings/$($dw.id)"
+            if ($dw.status -ne 'ready') { throw "P&ID render failed: $($dw.error)" }
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            $run = Invoke-RestMethod -Method Post -Uri "$pidApi/runs" -Body (@{ doc_ids = @($dw.id) } | ConvertTo-Json) -ContentType 'application/json'
+            $run = Wait-Job2 "$pidApi/runs/$($run.id)"
+            $tags = Invoke-RestMethod "$pidApi/runs/$($run.id)/tags"
+            "P&ID: $($run.tag_count) tags from $($dw.pages.Count) sheets in $([math]::Round($sw.Elapsed.TotalSeconds, 1)) s: $(($tags.rows | ForEach-Object { $_.Tag }) -join ', ')"
+            if ($run.status -ne 'done' -or $run.tag_count -ne 11 -or -not ($tags.rows | Where-Object { $_.Tag -eq 'FT-1023' })) {
+              throw "P&ID tags wrong in the compiled engine: $($run | ConvertTo-Json -Depth 3)"
+            }
+
+            # Scanned (image-only) sample: Windows OCR reads the text.
+            $ocr = Invoke-RestMethod "$pidApi/ocr"
+            "OCR: available=$($ocr.available) engine=$($ocr.engine) reason=$($ocr.reason)"
+            $sc = Invoke-RestMethod -Method Post -Uri "$pidApi/drawings?filename=pid-sample-scanned.pdf" `
+              -InFile samples/pid-sample-scanned.pdf -ContentType 'application/octet-stream'
+            $sc = Wait-Job2 "$pidApi/drawings/$($sc.id)"
+            $sw.Restart()
+            $runS = Invoke-RestMethod -Method Post -Uri "$pidApi/runs" -Body (@{ doc_ids = @($sc.id) } | ConvertTo-Json) -ContentType 'application/json'
+            $runS = Wait-Job2 "$pidApi/runs/$($runS.id)"
+            $tagsS = if ($runS.tag_count) { (Invoke-RestMethod "$pidApi/runs/$($runS.id)/tags").rows | ForEach-Object { $_.Tag } } else { @() }
+            "Scanned sample with OCR: $($runS.tag_count) tags in $([math]::Round($sw.Elapsed.TotalSeconds, 1)) s: $($tagsS -join ', ')"
+            $runS.warnings | Select-Object -First 5 | ForEach-Object { "  warning: $_" }
+            if ($ocr.available) {
+              if ($runS.tag_count -lt 1) { throw 'Windows OCR found no tags on the scanned sample' }
+            } else {
+              Write-Host "::warning::Windows OCR is not available on this runner ($($ocr.reason)); the scanned-sample check was skipped."
+            }
+
+            # The tags list into an instrument-list import (target PIL).
+            $pil = Invoke-RestMethod -Method Post -Uri "$mel/recipes" -Body (@{ name = 'CI instruments'; target = 'PIL' } | ConvertTo-Json) -ContentType 'application/json'
+            $null = Invoke-RestMethod -Method Post -Uri "$mel/recipes/$($pil.id)/revisions/pid" -Body (@{ run_id = $run.id } | ConvertTo-Json) -ContentType 'application/json'
+            $pil.mapping = @(@{ field = 'tag'; column = 'Tag' }, @{ field = 'loop'; column = 'Loop' })
+            $null = Invoke-RestMethod -Method Put -Uri "$mel/recipes/$($pil.id)" -Body ($pil | ConvertTo-Json -Depth 6) -ContentType 'application/json'
+            $il = Invoke-RestMethod -Method Post -Uri "$mel/recipes/$($pil.id)/loadlist" -Body '{}' -ContentType 'application/json'
+            "Instrument list: $($il.rows.Count) rows; fields $($il.fields -join ', ')"
+            if ($il.rows.Count -ne 11) { throw 'instrument list wrong' }
           } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
 
       - name: Smoke-test the portable app

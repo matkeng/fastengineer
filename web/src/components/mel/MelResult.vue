@@ -67,11 +67,11 @@ onBeforeUnmount(() => table?.api.destroy());
 					Combined table <span class="count">{{ combined?.rows.length ?? '…' }}</span>
 				</button>
 				<button type="button" :class="view === 'loadlist' ? '' : 'secondary'" @click="view = 'loadlist'">
-					Load list <span class="count">{{ ll?.fields.length ?? 0 }} fields</span>
+					{{ mel.outputName }} <span class="count">{{ ll?.fields.length ?? 0 }} fields</span>
 				</button>
 			</div>
 			<span class="spacer" />
-			<span class="hint">Export {{ view === 'combined' ? 'combined table' : 'load list' }}:</span>
+			<span class="hint">Export {{ view === 'combined' ? 'combined table' : mel.outputName.toLowerCase() }}:</span>
 			<button type="button" class="secondary" :disabled="mel.busy" @click="mel.exportTable(view, 'csv')">CSV</button>
 			<button type="button" :disabled="mel.busy" @click="mel.exportTable(view, 'xlsx')">Excel (.xlsx)</button>
 		</div>

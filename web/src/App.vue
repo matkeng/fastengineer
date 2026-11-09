@@ -5,10 +5,12 @@ import EnginePanel from './components/EnginePanel.vue';
 import CompareView from './components/compare/CompareView.vue';
 import ExcelWizard from './components/excel/ExcelWizard.vue';
 import MelView from './components/mel/MelView.vue';
+import PidView from './components/pid/PidView.vue';
 import RefView from './components/ref/RefView.vue';
 import { useCompare } from './stores/compare';
 import { useExcelWizard } from './stores/excelWizard';
 import { useMel } from './stores/mel';
+import { usePid } from './stores/pid';
 import { useRefData } from './stores/refdata';
 import { useWorkbench } from './stores/workbench';
 
@@ -17,7 +19,8 @@ const wiz = useExcelWizard();
 const cmp = useCompare();
 const mel = useMel();
 const rd = useRefData();
-const tab = ref<'excel' | 'compare' | 'mel' | 'ref' | 'engine'>('excel');
+const pid = usePid();
+const tab = ref<'excel' | 'compare' | 'pid' | 'mel' | 'ref' | 'engine'>('excel');
 const SAMPLES = [{ label: 'Use the sample cable schedule', url: sampleC, filename: 'cable-schedule-sample.xlsx' }];
 
 // Results views fill the window; the table takes the free space.
@@ -27,8 +30,17 @@ const fill = computed(
 		((tab.value === 'excel' && wiz.step === 4) ||
 			(tab.value === 'compare' && cmp.stage === 'result') ||
 			(tab.value === 'mel' && !!mel.draft && ['rows', 'overrides', 'result'].includes(mel.tab)) ||
+			tab.value === 'pid' ||
 			tab.value === 'ref'),
 );
+
+/** From a P&ID analysis: show the instrument-list import it was sent to. */
+async function openImport(recipeId: string) {
+	if (mel.dirty && !confirm('Discard unsaved changes to the open list import?')) return;
+	await mel.open(recipeId);
+	mel.tab = 'overview';
+	tab.value = 'mel';
+}
 
 onMounted(() => wb.connect());
 </script>
@@ -49,8 +61,11 @@ onMounted(() => wb.connect());
 		<nav class="tabs">
 			<button type="button" :class="{ active: tab === 'excel' }" @click="tab = 'excel'">Excel query</button>
 			<button type="button" :class="{ active: tab === 'compare' }" @click="tab = 'compare'">Compare tables</button>
+			<button type="button" :class="{ active: tab === 'pid' }" @click="tab = 'pid'">
+				P&amp;ID analysis<span v-if="pid.dirty" class="dirty-dot" title="Unsaved changes">●</span>
+			</button>
 			<button type="button" :class="{ active: tab === 'mel' }" @click="tab = 'mel'">
-				MEL import<span v-if="mel.dirty" class="dirty-dot" title="Unsaved changes">●</span>
+				List import<span v-if="mel.dirty" class="dirty-dot" title="Unsaved changes">●</span>
 			</button>
 			<button type="button" :class="{ active: tab === 'ref' }" @click="tab = 'ref'">
 				Lists &amp; tables<span v-if="rd.dirty" class="dirty-dot" title="Unsaved changes">●</span>
@@ -63,6 +78,7 @@ onMounted(() => wb.connect());
 		<template v-if="wb.status === 'ready'">
 			<ExcelWizard v-show="tab === 'excel'" :wiz="wiz" :samples="SAMPLES" />
 			<CompareView v-show="tab === 'compare'" />
+			<PidView v-show="tab === 'pid'" @open-import="openImport" />
 			<MelView v-show="tab === 'mel'" />
 			<RefView v-show="tab === 'ref'" />
 		</template>

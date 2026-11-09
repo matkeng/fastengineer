@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
+import { apiGet } from '../../lib/engine';
+import type { RunInfo } from '../../lib/pidTypes';
 import melSample from '../../../../samples/mel-sample.csv?url';
 import melSample2 from '../../../../samples/mel-sample-rev2.csv?url';
 import type { CsvInspect } from '../../lib/melTypes';
@@ -8,7 +10,9 @@ import ExcelWizard from '../excel/ExcelWizard.vue';
 
 const mel = useMel();
 const excelWiz = useMelExcel();
-const mode = ref<'csv' | 'excel'>('csv');
+const mode = ref<'csv' | 'excel' | 'pid'>(mel.draft?.target === 'PIL' ? 'pid' : 'csv');
+const runs = ref<RunInfo[]>([]);
+const runId = ref('');
 const file = ref<{ blob: Blob; name: string } | null>(null);
 const info = ref<CsvInspect | null>(null);
 const key = ref('');
@@ -35,6 +39,22 @@ async function upload() {
 	}
 }
 
+async function loadRuns() {
+	try {
+		runs.value = (await apiGet<RunInfo[]>('/api/pid/runs')).filter((r) => r.status === 'done' && r.tag_count > 0);
+		runId.value ||= runs.value[0]?.id ?? '';
+	} catch {
+		runs.value = [];
+	}
+}
+
+async function uploadPid() {
+	if (runId.value) await mel.uploadPid(runId.value);
+}
+
+onMounted(loadRuns);
+watch(mode, (m) => { if (m === 'pid') void loadRuns(); });
+
 async function excelDone() {
 	if (excelWiz.spec && (await mel.uploadExcel(excelWiz.spec))) {
 		excelWiz.reset();
@@ -49,9 +69,25 @@ async function excelDone() {
 		<div class="row seg">
 			<button type="button" :class="mode === 'csv' ? '' : 'secondary'" @click="mode = 'csv'">CSV file</button>
 			<button type="button" :class="mode === 'excel' ? '' : 'secondary'" @click="mode = 'excel'">From Excel…</button>
+			<button type="button" :class="mode === 'pid' ? '' : 'secondary'" @click="mode = 'pid'">From P&amp;ID analysis</button>
 		</div>
 
-		<template v-if="mode === 'csv'">
+		<div v-if="mode === 'pid'" class="inspect">
+			<template v-if="runs.length">
+				<label class="field">
+					Analysis run (its P&amp;ID tags list becomes the file; the key is the tag)
+					<select v-model="runId">
+						<option v-for="r in runs" :key="r.id" :value="r.id">
+							{{ new Date(r.finished_at ?? '').toLocaleString() }} · {{ r.doc_ids.length }} drawing(s) · {{ r.tag_count }} tags
+						</option>
+					</select>
+				</label>
+				<button type="button" :disabled="mel.busy || !runId" @click="uploadPid">Use as revision {{ (mel.latest?.rev ?? 0) + 1 }}</button>
+			</template>
+			<p v-else class="hint">No finished P&amp;ID analysis with tags yet. Analyse drawings on the P&amp;ID analysis tab first.</p>
+		</div>
+
+		<template v-else-if="mode === 'csv'">
 			<div class="row">
 				<button type="button" class="secondary" @click="input?.click()">Choose CSV…</button>
 				<input ref="input" type="file" accept=".csv,.txt" hidden
@@ -82,7 +118,7 @@ async function excelDone() {
 				<button type="button" :disabled="mel.busy" @click="upload">Upload as revision {{ (mel.latest?.rev ?? 0) + 1 }}</button>
 			</div>
 		</template>
-		<ExcelWizard v-else :wiz="excelWiz" mode="pick" title="Choose the sheet or table" @done="excelDone">
+		<ExcelWizard v-else-if="mode === 'excel'" :wiz="excelWiz" mode="pick" title="Choose the sheet or table" @done="excelDone">
 			<template #last-actions>
 				<button type="button" :disabled="mel.busy" @click="excelDone">Upload</button>
 			</template>

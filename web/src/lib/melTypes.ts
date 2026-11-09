@@ -1,6 +1,10 @@
 // Mirrors workbench_core.mel (models.py, pipeline.py).
 export type TargetList = 'MEL' | 'ELL' | 'EEL' | 'PIL' | 'LIL';
 export const TARGETS: TargetList[] = ['MEL', 'ELL', 'EEL', 'PIL', 'LIL'];
+/** What each list type is turned into (PIL = process instrument list, fed by P&ID analysis). */
+export const TARGET_LABELS: Record<TargetList, string> = {
+	MEL: 'MEL → load list', ELL: 'ELL → load list', EEL: 'EEL → load list', PIL: 'PIL → instrument list', LIL: 'LIL → load list',
+};
 
 export interface ColumnRule { header: string; visible: boolean; rename: string | null }
 export interface RowRule { key: string }
@@ -45,7 +49,7 @@ export interface RevisionInfo {
 	warnings: string[];
 }
 
-export interface RecipeDetail { recipe: Recipe; revisions: RevisionInfo[]; fields: string[] }
+export interface RecipeDetail { recipe: Recipe; revisions: RevisionInfo[]; fields: string[]; output_name: string }
 
 export type Stage = 'source' | 'columns' | 'rows' | 'text' | 'overrides' | 'custom' | 'auto';
 

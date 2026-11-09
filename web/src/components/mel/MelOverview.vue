@@ -13,12 +13,12 @@ async function refresh() {
 
 const RULES: { tab: MelTab; label: string; n: () => number; what: string }[] = [
 	{ tab: 'columns', label: 'Columns', n: () => mel.draft!.columns.length, what: 'hide or rename source columns' },
-	{ tab: 'rows', label: 'Rows', n: () => mel.draft!.hidden_rows.length, what: 'hide rows that are not loads' },
+	{ tab: 'rows', label: 'Rows', n: () => mel.draft!.hidden_rows.length, what: 'hide rows you don\'t want in the list' },
 	{ tab: 'text', label: 'Text columns', n: () => mel.draft!.text_columns.length, what: 'add a column with one value' },
 	{ tab: 'overrides', label: 'Overrides', n: () => mel.draft!.overrides.length, what: 'correct single cells' },
 	{ tab: 'custom', label: 'Custom rows', n: () => mel.draft!.custom_rows.length, what: 'add rows not in the file' },
 	{ tab: 'auto', label: 'Calculated columns', n: () => mel.draft!.auto_columns.length, what: 'if/else formulas per row' },
-	{ tab: 'mapping', label: 'Mapping', n: () => mel.draft!.mapping.length, what: 'columns to load-list fields' },
+	{ tab: 'mapping', label: 'Mapping', n: () => mel.draft!.mapping.length, what: `columns to ${mel.outputName.toLowerCase()} fields` },
 ];
 
 function removeRevision(id: string, rev: number) {

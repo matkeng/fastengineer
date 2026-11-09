@@ -20,16 +20,20 @@ What it demonstrates:
 | §4 Vue 3 + Pinia shared store | `web/src/stores/workbench.ts` |
 | §7 Pydantic document model with stable UUIDs | `core/src/workbench_core/model.py` |
 | §6 Excel table extraction (openpyxl) with a DataTables review grid | `core/src/workbench_core/excel/`, `web/src/components/excel/` |
+| P&ID symbol detection (OpenCV) and tag reading (PDF text / Windows OCR) | `core/src/workbench_core/pid/`, `web/src/components/pid/` |
 | §12 GitHub Actions build on `windows-latest` | `.github/workflows/windows-build.yml` |
 
-The app has two tabs:
+The app's tabs:
 
 - **Excel query**: a step-by-step wizard that turns a worksheet or Excel table
   into a reviewable, keyed table (see below).
 - **Compare tables**: pick an old and a new table with the same wizard and see
   what changed between them (see below).
-- **MEL import**: turn an equipment list into a load list with a saved,
-  re-applicable recipe of rules (see below).
+- **P&ID analysis**: find instrument tags on PDF P&IDs (symbol templates matched
+  with OpenCV, tags read from the PDF text or with Windows OCR) and produce a
+  P&ID tags list (see below).
+- **List import**: turn an equipment list into a load list, or a P&ID tags list
+  into an instrument list, with a saved, re-applicable recipe of rules (see below).
 - **Lists & tables**: your own enumerated lists and typed tables (see below).
 - **Engine**: engine status (port, Python version, whether it's
   Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
@@ -149,7 +153,75 @@ change (switchable), but not on rows that were struck out or restored as a
 whole, where the row status already says so. Duplicate keys are paired in the
 order they appear, with a warning.
 
-## MEL import
+## P&ID analysis
+
+Ports the symbol-detection app described in
+[`docs/PRD_SYMBOL_DETECTION.md`](docs/PRD_SYMBOL_DETECTION.md) (originally a Django and
+Celery app) to the desktop. Core logic: `core/src/workbench_core/pid/` (OpenCV, NumPy and
+PyMuPDF, imported only when used). API: `desktop/engine/workbench_desktop/pid_api.py`.
+UI: `web/src/components/pid/`.
+
+1. **Add PDFs.** Each page is rendered once at 200 DPI to a lossless PNG, with the page's
+   rotation applied, and its text-layer words are mapped into the same pixel frame. Files
+   are kept in `<data dir>/pid/<drawing>/`.
+2. **Templates.** Open a page, choose **New template** and drag a box around a symbol. The
+   template is cut from the page with its text erased and trimmed to the linework. In the
+   template editor:
+   - click where each part of the tag is written (for example `Function` and `Number`);
+   - set the tag format (`{Function}-{Number}`), threshold, mask width and rotated or
+     mirrored variants;
+   - press **Test on page** to see the matches and scores on a page without saving anything.
+
+   Templates belong to a library (drawing type / block set) and run in priority order, so
+   put specific symbols such as control valves before generic ones such as valve bodies.
+   Libraries can be exported and imported as JSON; `samples/pid-templates.json` is a
+   starter set.
+3. **Analyse.** Tick drawings and press **Analyse**. A background worker shows progress and
+   can be cancelled. For each page:
+   - the text comes from the PDF; if the page has (almost) no text layer, it is read with
+     **Windows' built-in OCR** (nothing is bundled);
+   - the page text is erased, then each template is matched in priority order, and each
+     match is blanked before the next template runs;
+   - each match's tag points pick the word under them;
+   - a **text scan** finds ISA-style tags anywhere else on the sheet: one word (`PSV-1040`),
+     or letters stacked over a number as in a bubble. Text in **ignored areas** (title
+     block, notes; drawn once per library) is skipped.
+
+   Per page, you can override a template's threshold or skip it.
+4. **P&ID tags list.** One row per unique tag (`Tag, Function, Loop, Suffix, Count,
+   Drawings, Sheets, Templates, Source`), in a filterable grid. Export it to `.xlsx` (with a
+   per-symbol *Detections* sheet) or `.csv`, or press **Send to instrument list import**.
+5. **Instrument list.** That adds the tags list as the next file revision of a **List
+   import** with target **PIL**, so the import's saved rules (hidden rows, overrides,
+   calculated columns, mapping onto instrument-list fields such as `tag`, `loop`,
+   `instrument_type`, `signal_type`, …) re-apply after every re-analysis.
+
+Samples (`python scripts/make_sample_pid.py`):
+
+- `samples/pid-sample.pdf`: two sheets; the second has `/Rotate 90`. There are 11 unique
+  tags, plus a title block with tag-like text.
+- `samples/pid-sample-scanned.pdf`: the same sheets, image only.
+
+Fixed compared with the PRD's code (its §11):
+
+- The per-page overrides work (#1), and every box is in one pixel frame, including on
+  rotated pages and above the 80 MP downscale guard (#3, #4).
+- Matching compares binarised ink against binarised ink with mean-subtracted normalised
+  correlation under the stroke mask, computed with FFTs. That is about 5× faster than
+  OpenCV's masked path, and scores aren't high everywhere (#14).
+- Peaks are chosen by score with non-max suppression (#11). A template with too many
+  candidates is reported on the page and in the run, not silently dropped (#12).
+- Renders and templates are PNG, never JPEG (#13). The mask is computed from the
+  template, so viewing a template writes nothing (#5, #6).
+- Priority is an explicit move with unique positions (#7). Tags are resolved when the page
+  is analysed, and templates are referenced by id, not file name (#8, #9).
+- Templates are cut from the page with its text erased, so a bubble template matches
+  whatever tag is written in it.
+- The OCR fallback for scanned sheets (§12 #7) and click-to-place tag points (§12 #5) are
+  included. Border auto-detection, the blob/cloud/line-removal matchers and Google OCR are
+  not.
+
+## List import (MEL → load list, PIL → instrument list)
 
 Implements the import recipe described in [`docs/PRD_MEL_IMPORT.md`](docs/PRD_MEL_IMPORT.md)
 (originally a Django app) as a desktop feature. Core logic:
@@ -157,8 +229,9 @@ Implements the import recipe described in [`docs/PRD_MEL_IMPORT.md`](docs/PRD_ME
 UI: `web/src/components/mel/`.
 
 1. **Create an import** (MEL, ELL, EEL, PIL or LIL) and **upload a file**: a CSV
-   (UTF-8, or Windows-1252 with a warning; `,` `;` tab or `|` separated), or a
-   sheet or table from Excel through the import wizard. Choose the key column
+   (UTF-8, or Windows-1252 with a warning; `,` `;` tab or `|` separated), a
+   sheet or table from Excel through the import wizard, or (for PIL) the tags
+   list of a P&ID analysis. Choose the key column
    (usually the equipment tag). Headers and keys are made unique: blank ->
    `Blank`, repeats -> `_1`, `_2`.
 2. **Build the recipe**. Rules run in this order every time the data is read,
@@ -172,9 +245,9 @@ UI: `web/src/components/mel/`.
    | 4 | Overrides | click a cell to replace its value |
    | 5 | Custom rows | add rows that aren't in the file |
    | 6 | Calculated | `if / then / else / on error` per row; `<<Column>>` refers to a column |
-   | 7 | Mapping | load-list field <- column or fixed value |
+   | 7 | Mapping | load-list (MEL) or instrument-list (PIL) field <- column or fixed value |
 
-3. **Result**: the combined table and the load list, with filters, and export
+3. **Result**: the combined table and the load list (or instrument list), with filters, and export
    to CSV or Excel (.xlsx; overridden cells, custom rows and errors highlighted,
    plus a Notes sheet).
 4. **Save**. Edits are a draft (previewed live) until you press Save. Saved
@@ -235,7 +308,8 @@ Reference data you define and keep (`core/src/workbench_core/refdata/`, API
 .venv/bin/python -m pytest core/tests desktop/engine/tests
 ```
 
-CI also drives the Excel flow against the compiled engine. To regenerate the
+CI also drives the Excel, compare, MEL, lists and P&ID flows (including Windows OCR on
+the scanned sample) against the compiled engine. To regenerate the
 sample workbook (uses LibreOffice, if installed, to calculate formula results):
 `python scripts/make_sample_workbook.py`.
 
@@ -247,3 +321,6 @@ sample workbook (uses LibreOffice, if installed, to calculate formula results):
 - Closing the window leaves no `workbench-engine.exe` in Task Manager.
   (The engine also watches the shell's PID and exits if the shell dies.)
 - If the engine never connects, check `%TEMP%\workbench-engine.log`.
+- P&ID analysis: the engine's **OCR** status is under *Tag pattern, OCR & ignored
+  text*. Windows OCR needs an OCR-capable display language (Settings > Time &
+  language); on a scanned sheet, a missing language shows as a page warning.
