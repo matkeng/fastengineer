@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from .excel_api import store as workbooks
 from .storage import get_ref, get_store
-from .symbols_api import ocr_provider, store as symbol_store
+from . import symbols_api  # looked up per request, so tests can stub its OCR provider
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -128,7 +128,7 @@ def dashboard() -> Dashboard:
                                 detail=f"table · {counts.get(t.id, 0)} rows", at=t.updated_at))
 
     # Symbol detection
-    sym = symbol_store()
+    sym = symbols_api.store()
     libs = {lib.id: lib.name for lib in sym.libraries()}
     c.libraries = len(libs)
     c.templates = len(sym.templates())
@@ -167,7 +167,7 @@ def dashboard() -> Dashboard:
 
     db = st.path
     drawings_bytes, pngs = _size(sym.root)
-    provider, why = ocr_provider()
+    provider, why = symbols_api.ocr_provider()
     storage = Storage(data_dir=str(db.parent), database_bytes=db.stat().st_size if db.exists() else 0,
                       drawings_bytes=drawings_bytes, page_images=pngs, ocr_available=provider is not None,
                       ocr_engine=getattr(provider, "name", None), ocr_reason=why)
