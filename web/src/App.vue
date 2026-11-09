@@ -2,16 +2,19 @@
 import { onMounted, ref } from 'vue';
 import EnginePanel from './components/EnginePanel.vue';
 import ExcelWizard from './components/excel/ExcelWizard.vue';
+import { useExcelWizard } from './stores/excelWizard';
 import { useWorkbench } from './stores/workbench';
 
 const wb = useWorkbench();
+const wiz = useExcelWizard();
 const tab = ref<'excel' | 'engine'>('excel');
 
 onMounted(() => wb.connect());
 </script>
 
 <template>
-	<main>
+	<!-- On the results step the page fills the window and the table takes the free space. -->
+	<main :class="{ fill: tab === 'excel' && wb.status === 'ready' && wiz.step === 4 }">
 		<header class="top">
 			<div>
 				<h1>Drawing Workbench</h1>

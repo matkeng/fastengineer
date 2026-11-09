@@ -5,6 +5,7 @@ import ResultTable from './ResultTable.vue';
 
 const wiz = useExcelWizard();
 const r = computed(() => wiz.result);
+const otherWarnings = computed(() => (r.value?.warnings ?? []).filter((w) => !w.includes('appear more than once')));
 const counts = computed(() => {
 	const rows = r.value?.rows ?? [];
 	return {
@@ -15,7 +16,7 @@ const counts = computed(() => {
 </script>
 
 <template>
-	<div v-if="r">
+	<div v-if="r" class="results">
 		<div class="chips">
 			<span class="chip"><strong>{{ r.rows.length }}</strong> rows</span>
 			<span class="chip"><strong>{{ r.columns.length }}</strong> columns</span>
@@ -27,8 +28,9 @@ const counts = computed(() => {
 			<span v-if="r.duplicate_keys.length" class="chip warn-chip" :title="r.duplicate_keys.join(', ')">
 				Duplicate keys: {{ r.duplicate_keys.slice(0, 5).join(', ') }}<template v-if="r.duplicate_keys.length > 5">…</template>
 			</span>
+			<!-- Other warnings (e.g. formulas without saved results); duplicates already have a chip. -->
+			<span v-for="w in otherWarnings" :key="w" class="chip warn-chip">⚠ {{ w }}</span>
 		</div>
-		<p v-for="w in r.warnings" :key="w" class="warn">{{ w }}</p>
 		<ResultTable :result="r" />
 	</div>
 </template>

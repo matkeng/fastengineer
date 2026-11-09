@@ -57,8 +57,17 @@ function build() {
 	const el = document.createElement('table');
 	el.className = 'display compact stripe hover';
 	el.style.width = '100%';
-	const foot = el.createTFoot().insertRow();
-	columns.forEach(() => foot.insertCell());
+	// Two header rows: titles (sortable) and, below them, the column filters.
+	const head = el.createTHead();
+	const titles = head.insertRow();
+	const filters = head.insertRow();
+	filters.className = 'filters';
+	columns.forEach(() => {
+		titles.appendChild(document.createElement('th'));
+		const th = document.createElement('th');
+		th.className = 'dt-orderable-none';
+		filters.appendChild(th);
+	});
 	host.value.replaceChildren(el);
 
 	const strikeIdx = columns.length - 2;
@@ -66,10 +75,13 @@ function build() {
 		data: r.rows,
 		columns,
 		order: [[0, 'asc']],
+		titleRow: 0, // titles go in the first header row; the second holds filters
 		pageLength: 25,
 		lengthMenu: [10, 25, 50, 100, 500],
+		// No scrollX: it splits header/body/footer into separate tables sized once at
+		// start-up. One table inside a scrolling cell (see style.css) stays aligned
+		// and follows the window size.
 		autoWidth: false,
-		scrollX: true,
 		// 'buttons' is a layout feature added by the Buttons extension.
 		layout: {
 			topStart: ['pageLength', 'buttons'],
@@ -89,8 +101,11 @@ function build() {
 		},
 		initComplete() {
 			const api = this.api();
+			const filterCells = el.querySelectorAll<HTMLTableCellElement>('thead tr.filters th');
 			api.columns().every(function (idx) {
-				const cell = this.footer() as HTMLElement;
+				const cell = filterCells[idx];
+				// Typing or clicking in a filter must not sort the column.
+				for (const ev of ['click', 'keydown', 'mousedown']) cell.addEventListener(ev, (e) => e.stopPropagation());
 				if (idx === strikeIdx) {
 					const select = document.createElement('select');
 					select.innerHTML = `

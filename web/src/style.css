@@ -120,7 +120,7 @@ table.grid.keys tr.selected td { background: color-mix(in srgb, var(--accent) 14
 .struck-chip { border-color: var(--accent); }
 .warn-chip { border-color: var(--warn); color: var(--warn); }
 .result-table { font-size: 0.85rem; }
-.result-table tfoot input, .result-table tfoot select { width: 100%; min-width: 70px; padding: 4px 6px; font-size: 0.8rem; }
+.result-table thead tr.filters input, .result-table thead tr.filters select { width: 100%; min-width: 70px; padding: 4px 6px; font-size: 0.8rem; }
 .result-table td.key-col { font-weight: 600; }
 .result-table tr.dup-key td.key-col { color: var(--warn); }
 .result-table tr.dup-key td.key-col::after { content: ' ⚠'; }
@@ -133,3 +133,35 @@ table.grid.keys tr.selected td { background: color-mix(in srgb, var(--accent) 14
 .result-table, .dt-container { color: var(--text); }
 .dt-container .dt-input, .dt-container select.dt-input { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
 div.dt-button-collection { background: var(--card); color: var(--text); }
+
+/* ---- results step fills the window ---- */
+html, body, #app { height: 100%; }
+/* Below min-height the page scrolls instead of squeezing the table to nothing. */
+main.fill { height: 100%; min-height: 540px; max-width: none; display: flex; flex-direction: column; padding-top: 12px; padding-bottom: 12px; }
+main.fill .top .sub { display: none; }
+main.fill h1 { font-size: 1.25rem; }
+main.fill .tabs { margin-bottom: 10px; }
+main.fill > .wizard { padding: 12px 16px; }
+main.fill .stepper { margin-bottom: 10px; }
+main.fill .stepper li { padding: 5px 8px; }
+main.fill .chips { margin-bottom: 4px; }
+main.fill .results > *, main.fill .dt-container > .dt-layout-row:not(.dt-layout-table) { flex-shrink: 0; }
+main.fill > .wizard { flex: 1; min-height: 320px; display: flex; flex-direction: column; margin-bottom: 0; }
+main.fill .step-body, main.fill .results, main.fill .result-table, main.fill .dt-container {
+	flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+main.fill .wizard > h2 { display: none; } /* the stepper already says "Results" */
+main.fill .nav { margin-top: 8px; padding-top: 8px; flex-shrink: 0; }
+main.fill .results > .result-table { flex-shrink: 1; }
+/* DataTables centres layout cells vertically; stretch the table cell to the free height instead. */
+main.fill .dt-layout-row.dt-layout-table { flex: 1; min-height: 150px; display: flex; align-items: stretch; margin: 8px 0; }
+main.fill .dt-layout-table > .dt-layout-cell { flex: 1; min-width: 0; overflow: auto; display: block; border: 1px solid var(--border); border-radius: 6px; }
+
+/* Header and filter rows stay in place while the rows scroll. */
+.result-table table.dataTable { margin: 0 !important; }
+.result-table table.dataTable thead { position: sticky; top: 0; z-index: 2; }
+.result-table table.dataTable thead th { background: var(--card); white-space: nowrap; }
+.result-table thead tr.filters th { padding: 4px 6px 6px; font-weight: 400; cursor: default; }
+/* Chrome paints collapsed-border tables' scrolled rows over a sticky header;
+   separate borders keep the header opaque. */
+.result-table table.dataTable { border-collapse: separate; border-spacing: 0; }

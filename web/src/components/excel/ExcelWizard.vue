@@ -25,7 +25,9 @@ const panels = [StepWorkbook, StepSource, StepHeader, StepKey, StepResults];
 		</ol>
 
 		<h2>{{ STEPS[wiz.step] }}</h2>
-		<component :is="panels[wiz.step]" />
+		<div class="step-body">
+			<component :is="panels[wiz.step]" />
+		</div>
 
 		<p v-if="wiz.error" class="error">{{ wiz.error }}</p>
 

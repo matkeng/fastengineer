@@ -16,8 +16,8 @@
         "title": "Drawing Workbench",
         "width": 1280,
         "height": 860,
-        "minWidth": 480,
-        "minHeight": 400,
+        "minWidth": 760,
+        "minHeight": 560,
         "dragDropEnabled": false
       }
     ],
