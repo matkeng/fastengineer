@@ -15,7 +15,15 @@ try { npm ci; if ($LASTEXITCODE) { throw 'web npm ci failed' } } finally { Pop-L
 Push-Location (Join-Path $root 'desktop')
 try {
     npm ci; if ($LASTEXITCODE) { throw 'desktop npm ci failed' }
-    npx tauri build; if ($LASTEXITCODE) { throw 'tauri build failed' }
+    # Bundling downloads NSIS/WiX on first use; retry so a transient download error
+    # (e.g. an HTTP 504 from GitHub) doesn't fail the whole build.
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        npx tauri build
+        if (-not $LASTEXITCODE) { break }
+        if ($attempt -eq 3) { throw 'tauri build failed' }
+        Write-Host "tauri build failed (attempt $attempt); retrying in $(15 * $attempt) s"
+        Start-Sleep -Seconds (15 * $attempt)
+    }
 }
 finally { Pop-Location }
 
