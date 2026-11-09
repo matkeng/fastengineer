@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from .match import TemplateImage, locate_symbols
 from .models import Library, PageOverride, PageResult, TextSource, Word
-from .ocr import OcrProvider
+from .ocr import OcrProvider, merge_words
 from .tags import TagRules, apply_exclusion, format_tag, pattern_scan, resolve_points, symbol_tags
 from .templates import erase_words
 
@@ -34,7 +34,10 @@ def choose_words(gray, pdf_words: list[Word], lib: Library, force_ocr: bool,
 
 
 def analyse_page(page: int, gray, words: list[Word], text_source: TextSource, templates: list[TemplateImage],
-                 overrides: dict[str, PageOverride], lib: Library) -> PageResult:
+                 overrides: dict[str, PageOverride], lib: Library,
+                 region_ocr: Callable[[object, list[float]], list[Word]] | None = None) -> PageResult:
+    """region_ocr: on OCR'd pages, re-read a matched symbol on its own when some of its tag
+    points found no text (small codes next to linework are what page-level OCR misses)."""
     rules = TagRules(lib)
     h, w = gray.shape[:2]
     words = apply_exclusion(words, lib.exclusion, w, h)
@@ -43,6 +46,11 @@ def analyse_page(page: int, gray, words: list[Word], text_source: TextSource, te
     for s in matched.symbols:
         t = by_id[s.template_id]
         s.parts = resolve_points(s, t, words)
+        if region_ocr is not None and text_source == "ocr" and any(v is None for v in s.parts.values()):
+            extra = region_ocr(gray, s.box)
+            if extra:
+                s.parts = resolve_points(s, t, merge_words(extra, words))
+                words = merge_words(words, extra)
         s.tag = format_tag(t, s.parts)
     tags = symbol_tags(matched.symbols, pattern_scan(words, rules, page), rules, page)
     warnings = [f"Template '{s.desc}' skipped: {s.reason}" for s in matched.skipped]

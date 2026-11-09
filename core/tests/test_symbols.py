@@ -362,3 +362,35 @@ def test_text_only_removes_linework_and_keeps_text(pages) -> None:
     a = [Word(text="FT", box=[0, 0, 10, 10])]
     b = [Word(text="F7", box=[1, 1, 10, 10]), Word(text="1023", box=[0, 20, 30, 30])]
     assert [w.text for w in merge_words(a, b)] == ["FT", "1023"]
+
+
+def test_region_ocr_rereads_symbols_with_missing_tag_parts(pages) -> None:
+    """On an OCR'd page where the bubble letters were missed, the symbol is re-read on its own."""
+    from workbench_core.symbols.ocr import join_split_letters
+
+    tis, lib = _starter()
+    p1 = pages[0]
+    gray = decode_gray(p1.png)
+    letters = {w.text for w in p1.words if w.text.isalpha() and len(w.text) <= 3}
+    page_words = [w for w in p1.words if w.text not in letters]  # what Windows OCR gave: no FT/PT/...
+    calls = []
+
+    def region(g, box):
+        calls.append(box)
+        return [w for w in p1.words if w.text in letters and box[0] <= w.box[0] and w.box[2] <= box[2]
+                and box[1] <= w.box[1] and w.box[3] <= box[3]]
+
+    without = analyse_page(1, gray, page_words, "ocr", tis, {}, lib)
+    assert "FT-1023" not in {t.tag for t in without.tags}
+    res = analyse_page(1, gray, page_words, "ocr", tis, {}, lib, region)
+    tags = {t.tag for t in res.tags}
+    assert {"FT-1023", "PT-1025", "FV-1023", "TT-1026A", "PI-1041"} <= tags
+    assert len(calls) == 7  # every bubble on sheet 1 lost its letters in this fake OCR
+    # Not used on PDF text, nor when every tag point was found.
+    calls.clear()
+    analyse_page(1, gray, p1.words, "pdf", tis, {}, lib, region)
+    analyse_page(1, gray, p1.words, "ocr", tis, {}, lib, region)
+    assert calls == []
+
+    split = [Word(text="F", box=[10, 10, 16, 22]), Word(text="T", box=[17, 10, 23, 22]), Word(text="1023", box=[8, 26, 30, 38])]
+    assert [w.text for w in join_split_letters(split)] == ["FT", "1023"]

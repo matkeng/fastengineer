@@ -21,6 +21,9 @@ class OcrProvider(Protocol):
 
     def read(self, gray) -> list[Word]: ...
 
+    # Optional: read one small region (page pixels) on its own, e.g. a matched symbol.
+    # def read_region(self, gray, box) -> list[Word]: ...
+
 
 class OcrUnavailable(RuntimeError):
     pass
@@ -95,12 +98,61 @@ def merge_words(primary: list[Word], extra: list[Word], iou: float = 0.3) -> lis
     return out
 
 
+def join_split_letters(words: list[Word]) -> list[Word]:
+    """OCR sometimes returns a short code as single letters ('F' 'T'): join single-character
+    words that sit side by side on one line."""
+    out: list[Word] = []
+    for w in sorted(words, key=lambda w: (round((w.box[1] + w.box[3]) / 2 / 4), w.box[0])):
+        prev = out[-1] if out else None
+        if prev is not None and len(w.text) == 1 and len(prev.text.replace(" ", "")) <= 3 and len(prev.text) >= 1:
+            h = max(w.box[3] - w.box[1], prev.box[3] - prev.box[1], 1)
+            same_line = abs((w.box[1] + w.box[3]) - (prev.box[1] + prev.box[3])) / 2 < 0.5 * h
+            gap = w.box[0] - prev.box[2]
+            if same_line and -0.2 * h <= gap <= 0.6 * h and (len(prev.text) == 1 or prev.text.isalpha()) and w.text.isalpha():
+                out[-1] = Word(text=prev.text + w.text, box=[min(prev.box[0], w.box[0]), min(prev.box[1], w.box[1]),
+                                                             max(prev.box[2], w.box[2]), max(prev.box[3], w.box[3])],
+                               block=prev.block, line=prev.line, word_no=prev.word_no)
+                continue
+        out.append(w)
+    return out
+
+
+REGION_SCALE = 4.0
+REGION_MARGIN = 40  # px of white around the enlarged region
+
+
+async def ocr_region(gray, box, read_tile, scale: float = REGION_SCALE, pad_frac: float = 0.25) -> list[Word]:
+    """OCR one region on its own: crop (padded), keep only character-sized ink, enlarge,
+    add a white margin, read, and map the words back to page pixels."""
+    import cv2
+    h, w = gray.shape[:2]
+    bw, bh = box[2] - box[0], box[3] - box[1]
+    x0 = max(int(box[0] - pad_frac * bw), 0)
+    y0 = max(int(box[1] - pad_frac * bh), 0)
+    x1 = min(int(box[2] + pad_frac * bw) + 1, w)
+    y1 = min(int(box[3] + pad_frac * bh) + 1, h)
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return []
+    crop = upscale(text_only(gray[y0:y1, x0:x1]), scale)
+    m = REGION_MARGIN
+    crop = cv2.copyMakeBorder(crop, m, m, m, m, cv2.BORDER_CONSTANT, value=255)
+    ok, buf = cv2.imencode(".png", cv2.cvtColor(crop, cv2.COLOR_GRAY2BGR))
+    words: list[Word] = []
+    for j, (text, x, y, ww, hh) in enumerate(await read_tile(buf.tobytes())):
+        t = clean_ocr_text(text)
+        if t is None:
+            continue
+        bx = [x0 + (x - m) / scale, y0 + (y - m) / scale, x0 + (x + ww - m) / scale, y0 + (y + hh - m) / scale]
+        words.append(Word(text=t, box=[round(v, 1) for v in bx], block=-1, line=0, word_no=j))
+    return join_split_letters(words)
+
+
 async def ocr_page(gray, read_tile, tile: int = TILE) -> list[Word]:
     """Two passes: the text-only page enlarged (finds small codes next to linework), then the
     plain page at 1x for any text the first pass removed (e.g. touching a line)."""
     first = await ocr_tiles(text_only(gray), read_tile, tile, OCR_SCALE)
     second = await ocr_tiles(gray, read_tile, tile, 1.0)
-    return merge_words(first, second)
+    return join_split_letters(merge_words(first, second))
 
 
 async def ocr_tiles(gray, read_tile, tile: int = TILE, scale: float = OCR_SCALE) -> list[Word]:
@@ -185,6 +237,9 @@ class WindowsOcr:
         except Exception:
             pass
         return asyncio.run(ocr_page(gray, self._read_tile, min(TILE, self._max)))
+
+    def read_region(self, gray, box) -> list[Word]:
+        return asyncio.run(ocr_region(gray, box, self._read_tile))
 
 
 _cached: OcrProvider | None = None

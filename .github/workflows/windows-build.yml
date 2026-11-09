@@ -173,6 +173,8 @@ jobs:
             $tagsS = if ($runS.tag_count) { (Invoke-RestMethod "$symApi/runs/$($runS.id)/tags").rows | ForEach-Object { $_.Tag } } else { @() }
             "Scanned sample with OCR: $($runS.tag_count) tags in $([math]::Round($sw.Elapsed.TotalSeconds, 1)) s: $($tagsS -join ', ')"
             $runS.warnings | Select-Object -First 5 | ForEach-Object { "  warning: $_" }
+            $ocrWords = Invoke-RestMethod "$symApi/drawings/$($sc.id)/pages/1/words"
+            "OCR words on scanned page 1 ($($ocrWords.Count)): $(($ocrWords | ForEach-Object { "$($_.text)@$([int]$_.box[0]),$([int]$_.box[1])" }) -join ' ')"
             if ($ocr.available) {
               if ($runS.tag_count -lt 9 -or $tagsS -notcontains 'FT-1023') {
                 throw "Windows OCR missed bubble tags on the scanned sample (got: $($tagsS -join ', '))"

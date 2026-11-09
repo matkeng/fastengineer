@@ -356,7 +356,11 @@ def analyse_one(st: SymbolStore, d: Drawing, n: int, lib: Library, prepared=None
     words, source, warnings = page_words(st, d, n, gray, lib)
     if prepared is None:
         prepared = _prepared(st, st.templates(lib.id))
-    res = analyse_page(n, gray, words, source, prepared, st.overrides(d.id, n), lib)
+    region = None
+    if source == "ocr":
+        provider, _ = ocr_provider()
+        region = getattr(provider, "read_region", None)
+    res = analyse_page(n, gray, words, source, prepared, st.overrides(d.id, n), lib, region)
     res.warnings = warnings + res.warnings
     st.save_result(d.id, res)
     page = d.pages[n - 1]
