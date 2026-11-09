@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """A tiny slice of the shared document model (spec section 7).
 
 Every object has a stable UUID; engineering properties live on the object,

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Excel query and table extraction (spec section 6).
 
 Reads cached (calculated) values, expands merged cells and detects full and

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Matthew Kelly
 //! Tauri shell: starts the Python engine sidecar on a free localhost port,
 //! tells the front end where it is, and stops it on exit.
 

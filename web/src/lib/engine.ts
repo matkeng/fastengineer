@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Matthew Kelly
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
 // In the desktop app the Rust shell picks a free port and tells us via the

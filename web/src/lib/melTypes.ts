@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Matthew Kelly
 // Mirrors workbench_core.mel (models.py, pipeline.py).
 export type TargetList = 'MEL' | 'ELL' | 'EEL' | 'PIL' | 'LIL';
 export const TARGETS: TargetList[] = ['MEL', 'ELL', 'EEL', 'PIL', 'LIL'];

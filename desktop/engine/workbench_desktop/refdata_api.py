@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Lists (enums) and tables: CRUD endpoints over workbench_core.refdata."""
 
 from __future__ import annotations

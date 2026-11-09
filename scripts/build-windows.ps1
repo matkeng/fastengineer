@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 # Full Windows build: Python sidecar -> Vue front end -> Tauri installers.
 # Output: desktop/src-tauri/target/release/bundle/{nsis,msi}/
 #
@@ -32,6 +34,7 @@ Copy-Item (Join-Path $release 'drawing-workbench.exe') (Join-Path $portable 'Dra
 Copy-Item (Join-Path $release 'workbench-engine.exe') (Join-Path $portable 'workbench-engine.exe')
 Copy-Item (Join-Path $root 'samples/*') $portable
 Copy-Item (Join-Path $root 'docs/THIRD_PARTY_LICENSES.md') $portable
+Copy-Item (Join-Path $root 'LICENSE') (Join-Path $portable 'LICENSE.txt')
 @"
 Drawing Workbench $version (portable)
 
@@ -43,6 +46,8 @@ Keep workbench-engine.exe in the same folder: it is the Python engine the app st
 - Needs the Microsoft Edge WebView2 Runtime, already present on most
   Windows 10/11 PCs. If the window stays blank, install it from
   https://developer.microsoft.com/microsoft-edge/webview2/
+- Drawing Workbench is free software under the GNU AGPL-3.0-only (LICENSE.txt);
+  source code: https://github.com/matkeng/fastengineer
 - THIRD_PARTY_LICENSES.md lists the open-source components and their licenses.
 - pid-sample*.pdf and pid-library.json are the symbol-detection example.
 - cable-schedule-sample*.xlsx and mel-sample*.csv are synthetic sample data for

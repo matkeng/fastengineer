@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Turn symbols and page words into text tags, using the library's tag rules.
 
 - Template tags (PRD 5.5): each tag point picks the word under it inside the symbol.

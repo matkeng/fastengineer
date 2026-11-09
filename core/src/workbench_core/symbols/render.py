@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Split a PDF into page renders and text-layer words, with PDFium (pypdfium2).
 
 Renders are lossless greyscale PNGs at DPI with the page's /Rotate applied, and words are

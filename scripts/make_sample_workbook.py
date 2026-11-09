@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Generate synthetic sample workbooks for the Excel query and compare features:
 
   samples/cable-schedule-sample.xlsx       Rev C: title rows above a two-row merged

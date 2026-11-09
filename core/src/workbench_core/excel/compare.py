@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Compare two extracted tables (old -> new), matching rows by key value and
 columns by header name. Row and column order are ignored.
 

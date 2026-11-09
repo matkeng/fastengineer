@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only
+     Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { apiGetBlob } from '../../lib/engine';

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Symbol detection: find any symbol on PDF drawings with OpenCV template matching and
 read the text tag written in or beside it (PDF text layer, or Windows OCR on scans).
 

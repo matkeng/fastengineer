@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """User-defined reference data: enumerated lists and typed tables.
 
 Lists (enums) hold items with a unique code and value plus a description.

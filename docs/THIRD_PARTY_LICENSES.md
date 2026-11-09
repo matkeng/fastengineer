@@ -23,7 +23,8 @@ GPL, AGPL or LGPL code in the shipped app:
 
 What you need to do when distributing: include the license texts and notices of the
 components below with the app (for example in an "About / licenses" file next to the exe).
-None of them requires publishing this app's source code.
+None of them requires publishing this app's source code. The app's own license (AGPL-3.0,
+see below) does.
 
 ## Python engine (compiled into `workbench-engine.exe` by Nuitka)
 
@@ -44,7 +45,7 @@ None of them requires publishing this app's source code.
 | opencv-python-headless | Apache-2.0 | The wheel's FFmpeg plug-in (LGPL-2.1) is **excluded** from the build; see above. |
 | pypdfium2 | BSD-3-Clause / Apache-2.0 | PDFium is BSD-3-Clause; bundled libraries are FreeType (FTL), libjpeg-turbo (IJG/BSD), OpenJPEG (BSD-2), LittleCMS (MIT), libpng, zlib, abseil (Apache-2.0), ICU (Unicode). Texts: `pypdfium2-*.dist-info/licenses/`. |
 | winrt-runtime, winrt-Windows.* | MIT | Windows only. Python bindings for the OCR engine built into Windows (not shipped by us). |
-| Nuitka (build tool) | Apache-2.0 | Its runtime code compiled into the exe may be used under any license. |
+| Nuitka (build tool) | AGPL-3.0 with the Nuitka Runtime Library Exception | The exception covers the runtime code compiled into the exe, so the exe's license is our choice (AGPL-3.0 for the open core, proprietary for commercial editions). |
 
 Not used any more: **PyMuPDF** (AGPL-3.0); it was removed before release.
 
@@ -83,8 +84,20 @@ Not used any more: **PyMuPDF** (AGPL-3.0); it was removed before release.
 
 ## This project
 
-The repository has no license file yet, so it is "all rights reserved" by default. Add one if
-you intend to share or sell the app.
+Drawing Workbench is **open core**: this repository is licensed under the **GNU AGPL-3.0-only**
+(`LICENSE`), copyright © 2026 Matthew Kelly, with commercial licenses available from the
+copyright holder; see `LICENSING.md`.
+
+**Compatibility.** Every component above may be combined with and distributed as part of an
+AGPL-3.0 program:
+
+- MIT, BSD, ISC, Zlib, PSF, Unicode and FTL are permissive.
+- Apache-2.0 is compatible with the GPL-3.0 family.
+- MPL-2.0 allows combination with GPL-family licenses.
+- The GCC and Nuitka runtime exceptions allow any license.
+
+Commercial editions can use the same components, because none of them is copyleft beyond
+file level.
 
 ## How to re-check
 

@@ -316,12 +316,20 @@ Reference data you define and keep (`core/src/workbench_core/refdata/`, API
 CI also drives the Excel, compare, MEL, lists and symbol-detection flows (including
 Windows OCR on the scanned sample) against the compiled engine.
 
-## Licenses
+## License
 
-See [`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md): every shipped component is
-under a permissive (or file-level MPL) license. PyMuPDF (AGPL) was replaced by pypdfium2, and
-OpenCV's LGPL FFmpeg plug-in is left out of the build. The portable folder includes the
-report. To regenerate the
+Open core: this repository is licensed under the **GNU Affero General Public License v3.0
+only** ([`LICENSE`](LICENSE)), copyright © 2026 Matthew Kelly; commercial licenses and
+proprietary add-ons are available from the copyright holder. See
+[`LICENSING.md`](LICENSING.md) for what that means, and [`CONTRIBUTING.md`](CONTRIBUTING.md) for
+the terms contributions are accepted under.
+
+Third-party components are listed in
+[`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md). All of them are permissive (or
+file-level MPL) and compatible with the AGPL. They are kept that way so that commercial
+editions remain possible, which is why the app uses pypdfium2 rather than PyMuPDF and leaves
+OpenCV's LGPL FFmpeg plug-in out of the build. The installer shows the license, and the
+portable folder includes `LICENSE.txt` and the third-party report. To regenerate the
 sample workbook (uses LibreOffice, if installed, to calculate formula results):
 `python scripts/make_sample_workbook.py`.
 

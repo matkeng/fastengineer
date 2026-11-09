@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Symbol detection data shapes. Every box is [x1, y1, x2, y2] in rendered-image pixels
 (200 DPI, page rotation applied), so symbols, words and tag points share one frame.
 

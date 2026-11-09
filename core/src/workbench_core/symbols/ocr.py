@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """OCR for pages without a text layer (scans, outlined text).
 
 The production engine is Windows' built-in OCR (Windows.Media.Ocr via pywinrt), so

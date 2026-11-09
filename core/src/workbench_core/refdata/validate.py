@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Validation and conversion rules for lists and tables."""
 
 from __future__ import annotations

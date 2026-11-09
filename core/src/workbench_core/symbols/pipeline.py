@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """One page end to end, and the tags list across drawings."""
 
 from __future__ import annotations

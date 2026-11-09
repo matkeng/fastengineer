@@ -3,6 +3,9 @@ name = "drawing-workbench"
 version = "0.1.0"
 description = "Drawing Workbench (hello-world proof of concept)"
 edition = "2021"
+license = "AGPL-3.0-only"
+authors = ["Matthew Kelly"]
+repository = "https://github.com/matkeng/fastengineer"
 
 [lib]
 name = "drawing_workbench_lib"

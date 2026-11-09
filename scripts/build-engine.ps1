@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 # Compiles the Python engine sidecar with Nuitka and drops it where Tauri
 # expects it: desktop/src-tauri/binaries/workbench-engine-<target-triple>.exe
 #

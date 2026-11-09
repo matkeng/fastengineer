@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Matthew Kelly
 // Mirrors workbench_core.refdata.
 export type ColumnType = 'text' | 'enum' | 'integer' | 'boolean' | 'decimal';
 export const COLUMN_TYPE_LABELS: Record<ColumnType, string> = {

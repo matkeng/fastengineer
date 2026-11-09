@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Excel query endpoints: a thin HTTP layer over workbench_core.excel."""
 
 from __future__ import annotations

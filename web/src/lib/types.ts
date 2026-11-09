@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Matthew Kelly
 // Hand-written for the PoC. In the real app these are generated from the
 // Pydantic models in workbench_core so both sides share one schema (spec 7.1).
 export interface EngineInfo {

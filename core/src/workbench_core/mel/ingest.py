@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Read a source table and make headers and key values unique (PRD 5.1)."""
 
 from __future__ import annotations

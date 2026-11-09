@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """FastAPI adapter. Keep this thin: all real work belongs in workbench_core."""
 
 from __future__ import annotations

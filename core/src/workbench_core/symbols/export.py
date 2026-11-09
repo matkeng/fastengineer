@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """CSV / xlsx of the tags list, with a per-symbol detail sheet."""
 
 from __future__ import annotations

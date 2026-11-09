@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only
+     Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
 import { computed, provide } from 'vue';
 import { type SampleFile, WIZARD_CONTEXT } from '../../lib/wizardContext';

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Matthew Kelly
 // Mirrors workbench_core.symbols.models. Boxes are [x1, y1, x2, y2] in page-image pixels (200 DPI).
 export type Box = [number, number, number, number];
 export type TextSource = 'pdf' | 'ocr' | 'none';

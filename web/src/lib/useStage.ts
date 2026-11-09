@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Matthew Kelly
 import { onMounted, ref, watch } from 'vue';
 import type { PipelineResult, Recipe, Stage } from './melTypes';
 import { useMel } from '../stores/mel';

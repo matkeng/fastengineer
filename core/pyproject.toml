@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,8 @@ name = "workbench-core"
 version = "0.1.0"
 description = "Drawing Workbench core engine (framework-free: no Django or FastAPI imports)"
 requires-python = ">=3.11"
+license = "AGPL-3.0-only"
+authors = [{ name = "Matthew Kelly" }]
 dependencies = [
     "pydantic>=2.7",
     "openpyxl>=3.1.3",

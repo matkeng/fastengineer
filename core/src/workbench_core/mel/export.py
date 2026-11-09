@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Export the import result (combined table, or the load / instrument list) as CSV or .xlsx."""
 
 from __future__ import annotations

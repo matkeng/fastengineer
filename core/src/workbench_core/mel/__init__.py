@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """MEL import: turn a Mechanical Equipment List (or similar list) into a load
 list with a saved, re-applicable recipe of rules (see docs/PRD_MEL_IMPORT.md).
 

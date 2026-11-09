@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-only
+     Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { apiGet } from '../lib/engine';
@@ -82,6 +84,24 @@ watch(
 					</tr>
 				</tbody>
 			</table>
+		</section>
+		<section class="card about">
+			<h2>About</h2>
+			<p>
+				<strong>Drawing Workbench</strong> · Copyright © 2026 Matthew Kelly.
+			</p>
+			<p>
+				This program is free software: you can redistribute it and/or modify it under the terms of the
+				<strong>GNU Affero General Public License, version 3</strong> (AGPL-3.0-only) as published by the Free
+				Software Foundation. It is distributed in the hope that it will be useful, but <strong>without any
+				warranty</strong>; without even the implied warranty of merchantability or fitness for a particular purpose.
+				See the license for details.
+			</p>
+			<p>
+				Source code: <a href="https://github.com/matkeng/fastengineer" target="_blank" rel="noopener">github.com/matkeng/fastengineer</a>
+				· License text: <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">gnu.org/licenses/agpl-3.0</a>
+				(also <code>LICENSE.txt</code> next to the app) · Third-party components: <code>THIRD_PARTY_LICENSES.md</code>.
+			</p>
 		</section>
 	</div>
 </template>

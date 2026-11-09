@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Local storage for MEL import recipes and file revisions (one SQLite file).
 
 Desktop: <app data dir>/workbench.db, passed by the shell as --data-dir.

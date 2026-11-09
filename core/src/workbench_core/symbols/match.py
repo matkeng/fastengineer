@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Symbol matching with OpenCV (PRD 5.6), with the PRD 11 defects fixed:
 
 - page and template are both binarised ink images, matched with mean-subtracted

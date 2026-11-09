@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Matthew Kelly
 // Shared DataTables set-up: a table whose header has a title row (sortable)
 // and a filter row, inside a scrolling cell that follows the window size.
 import type { Config } from 'datatables.net';

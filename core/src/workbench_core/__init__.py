@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Drawing Workbench core.
 
 Plain Python package shared by the desktop sidecar (FastAPI) and the SaaS

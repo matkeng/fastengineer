@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Template images: crop from a page render, and the masks that say which pixels are scored."""
 
 from __future__ import annotations

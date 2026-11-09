@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Matthew Kelly
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { getJson, resolveEngineUrl, waitForEngine } from '../lib/engine';

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """Symbol detection endpoints over workbench_core.symbols.
 
 Rendering and analysis runs go through one background worker thread, so the UI stays

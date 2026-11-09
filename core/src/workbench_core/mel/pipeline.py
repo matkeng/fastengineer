@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
 """The transformation pipeline (PRD section 6). Order is load-bearing:
 
   0 source     the latest revision's rows
