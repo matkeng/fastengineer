@@ -279,7 +279,7 @@ Differences from the PRD's implementation, from its known-issues list (§11):
 - Not included: pushing into a load-list database (there isn't one here yet;
   export instead) and Transpose columns (not applied in the PRD either).
 
-## Lists & tables
+## Lists, trees & tables
 
 Reference data you define and keep (`core/src/workbench_core/refdata/`, API
 `desktop/engine/workbench_desktop/refdata_api.py`, UI `web/src/components/ref/`).
@@ -287,12 +287,21 @@ Reference data you define and keep (`core/src/workbench_core/refdata/`, API
 - **Lists** (enums): a unique name, and items with a **code**, **value** and
   **description**. Codes and values are unique within the list (ignoring case);
   items can be reordered.
+- **Trees**: like lists, but every item can sit under another item of the same
+  tree (a parent reference), e.g. area → unit → system. Codes are unique in the
+  tree; values are unique among the items at the same level. The editor shows
+  the hierarchy with expand/collapse and a filter; codes, values and
+  descriptions are edited in place; items are re-arranged by **drag and drop**
+  (drop on the top or bottom edge of a row to place before/after it, on the
+  middle to put it inside; an item can't be dropped into itself) or with the
+  row buttons / Alt+arrow keys (indent, outdent, move up/down). Changes are a
+  draft until Save, like lists.
 - **Tables**: a unique name and columns of type **Text**, **List (enum)**,
   **Whole number**, **Yes / No** or **Decimal**, each optionally *required* and/or
   *unique*. Rows are added, edited and deleted in a form with the right input for
   each type, and listed in a filterable grid (lists and Yes/No get drop-down
   filters) with Copy/CSV.
-- Names are unique across lists and tables, ignoring case and extra spaces.
+- Names are unique across lists, trees and tables, ignoring case and extra spaces.
 - Values are validated by the engine: whole numbers and decimals must be numbers
   (decimals are stored exactly, e.g. `2.50` -> `2.5`), list cells must be an item
   of that list (a code or value is accepted and stored as the item).

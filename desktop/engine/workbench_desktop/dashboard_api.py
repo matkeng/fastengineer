@@ -21,7 +21,7 @@ RUNS = 10
 
 
 class Event(BaseModel):
-    kind: str  # run | drawing | revision | recipe | enum | table
+    kind: str  # run | drawing | revision | recipe | enum | tree | table
     section: str  # the app section to open: symbols | mel | ref
     id: str
     title: str
@@ -50,6 +50,7 @@ class Counts(BaseModel):
     revisions: int = 0
     latest_revision_at: datetime | None = None
     enums: int = 0
+    trees: int = 0
     tables: int = 0
     rows: int = 0
     open_workbooks: int = 0
@@ -120,6 +121,11 @@ def dashboard() -> Dashboard:
         if e.updated_at:
             events.append(Event(kind="enum", section="ref", id=e.id, title=e.name, detail=f"list · {len(e.items)} items",
                                 at=e.updated_at))
+    for tr in ref.trees():
+        c.trees += 1
+        if tr.updated_at:
+            events.append(Event(kind="tree", section="ref", id=tr.id, title=tr.name, detail=f"tree · {len(tr.nodes)} items",
+                                at=tr.updated_at))
     for t in ref.tables():
         c.tables += 1
         c.rows += counts.get(t.id, 0)

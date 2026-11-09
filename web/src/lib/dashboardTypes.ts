@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Matthew Kelly
 // Mirrors desktop/engine/workbench_desktop/dashboard_api.py.
 export interface DashEvent {
-	kind: 'run' | 'drawing' | 'revision' | 'recipe' | 'enum' | 'table';
+	kind: 'run' | 'drawing' | 'revision' | 'recipe' | 'enum' | 'tree' | 'table';
 	section: 'symbols' | 'mel' | 'ref';
 	id: string;
 	title: string;
@@ -13,7 +13,7 @@ export interface RunBar { id: string; at: string; template: number; text_scan: n
 export interface DashCounts {
 	libraries: number; templates: number; drawings: number; pages: number; pages_unanalysed: number; runs: number;
 	latest_tags: number | null; latest_run_at: string | null; recipes: number; revisions: number;
-	latest_revision_at: string | null; enums: number; tables: number; rows: number; open_workbooks: number;
+	latest_revision_at: string | null; enums: number; trees: number; tables: number; rows: number; open_workbooks: number;
 }
 export interface DashStorage {
 	data_dir: string; database_bytes: number; drawings_bytes: number; page_images: number;

@@ -72,3 +72,40 @@ def test_lists_tables_rows(data_dir: Path) -> None:
     assert client.delete(f"/api/ref/tables/{t['id']}").status_code == 200
     assert client.get("/api/ref").json()["tables"] == []
     assert client.post("/api/ref/tables", json={"name": "Voltage"}).status_code == 200  # name free again
+
+
+def test_tree_crud_rules_names_and_persistence(data_dir) -> None:
+    t = client.post("/api/ref/trees", json={"name": "Plant areas"})
+    assert t.status_code == 200, t.text
+    t = t.json()
+    assert t["nodes"] == []
+    nodes = [
+        {"id": "u1", "parent_id": "a1", "code": "100-P", "value": "Pumps"},
+        {"id": "a1", "parent_id": None, "code": "100", "value": "Area 100"},
+        {"id": "a2", "parent_id": None, "code": "200", "value": "Area 200"},
+        {"id": "u2", "parent_id": "a2", "code": "200-P", "value": "Pumps", "description": "same value, other parent"},
+    ]
+    saved = client.put(f"/api/ref/trees/{t['id']}", json={"name": "Plant areas", "nodes": nodes})
+    assert saved.status_code == 200, saved.text
+    assert [n["id"] for n in saved.json()["nodes"]] == ["a1", "u1", "a2", "u2"]
+
+    bad = client.put(f"/api/ref/trees/{t['id']}", json={"name": "Plant areas", "nodes": [
+        *nodes, {"id": "x", "parent_id": "a1", "code": "100", "value": "pumps"}]})
+    assert bad.status_code == 422 and set(bad.json()["fields"]) == {"x.code", "x.value"}
+    cyc = client.put(f"/api/ref/trees/{t['id']}", json={"name": "Plant areas", "nodes": [
+        {"id": "a", "parent_id": "b", "code": "A", "value": "A"}, {"id": "b", "parent_id": "a", "code": "B", "value": "B"}]})
+    assert cyc.status_code == 422 and set(cyc.json()["fields"]) == {"a.parent", "b.parent"}
+
+    # One name space for lists, trees and tables.
+    clash = client.post("/api/ref/enums", json={"name": "plant  AREAS"})
+    assert clash.status_code == 422 and "already a tree called 'Plant areas'" in clash.json()["detail"]
+    client.post("/api/ref/tables", json={"name": "Motors"})
+    assert client.post("/api/ref/trees", json={"name": "motors"}).status_code == 422
+
+    ov = client.get("/api/ref").json()
+    assert ov["trees"] == [{"id": t["id"], "name": "Plant areas", "description": "", "nodes": 4, "depth": 2}]
+    storage.configure(data_dir)  # reopen: it was saved
+    assert len(client.get(f"/api/ref/trees/{t['id']}").json()["nodes"]) == 4
+    assert client.delete(f"/api/ref/trees/{t['id']}").status_code == 200
+    assert client.get(f"/api/ref/trees/{t['id']}").status_code == 404
+    assert client.post("/api/ref/enums", json={"name": "Plant areas"}).status_code == 200  # name is free again

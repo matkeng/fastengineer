@@ -65,8 +65,8 @@ const kpis = computed<Kpi[]>(() => {
 			sub: k.latest_run_at ? `latest analysis, ${ago(k.latest_run_at)}` : 'no analysis yet' },
 		{ label: 'List imports', icon: 'recipe', value: k.recipes, go: 'mel',
 			sub: `${k.revisions} file revision(s)${k.latest_revision_at ? `, last ${ago(k.latest_revision_at)}` : ''}` },
-		{ label: 'Lists & tables', icon: 'database', value: k.enums + k.tables, go: 'ref',
-			sub: `${k.enums} lists · ${k.tables} tables · ${k.rows} rows` },
+		{ label: 'Lists, trees & tables', icon: 'database', value: k.enums + k.trees + k.tables, go: 'ref',
+			sub: `${k.enums} lists · ${k.trees} trees · ${k.tables} tables · ${k.rows} rows` },
 		{ label: 'Engine', icon: 'cpu', value: wb.status === 'ready' ? 'OK' : '–', go: 'engine',
 			sub: `${wb.info?.compiled ? 'compiled' : 'Python'}${wb.connectMs !== null ? ` · started in ${wb.connectMs < 1000 ? `${wb.connectMs} ms` : `${(wb.connectMs / 1000).toFixed(1)} s`}` : ''}`,
 			tone: wb.status === 'ready' ? 'ok' : 'warn' },
@@ -80,7 +80,7 @@ const starters = computed<Starter[]>(() => [
 	{ title: 'Compare two tables', desc: 'Added, deleted, struck and changed', icon: 'compare', run: () => ui.go('compare') },
 	{ title: 'Analyse drawings', desc: 'Find symbols and read their tags', icon: 'symbol', run: () => ui.go('symbols') },
 	{ title: 'New list import', desc: 'MEL → load list, tags → instruments', icon: 'recipe', run: newImport },
-	{ title: 'Lists & tables', desc: 'Your own lists and typed tables', icon: 'database', run: () => ui.go('ref') },
+	{ title: 'Lists, trees & tables', desc: 'Your own lists, hierarchies and typed tables', icon: 'tree', run: () => ui.go('ref') },
 ]);
 
 function newImport() {
@@ -110,7 +110,7 @@ async function tryExample() {
 }
 
 const EVENT_ICON: Record<DashEvent['kind'], IconName> = {
-	run: 'run', drawing: 'file', revision: 'upload', recipe: 'recipe', enum: 'enum', table: 'table',
+	run: 'run', drawing: 'file', revision: 'upload', recipe: 'recipe', enum: 'enum', tree: 'tree', table: 'table',
 };
 
 async function openEvent(e: DashEvent) {
@@ -126,7 +126,7 @@ async function openEvent(e: DashEvent) {
 		ui.go('mel');
 	} else {
 		await rd.refresh();
-		await rd.select(e.kind === 'enum' ? 'enum' : 'table', e.id);
+		await rd.select(e.kind === 'enum' || e.kind === 'tree' ? e.kind : 'table', e.id);
 		ui.go('ref');
 	}
 }

@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from workbench_core.mel import Recipe, Revision
-from workbench_core.refdata import EnumList, RefRow, RefTable, RefValidationError, name_key
+from workbench_core.refdata import EnumList, RefRow, RefTable, RefTree, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
 from workbench_core.symbols import Drawing, Library, PageOverride, PageResult, RunInfo, Template
 
@@ -46,6 +46,10 @@ CREATE TABLE IF NOT EXISTS ref_names (
     object_id TEXT NOT NULL UNIQUE
 );
 CREATE TABLE IF NOT EXISTS ref_enums (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ref_trees (
     id TEXT PRIMARY KEY,
     data TEXT NOT NULL
 );
@@ -223,12 +227,12 @@ class RefStore:
         row = self._db.execute("SELECT kind, object_id FROM ref_names WHERE name_key = ?", (key,)).fetchone()
         if row and row[1] != object_id:
             kind, other = row
-            table = "ref_enums" if kind == "enum" else "ref_tables"
+            table = {"enum": "ref_enums", "tree": "ref_trees"}.get(kind, "ref_tables")
             data = self._db.execute(f"SELECT data FROM {table} WHERE id = ?", (other,)).fetchone()
             existing = json.loads(data[0])["name"] if data else name
-            what = "list" if kind == "enum" else "table"
+            what = {"enum": "list", "tree": "tree"}.get(kind, "table")
             raise RefValidationError(f"There is already a {what} called '{existing}'. Names must be unique "
-                                     "across lists and tables (ignoring case).", {"name": "Name already used"})
+                                     "across lists, trees and tables (ignoring case).", {"name": "Name already used"})
         self._db.execute("DELETE FROM ref_names WHERE object_id = ?", (object_id,))
         self._db.execute("INSERT INTO ref_names VALUES (?, ?, ?)", (key, kind, object_id))
 
@@ -259,6 +263,34 @@ class RefStore:
         with self._lock, self._db:
             self._db.execute("DELETE FROM ref_enums WHERE id = ?", (enum_id,))
             self._db.execute("DELETE FROM ref_names WHERE object_id = ?", (enum_id,))
+
+    # trees
+    def trees(self) -> list[RefTree]:
+        with self._lock:
+            rows = self._db.execute("SELECT data FROM ref_trees").fetchall()
+        return [RefTree.model_validate_json(r[0]) for r in rows]
+
+    def get_tree(self, tree_id: str) -> RefTree:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM ref_trees WHERE id = ?", (tree_id,)).fetchone()
+        if not row:
+            raise NotFound(tree_id)
+        return RefTree.model_validate_json(row[0])
+
+    def save_tree(self, tree: RefTree, create: bool = False) -> RefTree:
+        tree = tree.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            if not create and not self._db.execute("SELECT 1 FROM ref_trees WHERE id = ?", (tree.id,)).fetchone():
+                raise NotFound(tree.id)
+            self._claim_name("tree", tree.id, tree.name)
+            self._db.execute("INSERT INTO ref_trees VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (tree.id, tree.model_dump_json()))
+        return tree
+
+    def delete_tree(self, tree_id: str) -> None:
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM ref_trees WHERE id = ?", (tree_id,))
+            self._db.execute("DELETE FROM ref_names WHERE object_id = ?", (tree_id,))
 
     # tables
     def tables(self) -> list[RefTable]:

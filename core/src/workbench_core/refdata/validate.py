@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Matthew Kelly
-"""Validation and conversion rules for lists and tables."""
+"""Validation and conversion rules for lists, trees and tables."""
 
 from __future__ import annotations
 
 import re
 from decimal import Decimal, InvalidOperation
 
-from .models import CellValue, ColumnDef, EnumList, RefRow, RefTable, RefValidationError
+from .models import CellValue, ColumnDef, EnumList, RefRow, RefTable, RefTree, RefValidationError
 
 _WS = re.compile(r"\s+")
 TRUE = {"true", "yes", "y", "1", "t", "x", "on"}
@@ -56,6 +56,84 @@ def check_enum(enum: EnumList) -> EnumList:
     if errors:
         raise RefValidationError(f"{len(errors)} problem(s) in the list items.", errors)
     return enum.model_copy(update={"items": items})
+
+
+# -- trees --------------------------------------------------------------------
+
+def check_tree(tree: RefTree) -> RefTree:
+    """Codes are required and unique in the whole tree; values are required and unique
+    among siblings (ignoring case). Parents must exist and there must be no cycles.
+    Returns the nodes ordered parents-first (depth-first), keeping sibling order."""
+    tree = tree.model_copy(update={"name": clean_name(tree.name, "tree")})
+    errors: dict[str, str] = {}
+    nodes = []
+    ids: set[str] = set()
+    for n in tree.nodes:
+        n = n.model_copy(update={"code": n.code.strip(), "value": n.value.strip(), "description": n.description.strip(),
+                                 "parent_id": n.parent_id or None})
+        if n.id in ids:
+            raise RefValidationError("Two tree items have the same id.", {f"{n.id}.code": "Duplicate item"})
+        ids.add(n.id)
+        nodes.append(n)
+    by_id = {n.id: n for n in nodes}
+
+    codes: dict[str, str] = {}
+    for n in nodes:
+        if not n.code:
+            errors[f"{n.id}.code"] = "Code is required"
+        elif name_key(n.code) in codes:
+            errors[f"{n.id}.code"] = f"Code '{n.code}' is used twice"
+        else:
+            codes[name_key(n.code)] = n.id
+        if not n.value:
+            errors[f"{n.id}.value"] = "Value is required"
+        if n.parent_id is not None and n.parent_id not in by_id:
+            errors[f"{n.id}.parent"] = "Its parent is not in this tree"
+
+    # Cycles: walking up from any node must reach the top.
+    for n in nodes:
+        seen = {n.id}
+        p = n.parent_id
+        while p is not None and p in by_id:
+            if p in seen:
+                errors[f"{n.id}.parent"] = "An item can't be inside itself"
+                break
+            seen.add(p)
+            p = by_id[p].parent_id
+
+    values: dict[tuple[str | None, str], str] = {}
+    for n in nodes:
+        if n.value:
+            k = (n.parent_id, name_key(n.value))
+            if k in values:
+                errors[f"{n.id}.value"] = f"'{n.value}' is already used at this level"
+            else:
+                values[k] = n.id
+    if errors:
+        raise RefValidationError(f"{len(errors)} problem(s) in the tree items.", errors)
+
+    children: dict[str | None, list[TreeNode]] = {}
+    for n in nodes:
+        children.setdefault(n.parent_id, []).append(n)
+    ordered: list[TreeNode] = []
+
+    def walk(parent: str | None) -> None:
+        for c in children.get(parent, []):
+            ordered.append(c)
+            walk(c.id)
+    walk(None)
+    return tree.model_copy(update={"nodes": ordered})
+
+
+def tree_depth(tree: RefTree) -> int:
+    by_id = {n.id: n for n in tree.nodes}
+    best = 0
+    for n in tree.nodes:
+        d, p = 1, n.parent_id
+        while p is not None and p in by_id and d <= len(by_id):
+            d, p = d + 1, by_id[p].parent_id
+        best = max(best, d)
+    return best
 
 
 # -- tables -------------------------------------------------------------------

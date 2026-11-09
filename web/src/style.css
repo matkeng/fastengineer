@@ -616,3 +616,54 @@ dialog.modal { border-radius: 3px; box-shadow: 0 8px 32px rgb(0 0 0 / 0.25); }
 .chart-empty { color: var(--muted); font-size: 12px; padding: 18px 0; text-align: center; }
 .menubar button.active:hover:not(:disabled) { background: var(--canvas); border-color: var(--border); }
 .dt-container select.dt-input { height: 26px; padding: 0 4px !important; line-height: 24px; }
+
+/* ==== Trees ============================================================================ */
+.kind.tree { background: #188038; color: #fff; }
+.tree-toolbar { margin: 4px 0 8px; }
+.tree-toolbar .tree-filter { max-width: 320px; }
+main.fill .tree-editor { overflow: hidden; }
+.tree-grid { flex: 1; min-height: 120px; overflow: auto; border: 1px solid var(--border); border-radius: 2px; background: var(--card); }
+.tree-head, .tree-row { display: grid; grid-template-columns: minmax(280px, 1.3fr) minmax(160px, 1fr) minmax(160px, 1.4fr) auto; align-items: center; column-gap: 6px; }
+.tree-head { position: sticky; top: 0; z-index: 2; background: var(--chrome); border-bottom: 1px solid var(--border);
+	padding: 4px 8px 4px 52px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.tree-row { position: relative; padding: 0 8px; min-height: 30px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.tree-row:hover { background: color-mix(in srgb, var(--select) 55%, transparent); }
+.tree-row:focus-within { background: var(--select); }
+.tree-row.match .cell-input { font-weight: 600; }
+.tree-row.dragging { opacity: 0.4; }
+.tree-row.drop-inside { background: var(--select); box-shadow: inset 0 0 0 2px var(--accent); }
+.tree-row.drop-before::before, .tree-row.drop-after::after { content: ''; position: absolute; left: 40px; right: 0; height: 2px; background: var(--accent); z-index: 1; }
+.tree-row.drop-before::before { top: -1px; }
+.tree-row.drop-after::after { bottom: -1px; }
+.tree-cell { display: flex; align-items: center; min-width: 0; height: 30px; }
+.tree-code { gap: 0; }
+.guide, .elbow { flex: 0 0 18px; align-self: stretch; position: relative; }
+.guide.line::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; border-left: 1px solid var(--border-strong); }
+.elbow::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; border-left: 1px solid var(--border-strong); }
+.elbow.last::before { bottom: 50%; }
+.elbow::after { content: ''; position: absolute; left: 8px; right: 0; top: 50%; border-top: 1px solid var(--border-strong); }
+.chev, .chev-space { flex: 0 0 18px; width: 18px; height: 18px; }
+button.chev { padding: 0; border: 0; background: none; color: var(--muted); font-size: 11px; line-height: 18px; transition: transform 0.12s; }
+button.chev:hover:not(:disabled) { background: var(--chrome); color: var(--text); border: 0; }
+button.chev.open { transform: rotate(90deg); }
+.handle { flex: 0 0 16px; color: var(--muted); cursor: grab; text-align: center; user-select: none; font-size: 13px; }
+.handle:active { cursor: grabbing; }
+/* Borderless "edit in place" cells (beats the generic input rule's specificity). */
+.tree-row input.cell-input:not([type='checkbox']):not([type='radio']):not([type='range']) {
+	height: 24px; min-width: 40px; border-color: transparent; background: transparent; padding: 2px 6px; border-radius: 2px; }
+.tree-row input.cell-input:not([type='checkbox']):not([type='radio']):not([type='range']):hover { border-color: var(--border); background: var(--card); }
+.tree-row input.cell-input:not([type='checkbox']):not([type='radio']):not([type='range']):focus { border-color: var(--accent); background: var(--card); }
+.tree-row input.cell-input.invalid:not([type='checkbox']):not([type='radio']):not([type='range']) {
+	border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--card)); }
+.kids { margin-left: 4px; font-family: var(--font-mono); font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 2px; padding: 0 4px; }
+.tree-actions { display: flex; gap: 1px; opacity: 0; transition: opacity 0.1s; }
+.tree-row:hover .tree-actions, .tree-row:focus-within .tree-actions { opacity: 1; }
+button.icon-btn { height: 22px; min-width: 24px; padding: 0 4px; border: 1px solid transparent; background: transparent; color: var(--muted); font-weight: 500; font-size: 12px; }
+button.icon-btn:hover:not(:disabled) { background: var(--chrome); border-color: var(--border); color: var(--text); }
+button.icon-btn.danger:hover:not(:disabled) { color: var(--danger); }
+.tree-problem { grid-column: 1 / -1; margin: -4px 0 4px; }
+.tree-empty { padding: 14px; }
+.tree-drop-top { margin: 6px; padding: 8px; border: 1px dashed var(--accent); border-radius: 3px; color: var(--accent); text-align: center; font-size: 12px; background: var(--select); }
+@media (max-width: 900px) { .tree-head, .tree-row { grid-template-columns: minmax(220px, 1.3fr) minmax(120px, 1fr) auto; } .tree-head span:nth-child(3), .tree-row > .tree-cell:nth-child(3) { display: none; } }
+/* Inputs directly in a column layout must not grow vertically. */
+.ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }

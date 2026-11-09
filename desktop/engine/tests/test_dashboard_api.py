@@ -47,6 +47,7 @@ def test_dashboard_counts_recent_and_runs(data_dir: Path) -> None:
     client.post(f"/api/mel/recipes/{r['id']}/revisions/csv", params={"filename": "mel-sample.csv", "key": "Equipment Tag"},
                 content=(SAMPLES / "mel-sample.csv").read_bytes())
     t = client.post("/api/ref/tables", json={"name": "Motors"}).json()
+    tree = client.post("/api/ref/trees", json={"name": "Areas"}).json()
     lib = client.get("/api/symbols/libraries").json()[0]
     dw = client.post("/api/symbols/drawings", params={"filename": "pid-sample.pdf", "library_id": lib["id"]},
                      content=(SAMPLES / "pid-sample.pdf").read_bytes()).json()
@@ -61,7 +62,8 @@ def test_dashboard_counts_recent_and_runs(data_dir: Path) -> None:
     assert c["latest_tags"] == 11 and c["runs"] == 1
     assert d["runs"] == [{"id": run["id"], "at": d["runs"][0]["at"], "template": 10, "text_scan": 1, "status": "done"}]
     kinds = [e["kind"] for e in d["recent"]]
-    assert kinds[0] == "run" and {"drawing", "revision", "recipe", "table"} <= set(kinds)
+    assert kinds[0] == "run" and {"drawing", "revision", "recipe", "table", "tree"} <= set(kinds)
+    assert c["trees"] == 1 and next(e for e in d["recent"] if e["kind"] == "tree")["id"] == tree["id"]
     times = [e["at"] for e in d["recent"]]
     assert times == sorted(times, reverse=True)
     table_ev = next(e for e in d["recent"] if e["kind"] == "table")

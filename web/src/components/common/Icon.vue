@@ -23,6 +23,7 @@ defineProps<{ name: IconName }>();
 		<template v-else-if="name === 'enum'"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M7 9h2M11 9h6M7 13h2M11 13h6M7 17h2M11 17h6" /></template>
 		<template v-else-if="name === 'plus'"><path d="M12 5v14M5 12h14" /></template>
 		<template v-else-if="name === 'tag'"><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8" r="1.5" /></template>
+		<template v-else-if="name === 'tree'"><rect x="3" y="3" width="7" height="5" rx="1" /><rect x="13" y="10" width="8" height="4" rx="1" /><rect x="13" y="17" width="8" height="4" rx="1" /><path d="M6.5 8v11H13M6.5 12H13" /></template>
 		<template v-else-if="name === 'layers'"><path d="M12 3l9 5-9 5-9-5z" /><path d="M3 13l9 5 9-5" /></template>
 	</svg>
 </template>

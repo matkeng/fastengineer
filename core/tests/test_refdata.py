@@ -85,3 +85,40 @@ def test_convert_rows_on_type_change() -> None:
     with pytest.raises(RefValidationError) as err:
         convert_rows(old, strict, [RefRow(values={"a": "x"}), RefRow(values={"a": "X"}), RefRow(values={})], {})
     assert "1 row(s) are empty" in err.value.fields["a"] and "duplicate" in err.value.fields["a"]
+
+
+# -- trees --------------------------------------------------------------------
+
+from workbench_core.refdata import RefTree, TreeNode, check_tree, tree_depth  # noqa: E402
+
+
+def _tree(*nodes: tuple[str, str | None, str, str]) -> RefTree:
+    return RefTree(name="Areas", nodes=[TreeNode(id=i, parent_id=p, code=c, value=v) for i, p, c, v in nodes])
+
+
+def test_tree_valid_hierarchy_keeps_order_and_normalises_parents_first() -> None:
+    t = check_tree(_tree(("pumps1", "a1", " P1 ", "Pumps"), ("a1", None, "A1", "Area 1"), ("a2", None, "A2", "Area 2"),
+                         ("pumps2", "a2", "P2", "Pumps"), ("x", "pumps1", "P1-01", " Feed pump ")))
+    assert [n.id for n in t.nodes] == ["a1", "pumps1", "x", "a2", "pumps2"]
+    assert t.nodes[1].code == "P1" and t.nodes[2].value == "Feed pump"
+    assert tree_depth(t) == 3
+
+
+def test_tree_rules() -> None:
+    with pytest.raises(RefValidationError) as e:
+        check_tree(_tree(("a", None, "A", "Area"), ("b", "a", "a", "Unit")))
+    assert e.value.fields == {"b.code": "Code 'a' is used twice"}
+    with pytest.raises(RefValidationError) as e:
+        check_tree(_tree(("a", None, "A", "Area"), ("b", "a", "B", "Unit"), ("c", "a", "C", "unit ")))
+    assert set(e.value.fields) == {"c.value"}
+    with pytest.raises(RefValidationError) as e:
+        check_tree(_tree(("a", None, "A", "Area"), ("b", "zzz", "B", "Unit")))
+    assert set(e.value.fields) == {"b.parent"}
+    with pytest.raises(RefValidationError) as e:
+        check_tree(_tree(("a", "c", "A", "x"), ("b", "a", "B", "y"), ("c", "b", "C", "z")))
+    assert set(e.value.fields) == {"a.parent", "b.parent", "c.parent"}
+    with pytest.raises(RefValidationError) as e:
+        check_tree(_tree(("a", None, "", "")))
+    assert set(e.value.fields) == {"a.code", "a.value"}
+    with pytest.raises(RefValidationError):
+        check_tree(RefTree(name="  ", nodes=[]))

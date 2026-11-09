@@ -5,12 +5,13 @@ import { onMounted, ref } from 'vue';
 import { useRefData } from '../../stores/refdata';
 import RefEnumEditor from './RefEnumEditor.vue';
 import RefTableEditor from './RefTableEditor.vue';
+import RefTreeEditor from './RefTreeEditor.vue';
 
 const rd = useRefData();
-const newName = ref({ enum: '', table: '' });
+const newName = ref({ enum: '', tree: '', table: '' });
 const createError = ref<{ kind: string; msg: string } | null>(null);
 
-async function create(kind: 'enum' | 'table') {
+async function create(kind: 'enum' | 'tree' | 'table') {
 	createError.value = null;
 	const name = newName.value[kind].trim();
 	if (!name) return;
@@ -41,6 +42,21 @@ onMounted(() => rd.refresh());
 					<p v-if="createError?.kind === 'enum'" class="warn small">{{ createError.msg }}</p>
 				</section>
 				<section>
+					<h3>Trees</h3>
+					<p class="hint">Lists whose items sit under other items (areas, systems, classes).</p>
+					<ul class="ref-nav">
+						<li v-for="t in rd.overview.trees" :key="t.id"
+							:class="{ current: rd.selected?.kind === 'tree' && rd.selected.id === t.id }" @click="rd.select('tree', t.id)">
+							<span class="name">{{ t.name }}</span><span class="count" :title="`${t.depth} level(s)`">{{ t.nodes }}</span>
+						</li>
+					</ul>
+					<form class="row tight" @submit.prevent="create('tree')">
+						<input v-model="newName.tree" placeholder="New tree name" aria-label="New tree name" />
+						<button type="submit" class="small" :disabled="!newName.tree.trim()">Add</button>
+					</form>
+					<p v-if="createError?.kind === 'tree'" class="warn small">{{ createError.msg }}</p>
+				</section>
+				<section>
 					<h3>Tables</h3>
 					<p class="hint">Your own tables with typed columns.</p>
 					<ul class="ref-nav">
@@ -57,11 +73,13 @@ onMounted(() => rd.refresh());
 				</section>
 			</aside>
 			<RefEnumEditor v-if="rd.selected?.kind === 'enum' && rd.enumDraft" :key="rd.selected.id" />
+			<RefTreeEditor v-else-if="rd.selected?.kind === 'tree' && rd.treeDraft" :key="rd.selected.id" />
 			<RefTableEditor v-else-if="rd.selected?.kind === 'table' && rd.tableDraft" :key="rd.selected.id" />
 			<section v-else class="card wizard ref-empty">
 				<h2>Lists &amp; tables</h2>
 				<p class="hint">
-					Create a <strong>list</strong> for values you pick from (starter types, voltages, areas…), then a
+					Create a <strong>list</strong> for values you pick from (starter types, voltages…), a <strong>tree</strong>
+					for values that sit under each other (area → unit → system), or a
 					<strong>table</strong> whose columns can be text, numbers, yes/no, or a value from one of your lists.
 					Everything is saved on this computer and is there next time.
 				</p>

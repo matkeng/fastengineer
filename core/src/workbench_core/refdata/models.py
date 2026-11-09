@@ -41,6 +41,24 @@ class EnumList(BaseModel):
     updated_at: datetime | None = None
 
 
+class TreeNode(BaseModel):
+    """An item of a tree. parent_id refers to another node of the same tree (None = top level);
+    siblings are ordered as they appear in the tree's node list."""
+    id: str = Field(default_factory=new_id)
+    parent_id: str | None = None
+    code: str
+    value: str
+    description: str = ""
+
+
+class RefTree(BaseModel):
+    id: str = Field(default_factory=new_id)
+    name: str
+    description: str = ""
+    nodes: list[TreeNode] = Field(default_factory=list)
+    updated_at: datetime | None = None
+
+
 class ColumnDef(BaseModel):
     id: str = Field(default_factory=new_id)
     name: str

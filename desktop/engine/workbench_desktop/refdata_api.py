@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Matthew Kelly
-"""Lists (enums) and tables: CRUD endpoints over workbench_core.refdata."""
+"""Lists (enums), trees and tables: CRUD endpoints over workbench_core.refdata."""
 
 from __future__ import annotations
 
@@ -15,10 +15,14 @@ from workbench_core.refdata import (
     EnumList,
     RefRow,
     RefTable,
+    RefTree,
     RefValidationError,
+    TreeNode,
     check_enum,
     check_table_columns,
+    check_tree,
     convert_rows,
+    tree_depth,
     validate_row,
 )
 
@@ -58,6 +62,8 @@ def overview() -> dict:
                           "used_by": used.get(e.id, [])} for e in enums.values()), key=lambda x: x["name"].casefold()),
         "tables": sorted(({"id": t.id, "name": t.name, "description": t.description, "columns": len(t.columns),
                            "rows": counts.get(t.id, 0)} for t in ref.tables()), key=lambda x: x["name"].casefold()),
+        "trees": sorted(({"id": t.id, "name": t.name, "description": t.description, "nodes": len(t.nodes),
+                          "depth": tree_depth(t)} for t in ref.trees()), key=lambda x: x["name"].casefold()),
         "column_types": COLUMN_TYPES,
     }
 
@@ -133,6 +139,49 @@ def delete_enum(enum_id: str):
         return invalid(RefValidationError(
             f"This list is used by column(s) {', '.join(columns)}. Change or delete those columns first."))
     get_ref().delete_enum(enum_id)
+    return {"status": "deleted"}
+
+
+# -- trees --------------------------------------------------------------------
+
+@router.post("/trees", response_model=RefTree)
+def create_tree(body: NewObject):
+    try:
+        return get_ref().save_tree(check_tree(RefTree(name=body.name, description=body.description)), create=True)
+    except RefValidationError as exc:
+        return invalid(exc)
+
+
+@router.get("/trees/{tree_id}", response_model=RefTree)
+def get_tree(tree_id: str) -> RefTree:
+    try:
+        return get_ref().get_tree(tree_id)
+    except NotFound as exc:
+        raise _not_found("tree") from exc
+
+
+class TreeUpdate(BaseModel):
+    name: str
+    description: str = ""
+    nodes: list[TreeNode]
+
+
+@router.put("/trees/{tree_id}", response_model=RefTree)
+def update_tree(tree_id: str, body: TreeUpdate):
+    ref = get_ref()
+    try:
+        ref.get_tree(tree_id)
+    except NotFound as exc:
+        raise _not_found("tree") from exc
+    try:
+        return ref.save_tree(check_tree(RefTree(id=tree_id, name=body.name, description=body.description, nodes=body.nodes)))
+    except RefValidationError as exc:
+        return invalid(exc)
+
+
+@router.delete("/trees/{tree_id}")
+def delete_tree(tree_id: str):
+    get_ref().delete_tree(tree_id)
     return {"status": "deleted"}
 
 

@@ -9,6 +9,8 @@ export type CellValue = string | number | boolean | null;
 
 export interface EnumItem { id: string; code: string; value: string; description: string }
 export interface EnumList { id: string; name: string; description: string; items: EnumItem[]; updated_at: string | null }
+export interface TreeNode { id: string; parent_id: string | null; code: string; value: string; description: string }
+export interface RefTree { id: string; name: string; description: string; nodes: TreeNode[]; updated_at: string | null }
 export interface ColumnDef { id: string; name: string; type: ColumnType; enum_id: string | null; required: boolean; unique: boolean }
 export interface RefTable { id: string; name: string; description: string; columns: ColumnDef[]; updated_at: string | null }
 export interface RefRow { id: string; values: Record<string, CellValue>; updated_at: string | null }
@@ -16,6 +18,7 @@ export interface TableDetail { table: RefTable; rows: RefRow[]; enums: Record<st
 
 export interface RefOverview {
 	enums: { id: string; name: string; description: string; items: number; used_by: string[] }[];
+	trees: { id: string; name: string; description: string; nodes: number; depth: number }[];
 	tables: { id: string; name: string; description: string; columns: number; rows: number }[];
 }
 
