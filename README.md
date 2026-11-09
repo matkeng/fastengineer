@@ -324,10 +324,12 @@ Reference data you define and keep (`core/src/workbench_core/refdata/`, API
 
 ## Deliverable generators
 
-Phase 1 is the engine (`core/src/workbench_core/generators`). It reproduces the
-Excel/VBA cable schedule, device list and IO list generator workbooks cell for cell, with a
-command line (`python -m workbench_core.generators import|check|build|diff|export|golden`).
-See [docs/GENERATORS.md](docs/GENERATORS.md). The app screens come in phase 2.
+The **Generators** section imports a generator workbook (cable schedules, device list, IO list).
+You edit its runsheet and templates in spreadsheet-style grids, with paste from Excel, and preview a run.
+Then you check, build, see what changed since the previous build, and export the schedule.
+The engine (`core/src/workbench_core/generators`) reproduces the Excel/VBA generator workbooks cell for cell.
+It also has a command line (`python -m workbench_core.generators import|check|build|diff|export|golden`).
+See [docs/GENERATORS.md](docs/GENERATORS.md).
 
 ## Tests
 

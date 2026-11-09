@@ -8,12 +8,14 @@ import Icon from './components/common/Icon.vue';
 import CompareView from './components/compare/CompareView.vue';
 import DashboardView from './components/dashboard/DashboardView.vue';
 import ExcelWizard from './components/excel/ExcelWizard.vue';
+import GenView from './components/generators/GenView.vue';
 import MelView from './components/mel/MelView.vue';
 import RefView from './components/ref/RefView.vue';
 import SymView from './components/symbols/SymView.vue';
 import { apiGet } from './lib/engine';
 import { useCompare } from './stores/compare';
 import { useExcelWizard } from './stores/excelWizard';
+import { useGenerators } from './stores/generators';
 import { useMel } from './stores/mel';
 import { useRefData } from './stores/refdata';
 import { useSymbols } from './stores/symbols';
@@ -27,6 +29,7 @@ const cmp = useCompare();
 const mel = useMel();
 const rd = useRefData();
 const sym = useSymbols();
+const gens = useGenerators();
 const SAMPLES = [{ label: 'Use the sample cable schedule', url: sampleC, filename: 'cable-schedule-sample.xlsx' }];
 
 // Results views fill the window; the table takes the free space.
@@ -37,12 +40,14 @@ const fill = computed(
 			(ui.tab === 'compare' && cmp.stage === 'result') ||
 			(ui.tab === 'mel' && !!mel.draft && ['rows', 'overrides', 'result'].includes(mel.tab)) ||
 			ui.tab === 'symbols' ||
+			(ui.tab === 'generators' && !!gens.draft) ||
 			ui.tab === 'ref'),
 );
 const dirty: Partial<Record<string, () => boolean>> = {
 	symbols: () => sym.dirty,
 	mel: () => mel.dirty,
 	ref: () => rd.dirty,
+	generators: () => gens.dirty,
 };
 const sectionLabel = computed(() => SECTIONS.find((s) => s.id === ui.tab)?.label ?? '');
 
@@ -105,6 +110,7 @@ onMounted(() => wb.connect());
 				<SymView v-show="ui.tab === 'symbols'" @open-import="openImport" />
 				<MelView v-show="ui.tab === 'mel'" />
 				<RefView v-show="ui.tab === 'ref'" />
+				<GenView v-show="ui.tab === 'generators'" />
 			</template>
 			<section v-else-if="ui.tab !== 'engine'" class="card">
 				<template v-if="wb.status === 'connecting'">

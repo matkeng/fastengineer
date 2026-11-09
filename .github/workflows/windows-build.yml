@@ -197,12 +197,28 @@ jobs:
             "Instrument list: $($il.rows.Count) rows; fields $($il.fields -join ', ')"
             if ($il.rows.Count -ne 11) { throw 'instrument list wrong' }
 
+            # Generators: import the invented sample workbook, build twice, export.
+            $gapi = 'http://127.0.0.1:8799/api/generators'
+            $gi = Invoke-RestMethod -Method Post -Uri "$gapi/import?filename=generator-sample.xlsx" `
+              -InFile samples/generator-sample.xlsx -ContentType 'application/octet-stream'
+            if ($gi.report.unmapped_formulas.Count -ne 0) { throw 'generator import left formulas unmapped' }
+            $gid = $gi.record.id
+            $b1 = Invoke-RestMethod -Method Post -Uri "$gapi/$gid/builds" -Body '{}' -ContentType 'application/json'
+            $b2 = Invoke-RestMethod -Method Post -Uri "$gapi/$gid/builds" -Body '{}' -ContentType 'application/json'
+            "Generator: $($b1.stats.processed) runs, $($b1.stats.rows_written) rows in $([int]$b1.stats.duration_ms) ms; rebuild +$($b2.added) -$($b2.removed) ~$($b2.changed)"
+            if ($b1.stats.rows_written -ne 12) { throw "generator build wrong: $($b1.stats.rows_written) rows" }
+            if ("$($b2.added),$($b2.removed),$($b2.changed)" -ne '0,0,0') { throw 'rebuild with unchanged inputs reported changes' }
+            $gout = Join-Path $env:RUNNER_TEMP 'generator-schedule.xlsx'
+            $gsaved = Invoke-RestMethod -Method Post -Uri "$gapi/builds/$($b2.id)/export" -Body (@{ format = 'xlsx'; path = $gout } | ConvertTo-Json) -ContentType 'application/json'
+            if (-not (Test-Path $gsaved.path) -or (Get-Item $gsaved.path).Length -lt 2000) { throw 'generator export not written' }
+
             # Dashboard summary across every feature.
             $dash = Invoke-RestMethod 'http://127.0.0.1:8799/api/dashboard'
             $dc = $dash.counts
             "Dashboard: $($dc.libraries) libraries, $($dc.drawings) drawings, latest $($dc.latest_tags) tags, $($dc.recipes) imports, $($dc.tables) tables, $($dash.recent.Count) recent events"
             $templateTags = ($dash.runs | Measure-Object -Property template -Sum).Sum
             if ($dc.recipes -lt 2 -or $dash.runs.Count -lt 2 -or $templateTags -lt 10) { throw "dashboard summary wrong (runs $($dash.runs.Count), template tags $templateTags)" }
+            if ($dc.generators -ne 1 -or $dc.gen_builds -ne 2) { throw "dashboard generator counts wrong ($($dc.generators), $($dc.gen_builds))" }
           } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
 
       - name: Smoke-test the portable app

@@ -1,4 +1,4 @@
-# Deliverable generators, phase 1: engine parity
+# Deliverable generators
 
 `workbench_core.generators` re-implements the Excel/VBA generator workbooks: cable schedules,
 an instrument device list and a PLC IO list. It is a pure Python engine. It takes a runsheet
@@ -17,6 +17,37 @@ cell for cell, in **compatibility mode**.
 | `xlsx_import.py` | imports a generator workbook; maps the known template formulas to computed columns, flags the rest, reports data issues |
 | `xlsx_export.py` | `.xlsx` ("Schedule", bold frozen filtered header, document properties) and `.csv` |
 | `golden.py` | golden tests against real workbooks kept outside the repository |
+
+## In the app (Generators section)
+
+1. **Import** a generator workbook (`.xlsx` / `.xlsm`) with "Import workbook…", by dropping it on the page, or with "Use the sample generator".
+   The import report lists what was read, which formulas became calculated columns, and any data issues.
+2. **Runsheet** (an editable grid, one row per run): the header shows each column's label and `<<TAG>>`.
+   - Keys work like this:
+     - the key column offers the template IDs;
+     - a key with no template is highlighted;
+     - blank, `nr` or `none` skips the run.
+   - Editing works like a spreadsheet:
+     - type to edit, then Enter, Tab or the arrow keys to move;
+     - Ctrl+C / Ctrl+V copy and paste with Excel (tab-separated, quoted multi-line cells included);
+     - Delete clears the selected cells;
+     - **+ Row** gives the new run the next run number.
+   - The locked column is a tick box.
+   - Columns calculated in the workbook (`calc`) are read-only.
+3. **Templates**: a block list (rows, runs using it, duplicate-ID warning) and the selected block's rows in the same grid.
+   - Typing `<<` suggests the runsheet tags, their `_S` / `_P` forms, derived tags and `<<PARENT>>`.
+   - `ƒ calc` columns are calculated (join, lookup, existence check) and read-only.
+   - The **preview** expands the block for a chosen run, including unsaved edits. Hover a value to see its template text.
+4. **Check** runs rules C1-C20 on the current edits. Clicking a finding opens the runsheet row or template.
+5. **Build** saves the edits, then builds from **From run** to **Run below** (exclusive).
+   - Every build is kept.
+   - It shows the stats and warnings, the output and the **changes** against the previous build (added / removed / changed, old → new per column).
+   - Click an output row to see the run and template row it came from.
+   - **Export .xlsx / .csv** writes the shown build (Save As in the desktop app).
+6. **Settings**: the config (tags, run range, expansion flags, compatibility or standard mode, document fields).
+
+The dashboard counts generators and builds, and lists them in recent activity.
+`samples/generator-sample.xlsx` (invented data, written by `scripts/make-generator-sample.py`) is used by the engine tests and the Windows CI smoke test.
 
 ## Command line
 

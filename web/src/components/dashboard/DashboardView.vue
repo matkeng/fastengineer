@@ -6,6 +6,7 @@ import pidSample from '../../../../samples/pid-sample.pdf?url';
 import type { Dashboard, DashEvent } from '../../lib/dashboardTypes';
 import { apiGet } from '../../lib/engine';
 import type { IconName } from '../../lib/icons';
+import { useGenerators } from '../../stores/generators';
 import { useMel } from '../../stores/mel';
 import { useRefData } from '../../stores/refdata';
 import { useSymbols } from '../../stores/symbols';
@@ -19,6 +20,7 @@ const wb = useWorkbench();
 const sym = useSymbols();
 const mel = useMel();
 const rd = useRefData();
+const gens = useGenerators();
 const data = ref<Dashboard | null>(null);
 const error = ref<string | null>(null);
 const busy = ref(false);
@@ -67,6 +69,8 @@ const kpis = computed<Kpi[]>(() => {
 			sub: `${k.revisions} file revision(s)${k.latest_revision_at ? `, last ${ago(k.latest_revision_at)}` : ''}` },
 		{ label: 'Lists, trees & tables', icon: 'database', value: k.enums + k.trees + k.tables, go: 'ref',
 			sub: `${k.enums} lists · ${k.trees} trees · ${k.tables} tables · ${k.rows} rows` },
+		{ label: 'Generators', icon: 'generator', value: k.generators, go: 'generators',
+			sub: `${k.gen_builds} build(s)${k.latest_build_at ? `, last ${ago(k.latest_build_at)}` : ''}` },
 		{ label: 'Engine', icon: 'cpu', value: wb.status === 'ready' ? 'OK' : '–', go: 'engine',
 			sub: `${wb.info?.compiled ? 'compiled' : 'Python'}${wb.connectMs !== null ? ` · started in ${wb.connectMs < 1000 ? `${wb.connectMs} ms` : `${(wb.connectMs / 1000).toFixed(1)} s`}` : ''}`,
 			tone: wb.status === 'ready' ? 'ok' : 'warn' },
@@ -111,6 +115,7 @@ async function tryExample() {
 
 const EVENT_ICON: Record<DashEvent['kind'], IconName> = {
 	run: 'run', drawing: 'file', revision: 'upload', recipe: 'recipe', enum: 'enum', tree: 'tree', table: 'table',
+	generator: 'generator', build: 'build',
 };
 
 async function openEvent(e: DashEvent) {
@@ -124,6 +129,13 @@ async function openEvent(e: DashEvent) {
 			await mel.open(e.id);
 		}
 		ui.go('mel');
+	} else if (e.section === 'generators') {
+		if (gens.draft?.id !== e.id) {
+			if (gens.dirty && !confirm('Discard unsaved changes to the open generator?')) return;
+			await gens.open(e.id);
+		}
+		if (e.kind === 'build') gens.tab = 'build';
+		ui.go('generators');
 	} else {
 		await rd.refresh();
 		await rd.select(e.kind === 'enum' || e.kind === 'tree' ? e.kind : 'table', e.id);

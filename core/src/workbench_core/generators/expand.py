@@ -339,7 +339,7 @@ def build(gen: Generator, previous: BuildResult | None = None, run_from: float |
     if missing:
         listed = ", ".join(f"{k} (run {r})" for k, r in missing[:60])
         more = f" and {len(missing) - 60} more" if len(missing) > 60 else ""
-        warnings.append(Finding(severity="WARN", code="missingTemplate", item=f"{len(missing)} runs without a template",
+        warnings.append(Finding(severity="WARN", code="missingTemplate", item=f"{len(missing)} run{'' if len(missing) == 1 else 's'} without a template",
                                 detail=listed + more))
     if dup_ids:
         warnings.append(Finding(severity="WARN", code="duplicateTemplateIds", item=", ".join(dup_ids),

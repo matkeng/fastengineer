@@ -164,7 +164,7 @@ def check(gen: Generator, cards: set[str] | None = None) -> CheckResult:
                 loop_blank.append(f"run {run_text}: <<#{n}>>")
     if missing:
         more = f" ... and {len(missing) - 60} more" if len(missing) > 60 else ""
-        add("ERROR", "C6", f"{len(missing)} runs without a template", ", ".join(missing[:60]) + more, "RunSheet")
+        add("ERROR", "C6", f"{len(missing)} run{'' if len(missing) == 1 else 's'} without a template", ", ".join(missing[:60]) + more, "RunSheet")
     for run, rows in runs_seen.items():
         if len(rows) > 1:
             add("WARN", "C8", f"run {run}", f"used on rows {', '.join(rows[:10])}", "RunSheet")
