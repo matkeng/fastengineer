@@ -28,6 +28,8 @@ The app has two tabs:
   into a reviewable, keyed table (see below).
 - **Compare tables**: pick an old and a new table with the same wizard and see
   what changed between them (see below).
+- **MEL import**: turn an equipment list into a load list with a saved,
+  re-applicable recipe of rules (see below).
 - **Engine**: engine status (port, Python version, whether it's
   Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
   model objects.
@@ -145,6 +147,58 @@ compared as numbers (`2.50` = `2.5`); a change in strikethrough counts as a
 change (switchable), but not on rows that were struck out or restored as a
 whole, where the row status already says so. Duplicate keys are paired in the
 order they appear, with a warning.
+
+## MEL import
+
+Implements the import recipe described in [`docs/PRD_MEL_IMPORT.md`](docs/PRD_MEL_IMPORT.md)
+(originally a Django app) as a desktop feature. Core logic:
+`core/src/workbench_core/mel/`; API: `desktop/engine/workbench_desktop/mel_api.py`;
+UI: `web/src/components/mel/`.
+
+1. **Create an import** (MEL, ELL, EEL, PIL or LIL) and **upload a file**: a CSV
+   (UTF-8, or Windows-1252 with a warning; `,` `;` tab or `|` separated), or a
+   sheet or table from Excel through the import wizard. Choose the key column
+   (usually the equipment tag). Headers and keys are made unique: blank ->
+   `Blank`, repeats -> `_1`, `_2`.
+2. **Build the recipe**. Rules run in this order every time the data is read,
+   and the uploaded file is never changed:
+
+   | # | Editor | Rule |
+   |---|---|---|
+   | 1 | Columns | hide or rename columns (not the key) |
+   | 2 | Rows | hide rows by key |
+   | 3 | Text columns | add a column with the same value in every row |
+   | 4 | Overrides | click a cell to replace its value |
+   | 5 | Custom rows | add rows that aren't in the file |
+   | 6 | Calculated | `if / then / else / on error` per row; `<<Column>>` refers to a column |
+   | 7 | Mapping | load-list field <- column or fixed value |
+
+3. **Result**: the combined table and the load list, with filters, and export
+   to CSV or Excel (.xlsx; overridden cells, custom rows and errors highlighted,
+   plus a Notes sheet).
+4. **Save**. Edits are a draft (previewed live) until you press Save. Saved
+   imports and every uploaded revision are kept in a local SQLite database, so
+   they are there next time; the Engine tab shows where
+   (`%APPDATA%\com.drawingworkbench.poc\workbench.db` on Windows).
+5. **Revised file**: upload it as the next revision; the newest is used and the
+   same rules are applied. The Overview lists any rule that no longer applies
+   (for example a hidden row whose tag is not in the new file).
+
+Samples: `samples/mel-sample.csv` and `samples/mel-sample-rev2.csv`.
+
+Differences from the PRD's implementation, from its known-issues list (§11):
+
+- Calculated columns bind `<<Column>>` values as variables instead of pasting
+  text into the expression, so values can't change the formula and text needs
+  no quotes (`<<Type>> == 'Pump'`); plain text like `Motor` is used as is.
+- A recipe is saved as one document (no partial saves); editing a custom row
+  replaces it; renamed columns keep their position; the key column can differ
+  per revision; a recipe with no file shows a message instead of failing;
+  orphaned rules are reported (the PRD's suggested "rule health" panel).
+- Numeric load-list fields that aren't numbers are kept as text and counted in a
+  warning, rather than replaced with `-9999`.
+- Not included: pushing into a load-list database (there isn't one here yet;
+  export instead) and Transpose columns (not applied in the PRD either).
 
 ## Tests
 

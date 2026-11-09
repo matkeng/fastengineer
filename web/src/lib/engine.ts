@@ -71,6 +71,14 @@ export function apiPostBytes<T>(path: string, body: Blob | ArrayBuffer): Promise
 	});
 }
 
+export function apiPut<T>(path: string, body: unknown): Promise<T> {
+	return request<T>(path, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	});
+}
+
 export function apiDelete(path: string): Promise<unknown> {
 	return request(path, { method: 'DELETE' });
 }

@@ -26,6 +26,13 @@ fn free_port() -> std::io::Result<u16> {
 
 fn start_engine(app: &tauri::AppHandle) -> Result<(String, CommandChild), String> {
     let port = free_port().map_err(|e| format!("no free port: {e}"))?;
+    // Saved imports live in the per-user app data folder, e.g.
+    // %APPDATA%\com.drawingworkbench.poc\workbench.db on Windows.
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("no app data folder: {e}"))?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| format!("can't create {}: {e}", data_dir.display()))?;
     let (mut rx, child) = app
         .shell()
         .sidecar("workbench-engine")
@@ -35,6 +42,8 @@ fn start_engine(app: &tauri::AppHandle) -> Result<(String, CommandChild), String
             port.to_string(),
             "--parent-pid".to_string(),
             std::process::id().to_string(),
+            "--data-dir".to_string(),
+            data_dir.to_string_lossy().into_owned(),
         ])
         .spawn()
         .map_err(|e| format!("failed to start engine: {e}"))?;

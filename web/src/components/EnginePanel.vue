@@ -1,10 +1,25 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
+import { apiGet } from '../lib/engine';
 import { runningInTauri } from '../lib/engine';
 import { useWorkbench } from '../stores/workbench';
 
 const wb = useWorkbench();
 const name = ref('world');
+const dataPath = ref<string | null>(null);
+// Ask once the engine is up (this panel exists from start-up, before the engine is ready).
+watch(
+	() => wb.status,
+	async (status) => {
+		if (status !== 'ready' || dataPath.value) return;
+		try {
+			dataPath.value = (await apiGet<{ path: string }>('/api/mel/storage')).path;
+		} catch {
+			dataPath.value = 'unknown';
+		}
+	},
+	{ immediate: true },
+);
 </script>
 
 <template>
@@ -30,6 +45,8 @@ const name = ref('world');
 				<dd>{{ wb.info.python }} {{ wb.info.compiled ? '(Nuitka-compiled)' : '(interpreted)' }}</dd>
 				<dt>Platform</dt>
 				<dd>{{ wb.info.platform }}</dd>
+				<dt>Saved imports</dt>
+				<dd><code>{{ dataPath ?? '…' }}</code></dd>
 				<dt>Engine PID</dt>
 				<dd>{{ wb.info.pid }}</dd>
 			</dl>

@@ -73,6 +73,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--parent-pid", type=int, default=None)
+    parser.add_argument("--data-dir", default=None, help="where saved imports are kept (workbench.db)")
     args = parser.parse_args(argv)
 
     _ensure_std_streams()
@@ -83,6 +84,12 @@ def main(argv: list[str] | None = None) -> None:
     import uvicorn
 
     from workbench_desktop.app import app
+    from pathlib import Path
+
+    from workbench_desktop.storage import configure
+
+    store = configure(Path(args.data_dir) if args.data_dir else None)
+    print(f"[engine] data: {store.path}", flush=True)
 
     print(f"[engine] listening on http://{args.host}:{args.port}", flush=True)
     # Pass the app object (not an import string) and pin loop/http so the

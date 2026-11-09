@@ -1,0 +1,7 @@
+Equipment Tag,Area,Description,Equipment Type,Motor HP,Voltage,Qty,Standby,Remarks
+P-101,100,Feed pump A,Pump,50,460,1,0,Upsized Rev 2
+P-102,100,Feed pump B,Pump,40,460,1,1,
+M-204,200,Agitator,Mixer,10,460,1,0,
+C-401,400,Air compressor,Compressor,75,4160,1,0,Packaged
+TK-501,500,Storage tank,Tank,,,1,0,No motor
+P-601,600,Transfer pump,Pump,15,460,2,1,New Rev 2

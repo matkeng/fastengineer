@@ -53,7 +53,7 @@ jobs:
       - name: Smoke-test the compiled engine
         run: |
           $exe = Get-ChildItem desktop/src-tauri/binaries/workbench-engine-*.exe | Select-Object -First 1
-          $p = Start-Process $exe.FullName -ArgumentList '--port','8799' -PassThru
+          $p = Start-Process $exe.FullName -ArgumentList '--port','8799','--data-dir',(Join-Path $env:RUNNER_TEMP 'wbdata') -PassThru
           try {
             $ok = $false
             for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
@@ -94,6 +94,20 @@ jobs:
             $saved = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8799/api/excel/compare/export' -Body $expBody -ContentType 'application/json'
             if (-not (Test-Path $saved.path) -or (Get-Item $saved.path).Length -lt 2000) { throw 'xlsx export not written' }
             "Exported $($saved.path) ($((Get-Item $saved.path).Length) bytes)"
+
+            # MEL import: recipe + CSV revision + a calculated column (asteval) + load list.
+            $mel = 'http://127.0.0.1:8799/api/mel'
+            $r = Invoke-RestMethod -Method Post -Uri "$mel/recipes" -Body (@{ name = 'CI MEL'; target = 'MEL' } | ConvertTo-Json) -ContentType 'application/json'
+            $null = Invoke-RestMethod -Method Post -Uri "$mel/recipes/$($r.id)/revisions/csv?filename=mel-sample.csv&key=Equipment%20Tag" `
+              -InFile samples/mel-sample.csv -ContentType 'application/octet-stream'
+            $r.auto_columns = @(@{ name = 'kW'; statement = "<<Motor HP>> != ''"; true_val = 'round(<<Motor HP>> * 0.746, 1)'; false_val = '0'; error_val = '?' })
+            $r.mapping = @(@{ field = 'tag'; column = 'Equipment Tag' }, @{ field = 'load_rating'; column = 'kW' })
+            $null = Invoke-RestMethod -Method Put -Uri "$mel/recipes/$($r.id)" -Body ($r | ConvertTo-Json -Depth 6) -ContentType 'application/json'
+            $ll = Invoke-RestMethod -Method Post -Uri "$mel/recipes/$($r.id)/loadlist" -Body '{}' -ContentType 'application/json'
+            $p101 = $ll.rows | Where-Object { $_.tag -eq 'P-101' }
+            "MEL load list: $($ll.rows.Count) rows; P-101 load_rating = $($p101.load_rating)"
+            if ($p101.load_rating -ne 29.8) { throw 'calculated column wrong in the compiled engine' }
+            "Data stored at $((Invoke-RestMethod "$mel/storage").path)"
           } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
 
       - name: Smoke-test the portable app

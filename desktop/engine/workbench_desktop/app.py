@@ -10,6 +10,7 @@ from workbench_core.hello import EngineInfo, Greeting
 from workbench_core.model import Equipment
 
 from .excel_api import router as excel_router
+from .mel_api import router as mel_router
 
 app = FastAPI(title="Drawing Workbench engine", version=workbench_core.__version__)
 
@@ -18,12 +19,13 @@ app = FastAPI(title="Drawing Workbench engine", version=workbench_core.__version
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"^(https?://tauri\.localhost|tauri://localhost|http://localhost:\d+|http://127\.0\.0\.1:\d+)$",
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
 
 app.include_router(excel_router)
+app.include_router(mel_router)
 
 
 @app.get("/api/health")

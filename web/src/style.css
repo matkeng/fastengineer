@@ -226,3 +226,80 @@ div.dt-buttons .dt-button.active { outline: 2px solid var(--accent); }
 
 .saved { color: var(--ok); font-size: 0.85rem; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 div.dt-buttons .dt-button.xlsx-export { font-weight: 700; }
+
+/* ---- MEL import ---- */
+main.fill > .mel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+main.fill > .mel > .wizard { flex: 1; min-height: 320px; display: flex; flex-direction: column; padding: 12px 16px; }
+main.fill .mel-grid { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.mel-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.mel-head .spacer, .row .spacer, .modal-foot .spacer { flex: 1; }
+.name-input { flex: 0 1 260px !important; min-width: 140px; font-weight: 700; }
+.unsaved { color: var(--warn); font-weight: 600; font-size: 0.85rem; }
+.dirty-dot { color: var(--warn); margin-left: 4px; }
+.subtabs { display: flex; gap: 2px; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.subtabs button { background: none; color: var(--muted); border-radius: 6px 6px 0 0; padding: 6px 10px; border-bottom: 2px solid transparent; font-weight: 600; }
+.subtabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+.subtabs .count, .seg .count { margin-left: 5px; font-size: 0.72rem; padding: 0 6px; border-radius: 999px; background: var(--border); color: var(--text); }
+button.small { padding: 3px 8px; font-size: 0.8rem; }
+.two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; }
+.two-col h3 { margin: 0 0 4px; font-size: 1rem; }
+table.grid.simple { width: 100%; white-space: normal; }
+table.grid.simple td, table.grid.simple th { max-width: none; vertical-align: top; }
+table.grid.simple thead th { text-align: left; }
+table.grid.simple tbody tr { cursor: default; }
+table.grid.simple tbody tr:hover td { background: transparent; }
+.mel table.grid.simple tbody tr[class] td, .mel .rules tbody tr { cursor: pointer; }
+.rules td.num { width: 24px; color: var(--muted); }
+.rules td.n { text-align: right; font-weight: 700; }
+.rules tr.disabled { opacity: 0.5; }
+.actions { text-align: right; white-space: nowrap; }
+.health { margin-top: 12px; padding: 10px 14px; border: 1px solid var(--warn); border-radius: 6px; }
+.health h4 { margin: 0 0 4px; color: var(--warn); }
+.health ul { margin: 6px 0 0; padding-left: 18px; font-size: 0.88rem; }
+.ok-text { color: var(--ok); }
+.upload { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.upload h4 { margin: 0 0 8px; }
+.seg { display: inline-flex; gap: 4px; margin-bottom: 10px; }
+.inspect { margin-top: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; color: var(--muted); margin-bottom: 8px; }
+.field input, .field select { color: var(--text); }
+.field.grow { flex: 1; }
+.small-grid { max-height: 260px; margin: 8px 0; }
+.keyh { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.cols-editor input { width: 100%; }
+tr.off td { color: var(--muted); }
+.create { margin-top: 14px; }
+.mono { font-family: Consolas, monospace; }
+.auto-cols { grid-template-columns: minmax(220px, 1fr) 3fr; }
+.auto-list { list-style: none; padding: 0; margin: 0 0 10px; }
+.auto-list li { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 4px; cursor: pointer; }
+.auto-list li.current { outline: 2px solid var(--accent); }
+.auto-list .name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.auto-list .num { color: var(--muted); width: 18px; }
+td.err { color: var(--accent); font-weight: 600; }
+.result-table .ov { background: color-mix(in srgb, #ef6c00 22%, transparent); padding: 0 4px; border-radius: 3px; }
+.result-table.overrides td.editable { cursor: pointer; }
+.result-table.overrides td.editable:hover { outline: 1px dashed var(--accent); }
+.result-table td.ov-cell { background: color-mix(in srgb, #ef6c00 18%, transparent) !important; }
+.result-table td.err-cell { background: color-mix(in srgb, #c62828 16%, transparent) !important; }
+.result-table tr.row-custom > td { background: color-mix(in srgb, #2e7d32 10%, transparent) !important; }
+.result-table tr.row-off > td { opacity: 0.45; text-decoration: line-through; text-decoration-color: var(--muted); }
+.result-table td.include-col { text-align: center; }
+.swatch.ov { background: color-mix(in srgb, #ef6c00 35%, var(--card)); }
+.swatch.custom { background: color-mix(in srgb, #2e7d32 30%, var(--card)); }
+.swatch.err { background: color-mix(in srgb, #c62828 35%, var(--card)); }
+.col-badge.calc { background: color-mix(in srgb, #1565c0 22%, transparent); }
+.mapping select { min-width: 220px; }
+
+/* ---- dialog ---- */
+dialog.modal { border: 1px solid var(--border); border-radius: 10px; padding: 0; background: var(--card); color: var(--text); width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 64px); }
+dialog.modal::backdrop { background: rgb(0 0 0 / 0.35); }
+.modal-inner { display: flex; flex-direction: column; max-height: calc(100vh - 66px); }
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.modal-head h3 { margin: 0; font-size: 1rem; }
+.modal-head .close { padding: 2px 8px; }
+.modal-body { padding: 12px 16px; overflow: auto; }
+.modal-body .field input { width: 100%; }
+.modal-foot { display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border); }
+td.calc-col, th.calc-col { background: color-mix(in srgb, #1565c0 8%, transparent); }
+td.calc-col.err { background: color-mix(in srgb, #c62828 16%, transparent); }
