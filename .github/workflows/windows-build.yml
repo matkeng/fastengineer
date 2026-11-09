@@ -174,7 +174,9 @@ jobs:
             "Scanned sample with OCR: $($runS.tag_count) tags in $([math]::Round($sw.Elapsed.TotalSeconds, 1)) s: $($tagsS -join ', ')"
             $runS.warnings | Select-Object -First 5 | ForEach-Object { "  warning: $_" }
             if ($ocr.available) {
-              if ($runS.tag_count -lt 1) { throw 'Windows OCR found no tags on the scanned sample' }
+              if ($runS.tag_count -lt 9 -or $tagsS -notcontains 'FT-1023') {
+                throw "Windows OCR missed bubble tags on the scanned sample (got: $($tagsS -join ', '))"
+              }
             } elseif ("$($ocr.reason)" -match 'could not be loaded') {
               throw "Windows OCR is not packaged correctly in the compiled engine: $($ocr.reason)"
             } else {

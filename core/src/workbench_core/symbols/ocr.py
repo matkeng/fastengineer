@@ -9,6 +9,7 @@ which is how the tests exercise the fallback on Linux."""
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 from typing import Protocol
 
@@ -25,8 +26,51 @@ class OcrUnavailable(RuntimeError):
     pass
 
 
-TILE = 3000     # px; Windows OCR reads small text better on moderate tiles
-OVERLAP = 200   # px; words are kept by the tile whose core holds their centre
+TILE = 3000     # px (in the upscaled image); Windows OCR reads better on moderate tiles
+OVERLAP = 300   # px (upscaled); words are kept by the tile whose core holds their centre
+# Drawing text is small (7 pt at 200 DPI is ~13 px tall); Windows OCR is tuned for document
+# text and misses it, so pages are enlarged before OCR and the boxes scaled back.
+OCR_SCALE = 3.0
+
+_PUNCT_ONLY = re.compile(r"^[\W_]+$")
+_O_NEAR_DIGIT = re.compile(r"(?<=\d)[Oo]|[Oo](?=\d)")
+
+
+def clean_ocr_text(text: str) -> str | None:
+    """Fix common OCR confusions in codes; None for junk (punctuation only)."""
+    t = text.strip().replace("|", "I")
+    if not t or _PUNCT_ONLY.match(t):
+        return None
+    return _O_NEAR_DIGIT.sub("0", t)
+
+
+def upscale(gray, scale: float = OCR_SCALE):
+    """Enlarge a page for OCR, keeping line art crisp."""
+    import cv2
+    if scale == 1:
+        return gray
+    big = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    return cv2.normalize(big, None, 0, 255, cv2.NORM_MINMAX)
+
+
+async def ocr_tiles(gray, read_tile, tile: int = TILE, scale: float = OCR_SCALE) -> list[Word]:
+    """Upscale, OCR tile by tile with `read_tile(png) -> [(text, x, y, w, h)]` (coroutine, in the
+    tile's pixels), and return words in the original page's pixels."""
+    import cv2
+    big = upscale(gray, scale)
+    h, w = big.shape[:2]
+    words: list[Word] = []
+    for i, (x0, y0, x1, y1, (cx0, cy0, cx1, cy1)) in enumerate(_tiles(h, w, tile, min(OVERLAP, tile // 4))):
+        ok, buf = cv2.imencode(".png", cv2.cvtColor(big[y0:y1, x0:x1], cv2.COLOR_GRAY2BGR))
+        for j, (text, x, y, ww, hh) in enumerate(await read_tile(buf.tobytes())):
+            t = clean_ocr_text(text)
+            if t is None:
+                continue
+            bx = [x0 + x, y0 + y, x0 + x + ww, y0 + y + hh]
+            mx, my = (bx[0] + bx[2]) / 2, (bx[1] + bx[3]) / 2
+            if cx0 <= mx < cx1 and cy0 <= my < cy1:
+                words.append(Word(text=t, box=[round(v / scale, 1) for v in bx], block=i, line=0, word_no=j))
+    return words
 
 
 def _tiles(h: int, w: int, tile: int = TILE, overlap: int = OVERLAP):
@@ -85,27 +129,12 @@ class WindowsOcr:
         return out
 
     def read(self, gray) -> list[Word]:
-        import cv2
         try:  # WinRT needs COM on this thread; harmless if it's already initialised
             from winrt import _winrt
             _winrt.init_apartment(_winrt.MTA)
         except Exception:
             pass
-        tile = min(TILE, self._max)
-        h, w = gray.shape[:2]
-
-        async def run_all():
-            words: list[Word] = []
-            for i, (x0, y0, x1, y1, (cx0, cy0, cx1, cy1)) in enumerate(_tiles(h, w, tile)):
-                ok, buf = cv2.imencode(".png", cv2.cvtColor(gray[y0:y1, x0:x1], cv2.COLOR_GRAY2BGR))
-                for j, (text, x, y, ww, hh) in enumerate(await self._read_tile(buf.tobytes())):
-                    box = [x0 + x, y0 + y, x0 + x + ww, y0 + y + hh]
-                    mx, my = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
-                    if cx0 <= mx < cx1 and cy0 <= my < cy1:
-                        words.append(Word(text=text, box=[round(v, 1) for v in box], block=i, line=0, word_no=j))
-            return words
-
-        return asyncio.run(run_all())
+        return asyncio.run(ocr_tiles(gray, self._read_tile, min(TILE, self._max)))
 
 
 _cached: OcrProvider | None = None

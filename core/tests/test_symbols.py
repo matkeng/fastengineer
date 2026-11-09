@@ -307,3 +307,35 @@ def test_exports(results) -> None:
     wb = load_workbook(BytesIO(tags_xlsx(sheets, "test")))
     assert wb.sheetnames == ["Tags", "Detections", "About"]
     assert wb["Tags"].max_row == len(EXPECTED) + 1
+
+
+def test_ocr_tiles_upscale_and_map_boxes_back() -> None:
+    """Words come back in page pixels, once each, across tiles of the upscaled page."""
+    import asyncio
+
+    from workbench_core.symbols.ocr import clean_ocr_text, ocr_tiles
+
+    page = np.full((400, 1000), 255, np.uint8)
+    # Two 'words' (in page pixels): one inside the first tile, one in the overlap of two tiles.
+    targets = {"FT": (100, 50, 130, 62), "1O23": (590, 300, 630, 312)}
+    for x1, y1, x2, y2 in targets.values():
+        page[y1:y2, x1:x2] = 0
+    scale = 3.0
+
+    async def read_tile(png: bytes):
+        tile = cv2.imdecode(np.frombuffer(png, np.uint8), cv2.IMREAD_GRAYSCALE)
+        out = []
+        n, _, stats, _ = cv2.connectedComponentsWithStats((tile < 128).astype(np.uint8))
+        for i in range(1, n):
+            x, y, w, h, _ = stats[i]
+            # identify the blob by its size in page pixels
+            text = "FT" if abs(w / scale - 30) < 3 else "1O23"
+            out.append((text, x, y, w, h))
+        out.append(("--", 0, 0, 3, 3))  # junk is dropped
+        return out
+
+    words = asyncio.run(ocr_tiles(page, read_tile, tile=1800, scale=scale))
+    got = sorted((w.text, [round(v) for v in w.box]) for w in words)
+    assert got == [("1023", [590, 300, 630, 312]), ("FT", [100, 50, 130, 62])]
+    assert clean_ocr_text(" FIC-2O02 ") == "FIC-2002" and clean_ocr_text("--") is None
+    assert clean_ocr_text("|T-101") == "IT-101" and clean_ocr_text("POWER") == "POWER"
