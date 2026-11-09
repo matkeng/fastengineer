@@ -339,3 +339,26 @@ def test_ocr_tiles_upscale_and_map_boxes_back() -> None:
     assert got == [("1023", [590, 300, 630, 312]), ("FT", [100, 50, 130, 62])]
     assert clean_ocr_text(" FIC-2O02 ") == "FIC-2002" and clean_ocr_text("--") is None
     assert clean_ocr_text("|T-101") == "IT-101" and clean_ocr_text("POWER") == "POWER"
+
+
+def test_text_only_removes_linework_and_keeps_text(pages) -> None:
+    from workbench_core.symbols.ocr import merge_words, text_only
+
+    p1 = pages[0]
+    gray = decode_gray(p1.png)
+    clean = text_only(gray)
+    ink = (clean < 128).astype(np.uint8)
+    n, _, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
+    assert all(stats[i][2] <= 60 and stats[i][3] <= 60 for i in range(1, n))  # no circles, pipes, valves
+    for w in p1.words:  # every piece of text survives
+        x1, y1, x2, y2 = (int(v) for v in w.box)
+        assert clean[y1:y2 + 1, x1:x2 + 1].min() < 128, w.text
+    # the bubble circle around FT/1023 is gone
+    ft = next(w for w in p1.words if w.text == "FT")
+    cx = int((ft.box[0] + ft.box[2]) / 2)
+    ring_row = int(ft.box[1]) - 25
+    assert clean[ring_row - 6:ring_row + 6, cx - 3:cx + 4].min() == 255
+
+    a = [Word(text="FT", box=[0, 0, 10, 10])]
+    b = [Word(text="F7", box=[1, 1, 10, 10]), Word(text="1023", box=[0, 20, 30, 30])]
+    assert [w.text for w in merge_words(a, b)] == ["FT", "1023"]

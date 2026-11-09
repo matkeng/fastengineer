@@ -28,9 +28,10 @@ class OcrUnavailable(RuntimeError):
 
 TILE = 3000     # px (in the upscaled image); Windows OCR reads better on moderate tiles
 OVERLAP = 300   # px (upscaled); words are kept by the tile whose core holds their centre
-# Drawing text is small (7 pt at 200 DPI is ~13 px tall); Windows OCR is tuned for document
-# text and misses it, so pages are enlarged before OCR and the boxes scaled back.
-OCR_SCALE = 3.0
+# OCR reads a text-only copy of the page (linework removed, see text_only) enlarged by this
+# factor; word boxes are scaled back to page pixels.
+OCR_SCALE = 2.0
+MAX_CHAR_PX = 60   # at 200 DPI: characters up to ~20 pt; bubbles, pipes and symbols are larger
 
 _PUNCT_ONLY = re.compile(r"^[\W_]+$")
 _O_NEAR_DIGIT = re.compile(r"(?<=\d)[Oo]|[Oo](?=\d)")
@@ -51,6 +52,55 @@ def upscale(gray, scale: float = OCR_SCALE):
         return gray
     big = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
     return cv2.normalize(big, None, 0, 255, cv2.NORM_MINMAX)
+
+
+def text_only(gray, max_char_px: int = MAX_CHAR_PX, min_char_px: int = 4):
+    """The page with only character-sized ink kept (black on white). Drawing linework
+    (circles, pipes, leaders, symbol bodies) is larger, longer or mostly empty inside its
+    bounding box, and confuses OCR's text-line finder."""
+    import cv2
+    import numpy as np
+    _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
+    keep = np.zeros(n, bool)
+    for i in range(1, n):
+        x, y, w, h, area = stats[i]
+        if w > max_char_px or h > max_char_px or area < 3:
+            continue
+        if h < min_char_px and w < min_char_px:  # specks (but keep '.' and '-' via area)
+            if area < 3:
+                continue
+        if max(w, h) > 25 and area / float(w * h) < 0.15:  # thin arc or line fragment
+            continue
+        keep[i] = True
+    out = np.full(gray.shape, 255, np.uint8)
+    out[keep[labels]] = 0
+    return out
+
+
+def _iou(a: list[float], b: list[float]) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def merge_words(primary: list[Word], extra: list[Word], iou: float = 0.3) -> list[Word]:
+    """primary plus the extra words that don't overlap any of them."""
+    out = list(primary)
+    for w in extra:
+        if all(_iou(w.box, p.box) < iou for p in primary):
+            out.append(w)
+    return out
+
+
+async def ocr_page(gray, read_tile, tile: int = TILE) -> list[Word]:
+    """Two passes: the text-only page enlarged (finds small codes next to linework), then the
+    plain page at 1x for any text the first pass removed (e.g. touching a line)."""
+    first = await ocr_tiles(text_only(gray), read_tile, tile, OCR_SCALE)
+    second = await ocr_tiles(gray, read_tile, tile, 1.0)
+    return merge_words(first, second)
 
 
 async def ocr_tiles(gray, read_tile, tile: int = TILE, scale: float = OCR_SCALE) -> list[Word]:
@@ -134,7 +184,7 @@ class WindowsOcr:
             _winrt.init_apartment(_winrt.MTA)
         except Exception:
             pass
-        return asyncio.run(ocr_tiles(gray, self._read_tile, min(TILE, self._max)))
+        return asyncio.run(ocr_page(gray, self._read_tile, min(TILE, self._max)))
 
 
 _cached: OcrProvider | None = None
