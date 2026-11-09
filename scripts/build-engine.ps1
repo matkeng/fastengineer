@@ -19,6 +19,7 @@ try {
         --assume-yes-for-downloads `
         --include-package=uvicorn `
         --include-package=winrt `
+        --include-package-data=winrt `
         --noinclude-dlls=opencv_videoio_ffmpeg* `
         --nofollow-import-to=watchfiles,uvloop,httptools,websockets,wsproto `
         --product-name="Drawing Workbench Engine" `

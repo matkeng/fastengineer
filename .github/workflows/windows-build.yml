@@ -175,6 +175,8 @@ jobs:
             $runS.warnings | Select-Object -First 5 | ForEach-Object { "  warning: $_" }
             if ($ocr.available) {
               if ($runS.tag_count -lt 1) { throw 'Windows OCR found no tags on the scanned sample' }
+            } elseif ("$($ocr.reason)" -match 'could not be loaded') {
+              throw "Windows OCR is not packaged correctly in the compiled engine: $($ocr.reason)"
             } else {
               Write-Host "::warning::Windows OCR is not available on this runner ($($ocr.reason)); the scanned-sample check was skipped."
             }
@@ -192,7 +194,8 @@ jobs:
             $dash = Invoke-RestMethod 'http://127.0.0.1:8799/api/dashboard'
             $dc = $dash.counts
             "Dashboard: $($dc.libraries) libraries, $($dc.drawings) drawings, latest $($dc.latest_tags) tags, $($dc.recipes) imports, $($dc.tables) tables, $($dash.recent.Count) recent events"
-            if ($dc.latest_tags -lt 1 -or $dc.recipes -lt 2 -or $dash.runs.Count -lt 1) { throw 'dashboard summary wrong' }
+            $templateTags = ($dash.runs | Measure-Object -Property template -Sum).Sum
+            if ($dc.recipes -lt 2 -or $dash.runs.Count -lt 2 -or $templateTags -lt 10) { throw "dashboard summary wrong (runs $($dash.runs.Count), template tags $templateTags)" }
           } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
 
       - name: Smoke-test the portable app
