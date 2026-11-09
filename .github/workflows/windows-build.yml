@@ -87,6 +87,13 @@ jobs:
             $cmp.summary | Format-List
             $s = $cmp.summary
             if ("$($s.added),$($s.deleted),$($s.struck),$($s.restored),$($s.changed)" -ne '1,1,1,1,4') { throw 'unexpected compare summary' }
+
+            # Export to .xlsx at a path (what the desktop Save As dialog does).
+            $out = Join-Path $env:RUNNER_TEMP 'compare-export.xlsx'
+            $expBody = @{ a = $side + @{ workbook_id = $wb.id }; b = $side + @{ workbook_id = $wbD.id }; path = $out } | ConvertTo-Json -Depth 4
+            $saved = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8799/api/excel/compare/export' -Body $expBody -ContentType 'application/json'
+            if (-not (Test-Path $saved.path) -or (Get-Item $saved.path).Length -lt 2000) { throw 'xlsx export not written' }
+            "Exported $($saved.path) ($((Get-Item $saved.path).Length) bytes)"
           } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
 
       - name: Smoke-test the portable app

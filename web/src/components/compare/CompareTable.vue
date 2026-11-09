@@ -6,6 +6,9 @@ import { type FilteredTable, TOOLBAR_LAYOUT, createFilteredTable } from '../../l
 import type { Cell, CompareCell, CompareColumn, CompareResult, CompareRow, RowStatus } from '../../lib/types';
 
 const props = defineProps<{ result: CompareResult }>();
+const emit = defineEmits<{ export: [] }>();
+// Table column -> compare column index (null for Status/Changes/row numbers).
+let tableToCompare: (number | null)[] = [];
 const host = ref<HTMLDivElement | null>(null);
 let table: FilteredTable<CompareRow> | null = null;
 
@@ -79,6 +82,7 @@ function build() {
 		{ title: 'New row', data: 'b_row', className: 'dt-right', render: (n: number | null) => n ?? '' },
 	];
 	// Columns whose cells never changed (added/removed columns and the key always stay).
+	tableToCompare = [null, keyIdx, ...others, null, null, null];
 	// others[j] is table column 2 + j (after Status and the key).
 	const quiet = others
 		.map((i, j) => ({ col: r.columns[i], tableIdx: 2 + j }))
@@ -100,6 +104,7 @@ function build() {
 		},
 		{ extend: 'copyHtml5', text: 'Copy', exportOptions: { columns: ':visible', orthogonal: 'export' } },
 		{ extend: 'csvHtml5', text: 'CSV', exportOptions: { columns: ':visible', orthogonal: 'export' }, filename: 'table-compare' },
+		{ text: 'Excel (.xlsx)', className: 'xlsx-export', action: () => emit('export') },
 	] as unknown as Config['buttons'];
 
 	table = createFilteredTable<CompareRow>(
@@ -143,7 +148,20 @@ function destroy() {
 function setStatusFilter(value: StatusFilter) {
 	table?.setSelect(STATUS_COL, value);
 }
-defineExpose({ setStatusFilter });
+
+const ALL_STATUSES: RowStatus[] = ['added', 'deleted', 'struck', 'restored', 'changed', 'unchanged'];
+
+/** What the .xlsx export should contain: the rows and columns currently shown. */
+function exportSelection(): { statuses: RowStatus[] | null; columns: number[] } {
+	const v = (table?.getSelect(STATUS_COL) ?? '') as StatusFilter;
+	const statuses = v === '' ? null : v === 'changes' ? ALL_STATUSES.filter((s) => s !== 'unchanged') : [v];
+	const columns: number[] = [];
+	tableToCompare.forEach((ci, ti) => {
+		if (ci !== null && table?.api.column(ti).visible()) columns.push(ci);
+	});
+	return { statuses, columns };
+}
+defineExpose({ setStatusFilter, exportSelection });
 
 onMounted(build);
 watch(() => props.result, build);

@@ -115,3 +115,33 @@ def test_sample_rev_c_to_rev_d() -> None:
     to = next(i for i, c in enumerate(r.columns) if c.name == "To")
     assert rows["CB-0410"].cells[to].change == "strike"
     assert rows["CB-0407"].cells[to].change == "both"  # "~~F-301~~ F-302" -> "F-302"
+
+
+def test_export_xlsx() -> None:
+    from openpyxl import load_workbook
+    from openpyxl.cell.rich_text import CellRichText
+
+    from workbench_core.excel import compare_to_xlsx
+
+    a = _table([["Tag", "kW", "Note"], ["P-1", 30, "x"], ["P-2", 15, "y"]])
+    b = _table([["Tag", "kW", "Gland"], ["P-1", 37, "CW20"], ["P-3", 5, "CW20"]], struck_cells=("A3",))
+    r = compare_tables(a, b)
+    wb = load_workbook(io.BytesIO(compare_to_xlsx(r)), rich_text=True)
+    assert wb.sheetnames == ["Differences", "Cell changes", "Summary"]
+    ws = wb["Differences"]
+    header = [c.value for c in ws[1]]
+    assert header == ["Status", "Tag", "kW", "Gland (new column)", "Note (removed column)",
+                      "Changed cells", "Old row", "New row"]
+    rows = {ws.cell(row=i, column=2).value: i for i in range(2, ws.max_row + 1)}
+    p1 = rows["P-1"]
+    assert ws.cell(row=p1, column=1).value == "Changed"
+    diff = ws.cell(row=p1, column=3).value
+    assert isinstance(diff, CellRichText) and str(diff) == "30  →  37"
+    assert ws.cell(row=rows["P-3"], column=1).value == "Added"
+    assert ws.cell(row=rows["P-3"], column=2).font.strike  # source strikethrough kept
+    assert ws.cell(row=rows["P-2"], column=1).value == "Deleted"
+    assert wb["Cell changes"].max_row == 2  # one changed cell
+
+    only_added = load_workbook(io.BytesIO(compare_to_xlsx(r, statuses={"added"}, columns=[0, 1])))
+    d = only_added["Differences"]
+    assert d.max_row == 2 and [c.value for c in d[1]][:3] == ["Status", "Tag", "kW"]

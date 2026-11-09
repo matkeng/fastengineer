@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { apiPostJson } from '../lib/engine';
+import { apiPostJson, apiPostJsonForBlob, runningInTauri } from '../lib/engine';
 import type { CompareResult } from '../lib/types';
 import { tableWizardStore } from './excelWizard';
 
@@ -33,6 +33,49 @@ export const useCompare = defineStore('compare', () => {
 		}
 	}
 
+	const exportMessage = ref<string | null>(null);
+
+	function defaultExportName(): string {
+		const stem = (n?: string) => (n ?? 'table').replace(/\.[^.]+$/, '');
+		const name = `compare ${stem(useOldTable().workbook?.filename)} vs ${stem(useNewTable().workbook?.filename)}.xlsx`;
+		return name.replace(/[\\/:*?"<>|]+/g, '_');
+	}
+
+	/** Export the comparison to .xlsx: Save As dialog on desktop, a download in a browser. */
+	async function exportXlsx(selection: { statuses: string[] | null; columns: number[] | null }) {
+		const a = useOldTable();
+		const b = useNewTable();
+		if (!a.spec || !b.spec) return;
+		const body = { a: a.spec, b: b.spec, options: options.value, ...selection };
+		exportMessage.value = null;
+		error.value = null;
+		try {
+			if (runningInTauri) {
+				const { save } = await import('@tauri-apps/plugin-dialog');
+				const path = await save({
+					defaultPath: defaultExportName(),
+					filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }],
+				});
+				if (!path) return; // cancelled
+				busy.value = true;
+				const res = await apiPostJson<{ path: string }>('/api/excel/compare/export', { ...body, path });
+				exportMessage.value = `Saved ${res.path}`;
+			} else {
+				busy.value = true;
+				const blob = await apiPostJsonForBlob('/api/excel/compare/export', body);
+				const url = URL.createObjectURL(blob);
+				const link = Object.assign(document.createElement('a'), { href: url, download: defaultExportName() });
+				link.click();
+				setTimeout(() => URL.revokeObjectURL(url), 10_000);
+				exportMessage.value = `Downloaded ${link.download}`;
+			}
+		} catch (err) {
+			error.value = err instanceof Error ? err.message : String(err);
+		} finally {
+			busy.value = false;
+		}
+	}
+
 	function edit(side: 'a' | 'b') {
 		const w = side === 'a' ? useOldTable() : useNewTable();
 		if (w.result) w.goTo(3); // back to the key column step
@@ -47,5 +90,5 @@ export const useCompare = defineStore('compare', () => {
 		stage.value = 'a';
 	}
 
-	return { stage, options, result, busy, error, run, edit, reset };
+	return { stage, options, result, busy, error, exportMessage, run, exportXlsx, edit, reset };
 });

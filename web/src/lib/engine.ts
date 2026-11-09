@@ -19,7 +19,7 @@ export function resolveEngineUrl(): Promise<string> {
 	return engineUrl;
 }
 
-async function request<T>(path: string, init?: RequestInit, baseUrl?: string): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, baseUrl?: string, as: 'json' | 'blob' = 'json'): Promise<T> {
 	const base = baseUrl ?? (await resolveEngineUrl());
 	const res = await fetch(`${base}${path}`, init);
 	if (!res.ok) {
@@ -34,7 +34,7 @@ async function request<T>(path: string, init?: RequestInit, baseUrl?: string): P
 		}
 		throw new Error(detail);
 	}
-	return (await res.json()) as T;
+	return (as === 'blob' ? await res.blob() : await res.json()) as T;
 }
 
 export function getJson<T>(baseUrl: string, path: string): Promise<T> {
@@ -52,6 +52,15 @@ export function apiPostJson<T>(path: string, body: unknown): Promise<T> {
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(body),
 	});
+}
+
+/** POST JSON and get a file back (e.g. an .xlsx export). */
+export function apiPostJsonForBlob(path: string, body: unknown): Promise<Blob> {
+	return request<Blob>(path, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	}, undefined, 'blob');
 }
 
 export function apiPostBytes<T>(path: string, body: Blob | ArrayBuffer): Promise<T> {

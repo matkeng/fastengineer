@@ -6,6 +6,7 @@ keyed table for review.
 """
 
 from .compare import CompareOptions, CompareResult, compare_tables
+from .export import compare_to_xlsx
 from .models import (
     CellOut,
     ColumnInfo,
@@ -22,6 +23,7 @@ __all__ = [
     "CompareOptions",
     "CompareResult",
     "compare_tables",
+    "compare_to_xlsx",
     "CellOut",
     "ColumnInfo",
     "ColumnsResult",

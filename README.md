@@ -127,6 +127,18 @@ header. The grid opens on **Any change**; the summary chips filter by status,
 **Changed columns only** hides columns with no differences, and Copy/CSV export
 what's visible (changed cells as `old → new`).
 
+**Excel (.xlsx)** exports the rows and columns currently shown (status filter
+and visible columns) to a formatted workbook: a Save As dialog in the desktop
+app, a download in a browser. It has three sheets:
+
+- **Differences**: one row per key, sorted by key and coloured by status; changed
+  cells as `old → new` (old in red, new in green); added and removed columns
+  labelled; the source strikethrough kept, including partial strikes;
+  filters and frozen header.
+- **Cell changes**: one row per changed cell (key, column, kind of change, old,
+  new, Excel rows), for filtering and review.
+- **Summary**: the two tables, counts, options and warnings.
+
 Comparison rules (`core/src/workbench_core/excel/compare.py`): keys, header names
 and text are compared ignoring case and extra spaces (switchable); numbers are
 compared as numbers (`2.50` = `2.5`); a change in strikethrough counts as a

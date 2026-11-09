@@ -19,6 +19,7 @@ export interface FilteredTable<Row> {
 	api: Api<Row>;
 	/** Set a select filter's value (e.g. from a summary chip) and redraw. */
 	setSelect: (column: number, value: string) => void;
+	getSelect: (column: number) => string | undefined;
 }
 
 /**
@@ -86,6 +87,9 @@ export function createFilteredTable<Row>(
 
 	return {
 		api,
+		getSelect(column) {
+			return selectEls.get(column)?.value;
+		},
 		setSelect(column, value) {
 			const select = selectEls.get(column);
 			if (!select) return;

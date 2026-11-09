@@ -6,7 +6,10 @@ import threading
 import uuid
 from collections import OrderedDict
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from pathlib import Path
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
@@ -20,6 +23,7 @@ from workbench_core.excel import (
     Workbook,
     WorkbookSummary,
     compare_tables,
+    compare_to_xlsx,
 )
 
 router = APIRouter(prefix="/api/excel", tags=["excel"])
@@ -146,3 +150,38 @@ def compare(req: CompareRequest) -> CompareResult:
     except ExcelError as exc:
         raise _bad_request(exc) from exc
     return compare_tables(a, b, req.options, a_label=a_label, b_label=b_label)
+
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+class CompareExportRequest(CompareRequest):
+    # Rows to include (None: all) and compare-column indices to include (None: all).
+    statuses: list[Literal["added", "deleted", "struck", "restored", "changed", "unchanged"]] | None = None
+    columns: list[int] | None = None
+    # Desktop: where to save (chosen in a Save As dialog). Omitted: the file is returned.
+    path: str | None = None
+
+
+@router.post("/compare/export")
+def export_compare(req: CompareExportRequest, request: Request):
+    # Require JSON so a cross-site page can't trigger a file write with a "simple"
+    # request: JSON forces a CORS preflight, which only the app's origins pass.
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        raise HTTPException(415, "Expected application/json")
+    result = compare(req)
+    data = compare_to_xlsx(result, req.options,
+                           statuses=set(req.statuses) if req.statuses is not None else None,
+                           columns=req.columns)
+    if req.path is None:
+        return Response(data, media_type=XLSX,
+                        headers={"Content-Disposition": 'attachment; filename="table-compare.xlsx"'})
+    target = Path(req.path)
+    if target.suffix.lower() != ".xlsx":
+        target = target.with_suffix(".xlsx")
+    try:
+        target.write_bytes(data)
+    except OSError as exc:  # e.g. the file is open in Excel
+        raise HTTPException(409, f"Could not save {target.name}: {exc.strerror or exc}. "
+                                 "Is it open in Excel?") from exc
+    return {"path": str(target)}

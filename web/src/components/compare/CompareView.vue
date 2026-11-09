@@ -34,6 +34,11 @@ function filter(v: StatusFilter) {
 	table.value?.setStatusFilter(v);
 }
 
+function exportXlsx() {
+	const sel = table.value?.exportSelection();
+	if (sel) void cmp.exportXlsx(sel);
+}
+
 function rerun() {
 	active.value = 'changes';
 	void cmp.run();
@@ -139,7 +144,7 @@ function sideLabel(w: typeof oldT) {
 						<label class="opt"><input v-model="cmp.options.ignore_case" type="checkbox" @change="rerun" /> Ignore case</label>
 						<label class="opt"><input v-model="cmp.options.compare_strike" type="checkbox" @change="rerun" /> Strikethrough counts as a change</label>
 					</div>
-					<CompareTable ref="table" :result="r" />
+					<CompareTable ref="table" :result="r" @export="exportXlsx" />
 				</div>
 			</div>
 			<p v-if="cmp.error" class="error">{{ cmp.error }}</p>
@@ -147,6 +152,8 @@ function sideLabel(w: typeof oldT) {
 				<button type="button" class="secondary" @click="cmp.edit('a')">Change old table</button>
 				<button type="button" class="secondary" @click="cmp.edit('b')">Change new table</button>
 				<span class="spacer" />
+				<span v-if="cmp.busy" class="busy">Working…</span>
+				<span v-else-if="cmp.exportMessage" class="saved" :title="cmp.exportMessage">✓ {{ cmp.exportMessage }}</span>
 				<button type="button" class="secondary" @click="cmp.reset()">New comparison</button>
 			</div>
 		</section>

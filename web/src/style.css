@@ -223,3 +223,6 @@ main.fill > .compare > .wizard { flex: 1; min-height: 320px; display: flex; flex
 .col-badge.deleted { background: color-mix(in srgb, #c62828 25%, transparent); }
 .col-badge.renamed { background: var(--border); }
 div.dt-buttons .dt-button.active { outline: 2px solid var(--accent); }
+
+.saved { color: var(--ok); font-size: 0.85rem; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+div.dt-buttons .dt-button.xlsx-export { font-weight: 700; }

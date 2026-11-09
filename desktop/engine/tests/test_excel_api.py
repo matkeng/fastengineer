@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import json
 from pathlib import Path
 
 import pytest
@@ -7,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from workbench_desktop.app import app
 
+XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 SAMPLE = Path(__file__).resolve().parents[3] / "samples" / "cable-schedule-sample.xlsx"
 client = TestClient(app)
 
@@ -67,3 +70,25 @@ def test_compare_flow() -> None:
     gone = client.post("/api/excel/compare", json={
         "a": {**spec, "workbook_id": "nope"}, "b": {**spec, "workbook_id": "nope"}})
     assert gone.status_code == 404
+
+
+@pytest.mark.skipif(not REV_D.exists(), reason="sample workbooks not generated")
+def test_compare_export(tmp_path: Path) -> None:
+    from openpyxl import load_workbook
+
+    spec = {"source": "sheet:Cable Schedule", "header_row": 4, "header_rows": 2, "key_column": 0}
+    body = {"a": {**spec, "workbook_id": _open(SAMPLE)}, "b": {**spec, "workbook_id": _open(REV_D)},
+            "statuses": ["added", "deleted", "struck", "restored", "changed"]}
+    res = client.post("/api/excel/compare/export", json=body)
+    assert res.status_code == 200 and res.headers["content-type"].startswith(XLSX_TYPE)
+    wb = load_workbook(io.BytesIO(res.content))
+    assert wb["Differences"].max_row == 1 + 8  # header + rows with changes
+
+    target = tmp_path / "out"  # extension added
+    res = client.post("/api/excel/compare/export", json={**body, "path": str(target)})
+    assert res.status_code == 200 and res.json()["path"].endswith("out.xlsx")
+    assert (tmp_path / "out.xlsx").stat().st_size > 1000
+
+    res = client.post("/api/excel/compare/export", content=json.dumps(body),
+                      headers={"Content-Type": "text/plain"})
+    assert res.status_code in (415, 422)  # no simple (non-preflighted) writes
