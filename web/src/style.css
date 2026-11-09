@@ -801,3 +801,16 @@ main.fill > .gen > .wizard { flex: 1; min-height: 320px; display: flex; flex-dir
 .hw-types { display: flex; flex-direction: column; gap: 6px; overflow: auto; }
 .hw-types h4 { margin: 8px 0 0; }
 @media (max-width: 760px) { .hw-layout { grid-template-columns: 1fr; } .gen-hw input.wide { min-width: 0; } }
+
+/* bulk import preview */
+.bulk-sheets td { vertical-align: middle; }
+.bulk-sheets tr.same td { color: var(--muted); }
+.bulk-sheets tr.err td { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.bulk-sheets td.plus { color: var(--ok); font-weight: 700; }
+.bulk-sheets td.minus { color: var(--danger); font-weight: 700; }
+.bulk-sheets td.change { color: var(--warn); font-weight: 700; }
+.bulk-sheets tr.detail td { background: var(--bg); }
+.bulk-changes { margin: 0; padding-left: 16px; max-height: 260px; overflow: auto; font-size: 0.82rem; }
+.bulk-changes li { margin: 2px 0; }
+.bulk-changes .cell-change { margin-left: 8px; color: var(--muted); }
+.bulk-changes .cell-change s { color: var(--danger); }

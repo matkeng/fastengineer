@@ -297,3 +297,16 @@ export interface HardwareView {
 }
 
 export const newId = () => Math.random().toString(16).slice(2, 14);
+
+// -- bulk editing workbook (mirrors generators/bulk.py) ----------------------------------------
+
+export interface SheetPreview {
+	sheet: string; table: string; rows: number; added: number; removed: number; changed: number;
+	changes: { key: string; kind: 'added' | 'removed' | 'changed'; cells: [string, string, string][] }[];
+	errors: string[]; notes: string[];
+}
+export interface InputsImport {
+	preview: { sheets: SheetPreview[]; ignored_sheets: string[] };
+	applied: string[];
+	record: GenRecord | null;
+}

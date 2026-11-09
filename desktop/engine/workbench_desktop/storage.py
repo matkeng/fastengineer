@@ -727,6 +727,13 @@ class GeneratorStore:
         with self._lock, self._db:
             self._db.execute("DELETE FROM gen_generators WHERE id = ?", (rid,))
 
+    def replace_tables(self, rid: str, tables: dict[str, GenTable]) -> None:
+        self.get(rid)
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM gen_tables WHERE generator_id = ?", (rid,))
+            self._db.executemany("INSERT INTO gen_tables VALUES (?, ?, ?)",
+                                 [(rid, n, t.model_dump_json()) for n, t in tables.items()])
+
     # -- builds ------------------------------------------------------------------
 
     def add_build(self, info: BuildInfo, result: BuildResult) -> BuildInfo:

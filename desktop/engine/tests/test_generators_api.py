@@ -234,3 +234,46 @@ def test_hardware_register_check_summary_and_export(tmp_path: Path):
     assert client.get("/api/generators/nope/hardware").status_code == 404
     client.delete(f"/api/generators/{rid}")  # cascade
     assert client.get("/api/dashboard").json()["counts"]["plc_panels"] == 0
+
+
+# -- bulk editing workbook -------------------------------------------------------------------------
+
+def test_inputs_export_preview_and_apply(tmp_path: Path):
+    rid = _import()["record"]["id"]
+    client.put(f"/api/generators/{rid}/hardware", json=_hw("net", "di16"))
+    res = client.post(f"/api/generators/{rid}/inputs/export", json={})
+    assert res.status_code == 200 and 'inputs.xlsx' in res.headers["content-disposition"]
+    wb = load_workbook(io.BytesIO(res.content))
+    assert "PLC cards" in wb.sheetnames and "T Codes" in wb.sheetnames
+    wb["RunSheet"]["G3"] = "BULK EDITED"
+    wb["PLC cards"].append(["PNL1", None, None, 1, "rack", None, 1, 3, "AI8"])
+    wb["T Codes"].append(["R230 - Power - 2C+E - 25"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    q = {"filename": "inputs.xlsx"}
+    pv = client.post(f"/api/generators/{rid}/inputs/import", params=q, content=buf.getvalue()).json()
+    changed = {s["table"]: (s["added"], s["removed"], s["changed"]) for s in pv["preview"]["sheets"]}
+    assert changed["runsheet"] == (0, 0, 1) and changed["hardware"] == (1, 0, 0) and changed["table:Codes"] == (1, 0, 0)
+    assert pv["applied"] == [] and pv["record"] is None
+    assert client.get(f"/api/generators/{rid}").json()["generator"]["runsheet"]["rows"][0]["values"][5] != "BULK EDITED"
+    out = client.post(f"/api/generators/{rid}/inputs/import", params={**q, "apply": "runsheet,hardware,table:Codes"},
+                      content=buf.getvalue()).json()
+    assert out["applied"] == ["runsheet", "hardware", "table:Codes"]
+    assert out["record"]["generator"]["runsheet"]["rows"][0]["values"][5] == "BULK EDITED"
+    assert client.get(f"/api/generators/{rid}/hardware").json()["summary"]["cards"] == 3
+    assert len(client.get(f"/api/generators/{rid}/tables/Codes").json()["rows"]) == 6
+    # nothing left to change after applying
+    pv = client.post(f"/api/generators/{rid}/inputs/import", params=q, content=buf.getvalue()).json()
+    assert {s["table"]: s["changed"] + s["added"] + s["removed"] for s in pv["preview"]["sheets"]}["runsheet"] == 0
+    # errors: a sheet with errors can't be applied; a removed type in use is refused
+    wb["RunSheet"]["A1"] = "x"
+    wb["Card types"].delete_rows(2)  # the network adapter type, used by rack 1
+    buf = io.BytesIO()
+    wb.save(buf)
+    res = client.post(f"/api/generators/{rid}/inputs/import", params={**q, "apply": "runsheet"}, content=buf.getvalue())
+    assert res.status_code == 422
+    res = client.post(f"/api/generators/{rid}/inputs/import", params={**q, "apply": "card_types"}, content=buf.getvalue())
+    assert res.status_code == 422 and "missing from the types" in res.json()["detail"]
+    assert client.post(f"/api/generators/{rid}/inputs/import", params=q, content=b"nope").status_code == 400
+    out = client.post(f"/api/generators/{rid}/inputs/export", json={"path": str(tmp_path / "in")}).json()
+    assert out["path"].endswith("in.xlsx") and (tmp_path / "in.xlsx").stat().st_size > 2000

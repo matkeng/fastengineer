@@ -4,7 +4,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { apiDelete, apiGet, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, runningInTauri } from '../lib/engine';
 import type {
-	BuildInfo, BuildRecord, Catalogue, CheckResult, GenRecord, GenSummary, Hardware, HardwareView, ImportReport, PreviewResult,
+	BuildInfo, BuildRecord, Catalogue, InputsImport, CheckResult, GenRecord, GenSummary, Hardware, HardwareView, ImportReport, PreviewResult,
 } from '../lib/genTypes';
 
 export type GenTab = 'runsheet' | 'templates' | 'check' | 'build' | 'hardware' | 'settings';
@@ -270,7 +270,49 @@ export const useGenerators = defineStore('generators', () => {
 		});
 	}
 
+	// -- bulk editing in Excel ---------------------------------------------------------
+
+	async function exportInputs() {
+		if (!draft.value) return;
+		const url = `${base.value}/inputs/export`;
+		const name = `${draft.value.name} inputs.xlsx`.replace(/[\\/:*?"<>|]+/g, '_');
+		message.value = null;
+		await run(async () => {
+			if (runningInTauri) {
+				const { save: saveDialog } = await import('@tauri-apps/plugin-dialog');
+				const path = await saveDialog({ defaultPath: name, filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }] });
+				if (!path) return;
+				const res = await apiPostJson<{ path: string }>(url, { path });
+				message.value = `Saved ${res.path}`;
+			} else {
+				const blob = await apiPostJsonForBlob(url, {});
+				const href = URL.createObjectURL(blob);
+				Object.assign(document.createElement('a'), { href, download: name }).click();
+				setTimeout(() => URL.revokeObjectURL(href), 10_000);
+				message.value = `Downloaded ${name}`;
+			}
+		});
+	}
+
+	/** Preview (no tables) or apply the chosen tables of an edited inputs workbook. */
+	async function importInputs(file: File, tables: string[] = []) {
+		const q = new URLSearchParams({ filename: file.name, apply: tables.join(',') });
+		const res = await run(() => apiPostBytes<InputsImport>(`${base.value}/inputs/import?${q}`, file));
+		if (res?.record) {
+			saved.value = res.record;
+			draft.value = clone(res.record);
+			if (tables.includes('hardware') || tables.includes('card_types') || tables.includes('rack_types')) {
+				catDraft.value = null;
+				await loadHardware();
+			}
+			message.value = `Imported ${tables.length} sheet${tables.length === 1 ? '' : 's'}`;
+			void check();
+		}
+		return res;
+	}
+
 	return {
+		exportInputs, importInputs,
 		hwSaved, hwDraft, hwView, catSaved, catDraft, hwDirty, catDirty, anyDirty,
 		loadHardware, saveHardware, discardHardware, checkHardware, saveCatalogue, discardCatalogue, addDefaultTypes,
 		exportHardware,

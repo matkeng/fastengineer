@@ -7,6 +7,7 @@ import { type ImportReport, KIND_LABELS } from '../../lib/genTypes';
 import { type GenTab, useGenerators } from '../../stores/generators';
 import AppModal from '../common/AppModal.vue';
 import GenBuild from './GenBuild.vue';
+import GenBulkImport from './GenBulkImport.vue';
 import GenCheck from './GenCheck.vue';
 import GenHardware from './GenHardware.vue';
 import GenRunsheet from './GenRunsheet.vue';
@@ -17,6 +18,19 @@ const g = useGenerators();
 const fileInput = ref<HTMLInputElement | null>(null);
 const over = ref(false);
 const reportOpen = ref(false);
+const bulkInput = ref<HTMLInputElement | null>(null);
+const bulkFile = ref<File | null>(null);
+
+function pickBulk(files: FileList | null | undefined) {
+	const f = files?.[0];
+	if (bulkInput.value) bulkInput.value.value = '';
+	if (!f) return;
+	if (g.anyDirty && !confirm('Save or discard your unsaved edits first: importing replaces whole tables. Continue anyway (the edits will be lost)?')) return;
+	g.discard();
+	g.discardHardware();
+	g.discardCatalogue();
+	bulkFile.value = f;
+}
 
 const errors = computed(() => g.checkResult?.findings.filter((f) => f.severity === 'ERROR').length ?? 0);
 const TABS = computed<{ id: GenTab; label: string; count?: number; tone?: string }[]>(() => [
@@ -120,6 +134,9 @@ onMounted(() => g.refreshList());
 				<input v-model="g.draft.name" class="name-input" aria-label="Generator name" />
 				<span class="chip">{{ KIND_LABELS[g.draft.kind] ?? g.draft.kind }}</span>
 				<button v-if="report" type="button" class="secondary small" @click="reportOpen = true">Import report</button>
+				<button type="button" class="secondary small" :disabled="g.anyDirty || g.busy" :title="g.anyDirty ? 'Save first' : 'Every input table in one workbook, for editing in Excel'" @click="g.exportInputs()">Export inputs</button>
+				<button type="button" class="secondary small" :disabled="g.busy" @click="bulkInput?.click()">Import inputs…</button>
+				<input ref="bulkInput" type="file" accept=".xlsx" hidden @change="pickBulk(($event.target as HTMLInputElement).files)" />
 				<span class="spacer" />
 				<span v-if="g.dirty" class="unsaved">● Unsaved changes</span>
 				<span v-else-if="g.message" class="saved" :title="g.message">✓ {{ g.message }}</span>
@@ -137,6 +154,7 @@ onMounted(() => g.refreshList());
 			</div>
 		</section>
 
+		<GenBulkImport :file="bulkFile" @close="bulkFile = null" />
 		<AppModal :open="reportOpen && !!report" :title="`Import report: ${report?.workbook ?? ''}`" @close="reportOpen = false">
 			<template v-if="report">
 				<p>

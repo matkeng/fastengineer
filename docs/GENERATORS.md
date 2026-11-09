@@ -63,7 +63,20 @@ cell for cell, in **compatibility mode**.
    - **Export .xlsx:** the card schedule.
 
    IO points are not assigned to channels yet; that is the next step.
-7. **Settings**: the config (tags, run range, expansion flags, compatibility or standard mode, document fields).
+7. **Export inputs / Import inputs…** (generator header): bulk editing in Excel.
+   - **Export inputs** writes every input table to one workbook, one sheet per table:
+     - RunSheet (labels row, tags row, then one row per run; column A is the run's Row ID);
+     - Templates (calculated cells show as `ƒ kind`);
+     - Parents, Derived tags, Routes, Cable prefixes;
+     - PLC cards (one row per card; the card type can be its ID, part number or e.g. `DI16`);
+     - Card types, Rack types;
+     - one `T <name>` sheet per lookup table.
+
+     An About sheet explains the layout.
+   - **Import inputs…** reads the edited workbook and shows, per sheet, the rows added, removed and changed (old → new per column), plus any errors. Tick the sheets to apply; nothing is saved before Apply.
+   - Sheets deleted from the workbook, or not ticked, are left unchanged. Sheets with errors can't be applied.
+   - Card and rack types are shared by every generator, and a type still used by a rack can't be removed.
+8. **Settings**: the config (tags, run range, expansion flags, compatibility or standard mode, document fields).
 
 The dashboard counts generators and builds, and lists them in recent activity.
 `samples/generator-sample.xlsx` (invented data, written by `scripts/make-generator-sample.py`) is used by the engine tests and the Windows CI smoke test.

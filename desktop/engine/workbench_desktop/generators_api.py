@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from workbench_core.generators import BuildError, build, check
 from workbench_core.generators.check import CheckResult
+from workbench_core.generators.bulk import BulkPreview, Inputs, apply_inputs, read_inputs, write_inputs
 from workbench_core.generators.editable import BuildInfo, BuildRecord, GenRecord, GenSummary, input_hash, merge, split
 from workbench_core.generators.expand import discover_tags
 from workbench_core.generators.hardware import (Catalogue, Hardware, HardwareSummary, ScheduleRow, check_hardware,
@@ -357,3 +358,85 @@ def export_hardware(rid: str, body: ExportBody, request: Request):
     except OSError as exc:
         raise HTTPException(409, f"Could not write {target}: {exc.strerror or exc}. Is it open in another program?") from exc
     return {"path": str(target)}
+
+
+# -- bulk editing in Excel: every input table in one workbook -------------------------------
+
+def _inputs(rid: str) -> Inputs:
+    store = get_generators()
+    rec = _record(rid)
+    return Inputs(generator=merge(rec.generator, store.tables(rid)), hardware=store.hardware(rid), catalogue=store.catalogue())
+
+
+@router.post("/{rid}/inputs/export")
+def export_inputs(rid: str, body: ExportBody, request: Request):
+    """All input tables (runsheet, templates, parents, derived tags, routes, prefixes, PLC cards,
+    card and rack types, lookup tables) in one .xlsx for editing outside the app."""
+    _json_only(request)
+    rec = _record(rid)
+    data = write_inputs(_inputs(rid), rec.name)
+    name = f"{rec.name} inputs.xlsx".replace("/", "_")
+    if body.path is None:
+        return Response(data, media_type=MEDIA["xlsx"], headers={"Content-Disposition": f'attachment; filename="{name}"'})
+    target = Path(body.path)
+    if target.suffix.lower() != ".xlsx":
+        target = target.with_suffix(".xlsx")
+    try:
+        target.write_bytes(data)
+    except OSError as exc:
+        raise HTTPException(409, f"Could not write {target}: {exc.strerror or exc}. Is it open in another program?") from exc
+    return {"path": str(target)}
+
+
+class InputsImport(BaseModel):
+    preview: BulkPreview
+    applied: list[str] = []
+    record: GenRecord | None = None
+
+
+@router.post("/{rid}/inputs/import", response_model=InputsImport)
+async def import_inputs(rid: str, request: Request, filename: str = Query(...), apply: str = Query("")):
+    """Without `apply`: a per-sheet preview of what the file would change (nothing is saved).
+    With `apply=runsheet,templates,...`: those sheets are saved (sheets with errors never are)."""
+    data = await request.body()
+    if len(data) > MAX_UPLOAD:
+        raise HTTPException(413, "The file is larger than 100 MB.")
+    current = _inputs(rid)
+    try:
+        preview, parsed = await run_in_threadpool(read_inputs, data, current)
+    except ValueError as exc:
+        raise HTTPException(400, f"Could not read {filename}: {exc}") from exc
+    chosen = [t for t in (x.strip() for x in apply.split(",")) if t]
+    if not chosen:
+        return InputsImport(preview=preview)
+    bad = [t for t in chosen if t not in parsed]
+    if bad:
+        return _invalid(f"These sheets can't be applied (missing or with errors): {', '.join(bad)}", "apply")
+    new = apply_inputs(current, parsed, chosen)
+    try:
+        discover_tags(new.generator)
+    except BuildError as exc:
+        return _invalid(f"RunSheet: {exc}", "runsheet")
+    store = get_generators()
+    if any(t in chosen for t in ("card_types", "rack_types")) or "hardware" in chosen:
+        # every rack and card (this generator's new register, and the others') must use a known type
+        racks, cards = set(), set()
+        for g in store.list():
+            hw = new.hardware if g.id == rid else store.hardware(g.id)
+            for p in hw.panels:
+                for r in p.racks:
+                    racks.add(r.rack_type_id)
+                    cards.update(c.card_type_id for c in r.cards if c is not None)
+        missing = (racks - {t.id for t in new.catalogue.rack_types}) | (cards - {t.id for t in new.catalogue.card_types})
+        if missing:
+            return _invalid(f"{len(missing)} card or rack type(s) used by racks are missing from the types sheets.", "catalogue")
+    gen, tables = split(new.generator)
+    rec = _record(rid)
+    store.save(rid, rec.name, gen)
+    if any(t.startswith("table:") for t in chosen):
+        store.replace_tables(rid, tables)
+    if "hardware" in chosen:
+        store.save_hardware(rid, new.hardware)
+    if any(t in chosen for t in ("card_types", "rack_types")):
+        store.save_catalogue(new.catalogue)
+    return InputsImport(preview=preview, applied=chosen, record=_record(rid))
