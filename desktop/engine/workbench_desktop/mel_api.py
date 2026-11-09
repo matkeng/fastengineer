@@ -184,21 +184,21 @@ def upload_excel(recipe_id: str, body: ExcelSource) -> RevisionInfo:
     return _add(recipe_id, wb.filename, f"excel: {ex.source.name}", key, original, headers, rows, list(ex.warnings))
 
 
-class PidSource(BaseModel):
+class SymbolsSource(BaseModel):
     run_id: str
 
 
-@router.post("/recipes/{recipe_id}/revisions/pid", response_model=RevisionInfo)
-def upload_pid(recipe_id: str, body: PidSource) -> RevisionInfo:
-    """Add the P&ID tags list from a finished analysis run as a new revision."""
-    from .pid_api import run_tags
+@router.post("/recipes/{recipe_id}/revisions/symbols", response_model=RevisionInfo)
+def upload_symbols(recipe_id: str, body: SymbolsSource) -> RevisionInfo:
+    """Add the tags list from a finished symbol-detection run as a new revision."""
+    from .symbols_api import run_tags
     run, sheets, table = run_tags(body.run_id)
     if not table.rows:
         raise HTTPException(400, "That run found no tags, so there is nothing to import.")
     drawings = len({s.file_name for s in sheets})
-    name = f"P&ID tags {run.finished_at:%Y-%m-%d %H:%M}" if run.finished_at else "P&ID tags"
+    name = f"Tags {run.finished_at:%Y-%m-%d %H:%M}" if run.finished_at else "Tags"
     rows = [dict(r) for r in table.rows]
-    return _add(recipe_id, name, f"pid: {drawings} drawing(s), {len(sheets)} sheet(s)", "Tag",
+    return _add(recipe_id, name, f"symbols: {drawings} drawing(s), {len(sheets)} sheet(s)", "Tag",
                 list(table.headers), list(table.headers), rows, list(run.warnings[:20]))
 
 

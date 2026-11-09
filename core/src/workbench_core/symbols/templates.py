@@ -1,4 +1,4 @@
-"""Block-template images: crop from a page render, and build the stroke mask (PRD 5.4)."""
+"""Template images: crop from a page render, and the masks that say which pixels are scored."""
 
 from __future__ import annotations
 
@@ -58,3 +58,22 @@ def trim(gray, pad: int = 2):
         raise ValueError("The box has no linework in it.")
     h, w = gray.shape[:2]
     return gray[max(ys.min() - pad, 0):min(ys.max() + pad + 1, h), max(xs.min() - pad, 0):min(xs.max() + pad + 1, w)].copy()
+
+
+def custom_mask(png_gray, shape):
+    """A user mask (white = scored) as a binary array the template's size."""
+    import cv2
+    import numpy as np
+    m = png_gray
+    if m.shape[:2] != tuple(shape[:2]):
+        m = cv2.resize(m, (shape[1], shape[0]), interpolation=cv2.INTER_NEAREST)
+    return np.where(m > 127, 255, 0).astype(np.uint8)
+
+
+def effective_mask(mode: str, gray, buffer_space: int, custom=None):
+    """The mask a template is matched with, or None for the whole rectangle."""
+    if mode == "none":
+        return None
+    if mode == "custom" and custom is not None:
+        return custom_mask(custom, gray.shape)
+    return make_mask(gray, buffer_space)

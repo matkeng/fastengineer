@@ -116,9 +116,9 @@ export const useMel = defineStore('mel', () => {
 		return info;
 	}
 
-	/** Add the P&ID tags list of a finished analysis run as a new revision. */
-	async function uploadPid(runId: string) {
-		const info = await run(() => apiPostJson<RevisionInfo>(`${base.value}/revisions/pid`, { run_id: runId }));
+	/** Add the tags list of a finished symbol-detection run as a new revision. */
+	async function uploadSymbols(runId: string) {
+		const info = await run(() => apiPostJson<RevisionInfo>(`${base.value}/revisions/symbols`, { run_id: runId }));
 		if (info) await reloadRevisions();
 		return info;
 	}
@@ -164,7 +164,7 @@ export const useMel = defineStore('mel', () => {
 
 	return {
 		tab, recipes, saved, draft, revisions, fields, outputName, busy, error, message, dirty, latest,
-		refreshList, open, create, close, save, discard, remove, inspectCsv, uploadCsv, uploadExcel, uploadPid,
+		refreshList, open, create, close, save, discard, remove, inspectCsv, uploadCsv, uploadExcel, uploadSymbols,
 		deleteRevision, runStage, loadList, exportTable,
 	};
 });

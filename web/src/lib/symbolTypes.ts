@@ -1,4 +1,4 @@
-// Mirrors workbench_core.pid.models. Boxes are [x1, y1, x2, y2] in page-image pixels (200 DPI).
+// Mirrors workbench_core.symbols.models. Boxes are [x1, y1, x2, y2] in page-image pixels (200 DPI).
 export type Box = [number, number, number, number];
 export type TextSource = 'pdf' | 'ocr' | 'none';
 
@@ -14,11 +14,30 @@ export interface PageInfo {
 	warnings: string[];
 }
 
+export interface Exclusion { words: string[]; areas: Box[] }
+
+export interface Library {
+	id: string;
+	name: string;
+	description: string;
+	tag_pattern: string;
+	tag_format: string;
+	pattern_scan: boolean;
+	scan_stacked: boolean;
+	min_pdf_words: number;
+	default_threshold: number;
+	exclusion: Exclusion;
+	created_at: string | null;
+}
+
+export interface LibrarySummary extends Library { templates: number; drawings: number; columns: string[] }
+
+export type MaskMode = 'auto' | 'custom' | 'none';
+
 export interface Drawing {
 	id: string;
 	file_name: string;
-	drawing_type: string;
-	block_set: string;
+	library_id: string;
 	force_ocr: boolean;
 	pages: PageInfo[];
 	status: 'rendering' | 'ready' | 'error';
@@ -31,14 +50,13 @@ export interface Variants { rot90: boolean; rot180: boolean; rot270: boolean; mi
 
 export interface Template {
 	id: string;
+	library_id: string;
 	desc: string;
-	drawing_type: string;
-	block_set: string;
 	priority: number;
 	active: boolean;
 	threshold: number;
+	mask_mode: MaskMode;
 	buffer_space: number;
-	use_mask: boolean;
 	variants: Variants;
 	scales: number[];
 	max_hits: number;
@@ -46,6 +64,7 @@ export interface Template {
 	points: TagPoint[];
 	width: number;
 	height: number;
+	has_custom_mask: boolean;
 }
 
 export interface PageOverride { template_id: string; threshold: number | null; ignore: boolean }
@@ -62,9 +81,7 @@ export interface Symbol {
 
 export interface FoundTag {
 	tag: string;
-	function: string;
-	loop: string;
-	suffix: string;
+	groups: Record<string, string>;
 	source: 'template' | 'pattern';
 	template_desc: string;
 	box: Box;
@@ -82,18 +99,10 @@ export interface PageResult {
 	warnings: string[];
 }
 
-export interface Exclusion { words: string[]; areas: Box[] }
-
-export interface Settings {
-	tag_pattern: string;
-	pattern_scan: boolean;
-	min_pdf_words: number;
-	exclusions: Record<string, Exclusion>;
-}
-
 export interface RunInfo {
 	id: string;
 	doc_ids: string[];
+	columns: string[];
 	status: 'queued' | 'running' | 'done' | 'cancelled' | 'error';
 	done_steps: number;
 	total_steps: number;
@@ -105,9 +114,6 @@ export interface RunInfo {
 	tag_count: number;
 }
 
-export interface Library { drawing_type: string; block_set: string; templates: number; drawings: number }
 export interface OcrStatus { available: boolean; engine: string | null; reason: string | null }
 export interface TagsTable { headers: string[]; rows: Record<string, string>[] }
 export interface TestResult { symbols: Symbol[]; best: number; skipped: string | null }
-
-export const libKey = (o: { drawing_type: string; block_set: string }) => `${o.drawing_type}/${o.block_set}`;

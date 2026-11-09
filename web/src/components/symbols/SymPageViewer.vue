@@ -1,20 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { Box, PageOverride, PageResult, Word } from '../../lib/pidTypes';
-import { libKey } from '../../lib/pidTypes';
-import { usePid } from '../../stores/pid';
+import type { Box, PageOverride, PageResult, Word } from '../../lib/symbolTypes';
+import { useSymbols } from '../../stores/symbols';
 
 const props = defineProps<{ docId: string; page: number }>();
-const pid = usePid();
+const sym = useSymbols();
 
-const drawing = computed(() => pid.drawings.find((d) => d.id === props.docId) ?? null);
+const drawing = computed(() => sym.drawings.find((d) => d.id === props.docId) ?? null);
 const info = computed(() => drawing.value?.pages[props.page - 1] ?? null);
-const libTemplates = computed(() =>
-	drawing.value ? pid.templates.filter((t) => libKey(t) === libKey(drawing.value!)) : [],
-);
-const exclusion = computed(() => (drawing.value ? pid.settings?.exclusions[libKey(drawing.value)] : undefined));
+const lib = computed(() => sym.libraries.find((l) => l.id === drawing.value?.library_id) ?? null);
+const libTemplates = computed(() => (drawing.value ? sym.templates.filter((t) => t.library_id === drawing.value!.library_id) : []));
+const exclusion = computed(() => lib.value?.exclusion);
 const testHere = computed(() =>
-	pid.test && pid.test.doc === props.docId && pid.test.page === props.page ? pid.test : null,
+	sym.test && sym.test.doc === props.docId && sym.test.page === props.page ? sym.test : null,
 );
 
 const host = ref<HTMLDivElement | null>(null);
@@ -50,17 +48,17 @@ async function load() {
 	selection.value = null;
 	try {
 		const [bmp, res, ovs] = await Promise.all([
-			pid.pageImage(props.docId, props.page),
-			pid.pageResult(props.docId, props.page),
-			pid.overrides(props.docId, props.page),
+			sym.pageImage(props.docId, props.page),
+			sym.pageResult(props.docId, props.page),
+			sym.overrides(props.docId, props.page),
 		]);
 		img.value = bmp;
 		result.value = res;
 		overrides.value = Object.fromEntries(ovs.map((o) => [o.template_id, o]));
-		words.value = show.value.words ? await pid.pageWords(props.docId, props.page) : [];
+		words.value = show.value.words ? await sym.pageWords(props.docId, props.page) : [];
 		fit();
 	} catch (err) {
-		pid.error = err instanceof Error ? err.message : String(err);
+		sym.error = err instanceof Error ? err.message : String(err);
 	} finally {
 		loading.value = false;
 	}
@@ -269,17 +267,17 @@ function pick(e: PointerEvent) {
 
 // -- actions -------------------------------------------------------------------
 async function analyse() {
-	const r = await pid.analysePage(props.docId, props.page);
+	const r = await sym.analysePage(props.docId, props.page);
 	if (r) {
 		result.value = r;
-		pid.test = null;
+		sym.test = null;
 		draw();
 	}
 }
 
 async function createTemplate() {
 	if (!selection.value) return;
-	const t = await pid.templateFromPage(props.docId, props.page, selection.value, newName.value || 'Symbol');
+	const t = await sym.templateFromPage(props.docId, props.page, selection.value, newName.value || 'Symbol');
 	if (t) {
 		selection.value = null;
 		newName.value = '';
@@ -288,15 +286,14 @@ async function createTemplate() {
 }
 
 async function addExclusion() {
-	if (!selection.value || !img.value || !pid.settings || !drawing.value) return;
-	const s = JSON.parse(JSON.stringify(pid.settings));
-	const key = libKey(drawing.value);
-	s.exclusions[key] ??= { words: [], areas: [] };
+	if (!selection.value || !img.value || !drawing.value) return;
 	const b = selection.value;
+	const iw = img.value.width;
+	const ih = img.value.height;
 	const r = (v: number) => Math.round(v * 10000) / 10000;
-	s.exclusions[key].areas.push([r(b[0] / img.value.width), r(b[1] / img.value.height), r(b[2] / img.value.width), r(b[3] / img.value.height)]);
-	if (await pid.saveSettings(s)) {
-		pid.message = `Text in that area is now ignored on every ${key} sheet. Analyse again to apply it.`;
+	const area: Box = [r(b[0] / iw), r(b[1] / ih), r(b[2] / iw), r(b[3] / ih)];
+	if (await sym.patchLibrary(drawing.value.library_id, (l) => l.exclusion.areas.push(area))) {
+		sym.message = `Text in that area is now ignored on every sheet that uses “${lib.value?.name}”. Analyse again to apply it.`;
 		selection.value = null;
 		mode.value = 'pan';
 		draw();
@@ -305,26 +302,26 @@ async function addExclusion() {
 
 async function setOv(templateId: string, patch: Partial<PageOverride> | null) {
 	if (patch === null) {
-		await pid.setOverride(props.docId, props.page, { template_id: templateId, clear: true });
+		await sym.setOverride(props.docId, props.page, { template_id: templateId, clear: true });
 		delete overrides.value[templateId];
 	} else {
 		const base: PageOverride = overrides.value[templateId] ?? { template_id: templateId, threshold: null, ignore: false };
 		const ov: PageOverride = { ...base, ...patch };
-		if (await pid.setOverride(props.docId, props.page, ov)) overrides.value[templateId] = ov;
+		if (await sym.setOverride(props.docId, props.page, ov)) overrides.value[templateId] = ov;
 	}
 }
 
 function goPage(n: number) {
 	if (!drawing.value || n < 1 || n > drawing.value.pages.length) return;
-	pid.show({ kind: 'drawing', id: props.docId, page: n });
+	sym.show({ kind: 'drawing', id: props.docId, page: n });
 }
 
 watch(() => [props.docId, props.page, drawing.value?.status], load);
 watch(() => show.value.words, async (on) => {
-	words.value = on ? await pid.pageWords(props.docId, props.page) : [];
+	words.value = on ? await sym.pageWords(props.docId, props.page) : [];
 	draw();
 });
-watch([show, exclusion, testHere, () => pid.templates], draw, { deep: true });
+watch([show, exclusion, testHere, () => sym.templates], draw, { deep: true });
 watch(mode, () => { selection.value = null; draw(); });
 
 let ro: ResizeObserver | null = null;
@@ -337,8 +334,8 @@ onBeforeUnmount(() => ro?.disconnect());
 </script>
 
 <template>
-	<section class="card pid-main pid-viewer">
-		<div class="pid-toolbar">
+	<section class="card sym-main sym-viewer">
+		<div class="sym-toolbar">
 			<strong class="name" :title="drawing?.file_name">{{ drawing?.file_name }}</strong>
 			<span class="row tight">
 				<button type="button" class="secondary small" :disabled="page <= 1" @click="goPage(page - 1)">‹</button>
@@ -356,59 +353,59 @@ onBeforeUnmount(() => ro?.disconnect());
 				<button type="button" class="secondary small" @click="fit">Fit</button>
 			</span>
 			<span class="spacer" />
-			<button type="button" :disabled="pid.busy || drawing?.status !== 'ready'" @click="analyse">Analyse page</button>
+			<button type="button" :disabled="sym.busy || drawing?.status !== 'ready'" @click="analyse">Analyse page</button>
 			<button type="button" class="secondary small" :title="side ? 'Hide the side panel' : 'Show the side panel'" @click="side = !side">{{ side ? '⇥' : '⇤' }}</button>
 		</div>
 
-		<div v-if="testHere" class="pid-banner test">
+		<div v-if="testHere" class="sym-banner test">
 			<span>
 				Testing <strong>{{ testHere.template.desc }}</strong>: {{ testHere.result.symbols.length }} match(es) at threshold
 				{{ testHere.template.threshold }} · best score {{ testHere.result.best.toFixed(3) }}
 				<template v-if="testHere.result.skipped"> · <span class="warn">{{ testHere.result.skipped }}</span></template>
 			</span>
-			<button type="button" class="small" @click="pid.openTemplate(testHere.template.id)">Back to the template</button>
-			<button type="button" class="secondary small" @click="pid.test = null">Clear test</button>
+			<button type="button" class="small" @click="sym.backToTemplate()">Back to the template</button>
+			<button type="button" class="secondary small" @click="sym.test = null">Clear test</button>
 		</div>
-		<p v-if="pid.error" class="error">{{ pid.error }}</p>
-		<p v-else-if="pid.message" class="saved">{{ pid.message }}</p>
+		<p v-if="sym.error" class="error">{{ sym.error }}</p>
+		<p v-else-if="sym.message" class="saved">{{ sym.message }}</p>
 
-		<div class="pid-body" :class="{ 'no-side': !side }">
-			<div ref="host" class="pid-canvas-host" :class="`mode-${mode}`">
+		<div class="sym-body" :class="{ 'no-side': !side }">
+			<div ref="host" class="sym-canvas-host" :class="`mode-${mode}`">
 				<canvas ref="canvas" @pointerdown="onDown" @pointermove="onMove" @pointerup="onUp" @wheel.prevent="onWheel" @dblclick="fit" />
-				<div v-if="selection && !dragging && mode === 'template'" class="pid-banner floating">
+				<div v-if="selection && !dragging && mode === 'template'" class="sym-banner floating">
 					<span>Make a template from the selected symbol (its text is left out, and the box is trimmed to the linework):</span>
 					<input v-model="newName" placeholder="Name, e.g. Instrument bubble" @keydown.enter="createTemplate" />
-					<button type="button" class="small" :disabled="pid.busy" @click="createTemplate">Create template</button>
+					<button type="button" class="small" :disabled="sym.busy" @click="createTemplate">Create template</button>
 					<button type="button" class="secondary small" @click="selection = null; draw()">Cancel</button>
 				</div>
-				<div v-else-if="selection && !dragging && mode === 'exclude'" class="pid-banner floating">
-					<span>Ignore text in this area on every {{ drawing ? libKey(drawing) : '' }} sheet (title block, notes, revision table)?</span>
-					<button type="button" class="small" :disabled="pid.busy" @click="addExclusion">Ignore area</button>
+				<div v-else-if="selection && !dragging && mode === 'exclude'" class="sym-banner floating">
+					<span>Ignore text in this area on every sheet that uses “{{ lib?.name }}” (title block, notes, revision table)?</span>
+					<button type="button" class="small" :disabled="sym.busy" @click="addExclusion">Ignore area</button>
 					<button type="button" class="secondary small" @click="selection = null; draw()">Cancel</button>
 				</div>
-				<p v-if="drawing?.status === 'rendering'" class="pid-overlay-msg">Preparing pages…</p>
-				<p v-else-if="drawing?.status === 'error'" class="pid-overlay-msg error">{{ drawing.error }}</p>
-				<p v-else-if="loading" class="pid-overlay-msg">Loading…</p>
+				<p v-if="drawing?.status === 'rendering'" class="sym-overlay-msg">Preparing pages…</p>
+				<p v-else-if="drawing?.status === 'error'" class="sym-overlay-msg error">{{ drawing.error }}</p>
+				<p v-else-if="loading" class="sym-overlay-msg">Loading…</p>
 			</div>
-			<aside v-if="side" class="pid-side">
+			<aside v-if="side" class="sym-side">
 				<div class="row tight wrap">
 					<label class="check"><input v-model="show.symbols" type="checkbox" /> Symbols</label>
 					<label class="check"><input v-model="show.tags" type="checkbox" /> Text tags</label>
 					<label class="check"><input v-model="show.words" type="checkbox" /> Words</label>
 					<label class="check"><input v-model="show.excluded" type="checkbox" /> Ignored areas</label>
 				</div>
-				<div v-if="picked" class="pid-picked">
+				<div v-if="picked" class="sym-picked">
 					<strong>{{ picked.title }}</strong>
 					<div v-for="l in picked.lines" :key="l" class="small">{{ l }}</div>
 				</div>
 				<h4>Drawing</h4>
 				<div v-if="drawing" class="row tight wrap">
-					<input :value="drawing.drawing_type" class="short" title="Drawing type" aria-label="Drawing type"
-						@change="pid.editDrawing(drawing, { drawing_type: ($event.target as HTMLInputElement).value })" />
-					<input :value="drawing.block_set" class="short" title="Block set: which template library to use" aria-label="Block set"
-						@change="pid.editDrawing(drawing, { block_set: ($event.target as HTMLInputElement).value })" />
-					<label class="check small" :title="pid.ocr?.available ? 'Read text with OCR even where the PDF has a text layer' : pid.ocr?.reason ?? ''">
-						<input type="checkbox" :checked="drawing.force_ocr" @change="pid.editDrawing(drawing, { force_ocr: ($event.target as HTMLInputElement).checked })" /> Always OCR
+					<select :value="drawing.library_id" title="Which symbol library to use for this drawing" aria-label="Library"
+						@change="sym.editDrawing(drawing, { library_id: ($event.target as HTMLSelectElement).value })">
+						<option v-for="l in sym.libraries" :key="l.id" :value="l.id">{{ l.name }}</option>
+					</select>
+					<label class="check small" :title="sym.ocr?.available ? 'Read text with OCR even where the PDF has a text layer' : sym.ocr?.reason ?? ''">
+						<input type="checkbox" :checked="drawing.force_ocr" @change="sym.editDrawing(drawing, { force_ocr: ($event.target as HTMLInputElement).checked })" /> Always OCR
 					</label>
 				</div>
 				<h4>This page</h4>
@@ -420,7 +417,7 @@ onBeforeUnmount(() => ro?.disconnect());
 				<p v-for="w in result?.warnings ?? []" :key="w" class="warn small">{{ w }}</p>
 				<template v-if="result">
 					<p class="small">{{ result.symbols.length }} symbols · {{ result.tags.length }} tags</p>
-					<ul class="pid-taglist">
+					<ul class="sym-taglist">
 						<li v-for="(t, i) in result.tags" :key="i" @click="zoomTo(t.box)">
 							<span class="tag">{{ t.tag }}</span>
 							<span class="src" :class="t.source">{{ t.source === 'template' ? t.template_desc : 'text scan' }}</span>
@@ -449,7 +446,7 @@ onBeforeUnmount(() => ro?.disconnect());
 						</tr>
 					</tbody>
 				</table>
-				<p v-else class="hint small">No templates for {{ drawing ? libKey(drawing) : '' }} yet: use <strong>New template</strong>.</p>
+				<p v-else class="hint small">“{{ lib?.name }}” has no templates yet: use <strong>New template</strong>.</p>
 			</aside>
 		</div>
 	</section>

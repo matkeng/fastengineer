@@ -18,7 +18,7 @@ from pathlib import Path
 from workbench_core.mel import Recipe, Revision
 from workbench_core.refdata import EnumList, RefRow, RefTable, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
-from workbench_core.pid import Drawing, PageOverride, PageResult, RunInfo, Settings, Template
+from workbench_core.symbols import Drawing, Library, PageOverride, PageResult, RunInfo, Template
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS recipes (
@@ -58,35 +58,42 @@ CREATE TABLE IF NOT EXISTS ref_rows (
     data TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ref_rows_table ON ref_rows(table_id, seq);
--- P&ID analysis. Page renders and words are files under <data dir>/pid/<drawing id>/.
-CREATE TABLE IF NOT EXISTS pid_drawings (
+-- Symbol detection. Page renders and words are files under <data dir>/symbols/<drawing id>/.
+CREATE TABLE IF NOT EXISTS sym_libraries (
     id TEXT PRIMARY KEY,
+    name_key TEXT NOT NULL UNIQUE,
     data TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS pid_templates (
+CREATE TABLE IF NOT EXISTS sym_drawings (
     id TEXT PRIMARY KEY,
-    drawing_type TEXT NOT NULL,
-    block_set TEXT NOT NULL,
+    library_id TEXT NOT NULL,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sym_templates (
+    id TEXT PRIMARY KEY,
+    library_id TEXT NOT NULL REFERENCES sym_libraries(id) ON DELETE CASCADE,
     priority INTEGER NOT NULL,
     data TEXT NOT NULL,
     image BLOB NOT NULL,
-    UNIQUE (drawing_type, block_set, priority)
+    mask BLOB,
+    UNIQUE (library_id, priority)
 );
-CREATE TABLE IF NOT EXISTS pid_overrides (
-    doc_id TEXT NOT NULL REFERENCES pid_drawings(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS sym_overrides (
+    doc_id TEXT NOT NULL REFERENCES sym_drawings(id) ON DELETE CASCADE,
     page INTEGER NOT NULL,
-    template_id TEXT NOT NULL REFERENCES pid_templates(id) ON DELETE CASCADE,
+    template_id TEXT NOT NULL REFERENCES sym_templates(id) ON DELETE CASCADE,
     data TEXT NOT NULL,
     PRIMARY KEY (doc_id, page, template_id)
 );
-CREATE TABLE IF NOT EXISTS pid_results (
-    doc_id TEXT NOT NULL REFERENCES pid_drawings(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS sym_results (
+    doc_id TEXT NOT NULL REFERENCES sym_drawings(id) ON DELETE CASCADE,
     page INTEGER NOT NULL,
     data TEXT NOT NULL,
     PRIMARY KEY (doc_id, page)
 );
-CREATE TABLE IF NOT EXISTS pid_runs (
+CREATE TABLE IF NOT EXISTS sym_runs (
     id TEXT PRIMARY KEY,
     info TEXT NOT NULL,
     sheets TEXT NOT NULL DEFAULT '[]',
@@ -315,14 +322,18 @@ class RefStore:
             self._db.execute("DELETE FROM ref_rows WHERE id = ? AND table_id = ?", (row_id, table_id))
 
 
-class PidStore:
-    """P&ID drawings, templates, overrides, page results and runs. Shares the Store's
-    connection and lock; big files (PDF, page PNGs, words) live next to the database."""
+class InUse(ValueError):
+    pass
+
+
+class SymbolStore:
+    """Symbol libraries, templates, drawings, overrides, page results and runs. Shares the
+    Store's connection and lock; big files (PDF, page PNGs, words) live next to the database."""
 
     def __init__(self, store: Store):
         self._db = store._db
         self._lock = store._lock
-        self.root = store.path.parent / "pid"
+        self.root = store.path.parent / "symbols"
 
     # -- files ---------------------------------------------------------------
 
@@ -337,6 +348,51 @@ class PidStore:
     def words_file(self, doc_id: str, n: int, kind: str = "pdf") -> Path:
         return self.doc_dir(doc_id) / f"page-{n}.{kind}.json"
 
+    # -- libraries -------------------------------------------------------------
+
+    def libraries(self) -> list[Library]:
+        with self._lock:
+            rows = self._db.execute("SELECT data FROM sym_libraries ORDER BY created_at").fetchall()
+        return [Library.model_validate_json(r[0]) for r in rows]
+
+    def get_library(self, library_id: str) -> Library:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM sym_libraries WHERE id = ?", (library_id,)).fetchone()
+        if not row:
+            raise NotFound(library_id)
+        return Library.model_validate_json(row[0])
+
+    def unique_name(self, name: str) -> str:
+        taken = {name_key(lib.name) for lib in self.libraries()}
+        out, n = name.strip() or "Library", 2
+        base = out
+        while name_key(out) in taken:
+            out, n = f"{base} ({n})", n + 1
+        return out
+
+    def save_library(self, lib: Library, create: bool = False) -> Library:
+        try:
+            with self._lock, self._db:
+                if create:
+                    self._db.execute("INSERT INTO sym_libraries VALUES (?, ?, ?, ?)",
+                                     (lib.id, name_key(lib.name), lib.model_dump_json(), _now().isoformat()))
+                else:
+                    cur = self._db.execute("UPDATE sym_libraries SET name_key = ?, data = ? WHERE id = ?",
+                                           (name_key(lib.name), lib.model_dump_json(), lib.id))
+                    if cur.rowcount == 0:
+                        raise NotFound(lib.id)
+        except sqlite3.IntegrityError as exc:
+            raise RefValidationError(f"There is already a library called '{lib.name}'.", {"name": "Already used."}) from exc
+        return lib
+
+    def delete_library(self, library_id: str) -> None:
+        with self._lock:
+            (n,) = self._db.execute("SELECT COUNT(*) FROM sym_drawings WHERE library_id = ?", (library_id,)).fetchone()
+        if n:
+            raise InUse(f"{n} drawing(s) use this library. Move them to another library or remove them first.")
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM sym_libraries WHERE id = ?", (library_id,))
+
     # -- drawings --------------------------------------------------------------
 
     def add_drawing(self, drawing: Drawing, pdf: bytes) -> Drawing:
@@ -344,25 +400,26 @@ class PidStore:
         d.mkdir(parents=True, exist_ok=True)
         (d / "source.pdf").write_bytes(pdf)
         with self._lock, self._db:
-            self._db.execute("INSERT INTO pid_drawings VALUES (?, ?, ?)",
-                             (drawing.id, drawing.model_dump_json(), _now().isoformat()))
+            self._db.execute("INSERT INTO sym_drawings VALUES (?, ?, ?, ?)",
+                             (drawing.id, drawing.library_id, drawing.model_dump_json(), _now().isoformat()))
         return drawing
 
     def save_drawing(self, drawing: Drawing) -> Drawing:
         with self._lock, self._db:
-            cur = self._db.execute("UPDATE pid_drawings SET data = ? WHERE id = ?", (drawing.model_dump_json(), drawing.id))
+            cur = self._db.execute("UPDATE sym_drawings SET library_id = ?, data = ? WHERE id = ?",
+                                   (drawing.library_id, drawing.model_dump_json(), drawing.id))
         if cur.rowcount == 0:
             raise NotFound(drawing.id)
         return drawing
 
     def drawings(self) -> list[Drawing]:
         with self._lock:
-            rows = self._db.execute("SELECT data FROM pid_drawings ORDER BY created_at").fetchall()
+            rows = self._db.execute("SELECT data FROM sym_drawings ORDER BY created_at").fetchall()
         return [Drawing.model_validate_json(r[0]) for r in rows]
 
     def get_drawing(self, doc_id: str) -> Drawing:
         with self._lock:
-            row = self._db.execute("SELECT data FROM pid_drawings WHERE id = ?", (doc_id,)).fetchone()
+            row = self._db.execute("SELECT data FROM sym_drawings WHERE id = ?", (doc_id,)).fetchone()
         if not row:
             raise NotFound(doc_id)
         return Drawing.model_validate_json(row[0])
@@ -370,157 +427,170 @@ class PidStore:
     def delete_drawing(self, doc_id: str) -> None:
         import shutil
         with self._lock, self._db:
-            self._db.execute("DELETE FROM pid_drawings WHERE id = ?", (doc_id,))
+            self._db.execute("DELETE FROM sym_drawings WHERE id = ?", (doc_id,))
         shutil.rmtree(self.doc_dir(doc_id), ignore_errors=True)
 
     # -- templates -------------------------------------------------------------
 
-    def templates(self, drawing_type: str | None = None, block_set: str | None = None) -> list[Template]:
-        sql, args = "SELECT data FROM pid_templates", []
-        if drawing_type is not None and block_set is not None:
-            sql, args = sql + " WHERE drawing_type = ? AND block_set = ?", [drawing_type, block_set]
+    def templates(self, library_id: str | None = None) -> list[Template]:
+        sql, args = "SELECT data FROM sym_templates", []
+        if library_id is not None:
+            sql, args = sql + " WHERE library_id = ?", [library_id]
         with self._lock:
-            rows = self._db.execute(sql + " ORDER BY drawing_type, block_set, priority", args).fetchall()
+            rows = self._db.execute(sql + " ORDER BY library_id, priority", args).fetchall()
         return [Template.model_validate_json(r[0]) for r in rows]
 
     def get_template(self, template_id: str) -> Template:
         with self._lock:
-            row = self._db.execute("SELECT data FROM pid_templates WHERE id = ?", (template_id,)).fetchone()
+            row = self._db.execute("SELECT data FROM sym_templates WHERE id = ?", (template_id,)).fetchone()
         if not row:
             raise NotFound(template_id)
         return Template.model_validate_json(row[0])
 
     def template_image(self, template_id: str) -> bytes:
         with self._lock:
-            row = self._db.execute("SELECT image FROM pid_templates WHERE id = ?", (template_id,)).fetchone()
+            row = self._db.execute("SELECT image FROM sym_templates WHERE id = ?", (template_id,)).fetchone()
         if not row:
             raise NotFound(template_id)
         return bytes(row[0])
 
-    def add_template(self, t: Template, png: bytes, priority: int | None = None) -> Template:
-        """Append to its library (or insert at `priority`, shifting the rest down)."""
+    def template_mask(self, template_id: str) -> bytes | None:
+        """The user's custom mask (PNG, white = scored), if any."""
+        with self._lock:
+            row = self._db.execute("SELECT mask FROM sym_templates WHERE id = ?", (template_id,)).fetchone()
+        if not row:
+            raise NotFound(template_id)
+        return bytes(row[0]) if row[0] is not None else None
+
+    def add_template(self, t: Template, png: bytes, mask: bytes | None = None) -> Template:
+        """Append to the end of its library's priority list."""
+        self.get_library(t.library_id)
         with self._lock, self._db:
-            (count,) = self._db.execute("SELECT COUNT(*) FROM pid_templates WHERE drawing_type = ? AND block_set = ?",
-                                        (t.drawing_type, t.block_set)).fetchone()
-            t = t.model_copy(update={"priority": count})
-            self._db.execute("INSERT INTO pid_templates VALUES (?, ?, ?, ?, ?, ?)",
-                             (t.id, t.drawing_type, t.block_set, t.priority, t.model_dump_json(), png))
-        if priority is not None and priority < count:
-            t = self.move_template(t.id, priority)
+            (count,) = self._db.execute("SELECT COUNT(*) FROM sym_templates WHERE library_id = ?",
+                                        (t.library_id,)).fetchone()
+            t = t.model_copy(update={"priority": count, "has_custom_mask": mask is not None})
+            self._db.execute("INSERT INTO sym_templates VALUES (?, ?, ?, ?, ?, ?)",
+                             (t.id, t.library_id, t.priority, t.model_dump_json(), png, mask))
         return t
 
     def save_template(self, t: Template) -> Template:
         """Edit fields. Moving library re-appends it there; priority changes go through move."""
         old = self.get_template(t.id)
-        if (old.drawing_type, old.block_set) != (t.drawing_type, t.block_set):
-            png = self.template_image(t.id)
+        if old.library_id != t.library_id:
+            png, mask = self.template_image(t.id), self.template_mask(t.id)
             with self._lock, self._db:
-                self._db.execute("DELETE FROM pid_templates WHERE id = ?", (t.id,))
-                self._renumber(old.drawing_type, old.block_set)
-            return self.add_template(t, png)
-        t = t.model_copy(update={"priority": old.priority, "width": old.width, "height": old.height})
+                self._db.execute("DELETE FROM sym_templates WHERE id = ?", (t.id,))
+                self._renumber(old.library_id)
+            return self.add_template(t.model_copy(update={"width": old.width, "height": old.height}), png, mask)
+        t = t.model_copy(update={"priority": old.priority, "width": old.width, "height": old.height,
+                                 "has_custom_mask": old.has_custom_mask})
         with self._lock, self._db:
-            self._db.execute("UPDATE pid_templates SET data = ? WHERE id = ?", (t.model_dump_json(), t.id))
+            self._db.execute("UPDATE sym_templates SET data = ? WHERE id = ?", (t.model_dump_json(), t.id))
         return t
 
-    def _renumber(self, drawing_type: str, block_set: str, order: list[str] | None = None) -> None:
+    def set_template_mask(self, template_id: str, mask: bytes | None) -> Template:
+        t = self.get_template(template_id).model_copy(update={"has_custom_mask": mask is not None})
+        if mask is None and t.mask_mode == "custom":
+            t.mask_mode = "auto"
+        elif mask is not None:
+            t.mask_mode = "custom"
+        with self._lock, self._db:
+            self._db.execute("UPDATE sym_templates SET mask = ?, data = ? WHERE id = ?", (mask, t.model_dump_json(), t.id))
+        return t
+
+    def _renumber(self, library_id: str, order: list[str] | None = None) -> None:
         """Rewrite priorities 0..n-1 (caller holds the lock and transaction). Two passes keep
-        the (type, set, priority) unique constraint satisfied throughout."""
+        the (library, priority) unique constraint satisfied throughout."""
         ids = order or [r[0] for r in self._db.execute(
-            "SELECT id FROM pid_templates WHERE drawing_type = ? AND block_set = ? ORDER BY priority",
-            (drawing_type, block_set))]
+            "SELECT id FROM sym_templates WHERE library_id = ? ORDER BY priority", (library_id,))]
         for i, tid in enumerate(ids):
-            self._db.execute("UPDATE pid_templates SET priority = ? WHERE id = ?", (-1 - i, tid))
+            self._db.execute("UPDATE sym_templates SET priority = ? WHERE id = ?", (-1 - i, tid))
         for i, tid in enumerate(ids):
-            (data,) = self._db.execute("SELECT data FROM pid_templates WHERE id = ?", (tid,)).fetchone()
+            (data,) = self._db.execute("SELECT data FROM sym_templates WHERE id = ?", (tid,)).fetchone()
             t = Template.model_validate_json(data).model_copy(update={"priority": i})
-            self._db.execute("UPDATE pid_templates SET priority = ?, data = ? WHERE id = ?", (i, t.model_dump_json(), tid))
+            self._db.execute("UPDATE sym_templates SET priority = ?, data = ? WHERE id = ?", (i, t.model_dump_json(), tid))
 
     def move_template(self, template_id: str, index: int) -> Template:
         t = self.get_template(template_id)
         with self._lock, self._db:
             ids = [r[0] for r in self._db.execute(
-                "SELECT id FROM pid_templates WHERE drawing_type = ? AND block_set = ? ORDER BY priority",
-                (t.drawing_type, t.block_set))]
+                "SELECT id FROM sym_templates WHERE library_id = ? ORDER BY priority", (t.library_id,))]
             ids.remove(template_id)
             ids.insert(max(0, min(index, len(ids))), template_id)
-            self._renumber(t.drawing_type, t.block_set, ids)
+            self._renumber(t.library_id, ids)
         return self.get_template(template_id)
 
     def delete_template(self, template_id: str) -> None:
         t = self.get_template(template_id)
         with self._lock, self._db:
-            self._db.execute("DELETE FROM pid_templates WHERE id = ?", (template_id,))
-            self._renumber(t.drawing_type, t.block_set)
+            self._db.execute("DELETE FROM sym_templates WHERE id = ?", (template_id,))
+            self._renumber(t.library_id)
 
     # -- overrides and results ---------------------------------------------------
 
     def overrides(self, doc_id: str, page: int) -> dict[str, PageOverride]:
         with self._lock:
-            rows = self._db.execute("SELECT data FROM pid_overrides WHERE doc_id = ? AND page = ?", (doc_id, page)).fetchall()
+            rows = self._db.execute("SELECT data FROM sym_overrides WHERE doc_id = ? AND page = ?", (doc_id, page)).fetchall()
         return {o.template_id: o for o in (PageOverride.model_validate_json(r[0]) for r in rows)}
 
     def set_override(self, doc_id: str, page: int, ov: PageOverride) -> PageOverride:
         self.get_drawing(doc_id)
         self.get_template(ov.template_id)
         with self._lock, self._db:
-            self._db.execute("INSERT INTO pid_overrides VALUES (?, ?, ?, ?) ON CONFLICT(doc_id, page, template_id) "
+            self._db.execute("INSERT INTO sym_overrides VALUES (?, ?, ?, ?) ON CONFLICT(doc_id, page, template_id) "
                              "DO UPDATE SET data = excluded.data", (doc_id, page, ov.template_id, ov.model_dump_json()))
         return ov
 
     def delete_override(self, doc_id: str, page: int, template_id: str) -> None:
         with self._lock, self._db:
-            self._db.execute("DELETE FROM pid_overrides WHERE doc_id = ? AND page = ? AND template_id = ?",
+            self._db.execute("DELETE FROM sym_overrides WHERE doc_id = ? AND page = ? AND template_id = ?",
                              (doc_id, page, template_id))
 
     def save_result(self, doc_id: str, result: PageResult) -> None:
         with self._lock, self._db:
-            self._db.execute("INSERT INTO pid_results VALUES (?, ?, ?) ON CONFLICT(doc_id, page) "
+            self._db.execute("INSERT INTO sym_results VALUES (?, ?, ?) ON CONFLICT(doc_id, page) "
                              "DO UPDATE SET data = excluded.data", (doc_id, result.page, result.model_dump_json()))
 
     def result(self, doc_id: str, page: int) -> PageResult | None:
         with self._lock:
-            row = self._db.execute("SELECT data FROM pid_results WHERE doc_id = ? AND page = ?", (doc_id, page)).fetchone()
+            row = self._db.execute("SELECT data FROM sym_results WHERE doc_id = ? AND page = ?", (doc_id, page)).fetchone()
         return PageResult.model_validate_json(row[0]) if row else None
 
     # -- runs ------------------------------------------------------------------
 
     def save_run(self, run: RunInfo, sheets: list[dict] | None = None) -> RunInfo:
         with self._lock, self._db:
-            self._db.execute("INSERT INTO pid_runs (id, info, created_at) VALUES (?, ?, ?) ON CONFLICT(id) "
+            self._db.execute("INSERT INTO sym_runs (id, info, created_at) VALUES (?, ?, ?) ON CONFLICT(id) "
                              "DO UPDATE SET info = excluded.info", (run.id, run.model_dump_json(), _now().isoformat()))
             if sheets is not None:
-                self._db.execute("UPDATE pid_runs SET sheets = ? WHERE id = ?", (json.dumps(sheets), run.id))
+                self._db.execute("UPDATE sym_runs SET sheets = ? WHERE id = ?", (json.dumps(sheets), run.id))
         return run
 
     def runs(self) -> list[RunInfo]:
         with self._lock:
-            rows = self._db.execute("SELECT info FROM pid_runs ORDER BY created_at DESC").fetchall()
+            rows = self._db.execute("SELECT info FROM sym_runs ORDER BY created_at DESC").fetchall()
         return [RunInfo.model_validate_json(r[0]) for r in rows]
 
     def get_run(self, run_id: str) -> tuple[RunInfo, list[dict]]:
         with self._lock:
-            row = self._db.execute("SELECT info, sheets FROM pid_runs WHERE id = ?", (run_id,)).fetchone()
+            row = self._db.execute("SELECT info, sheets FROM sym_runs WHERE id = ?", (run_id,)).fetchone()
         if not row:
             raise NotFound(run_id)
         return RunInfo.model_validate_json(row[0]), json.loads(row[1])
 
     def delete_run(self, run_id: str) -> None:
         with self._lock, self._db:
-            self._db.execute("DELETE FROM pid_runs WHERE id = ?", (run_id,))
+            self._db.execute("DELETE FROM sym_runs WHERE id = ?", (run_id,))
 
-    # -- settings --------------------------------------------------------------
+    # -- first run -------------------------------------------------------------
 
-    def settings(self) -> Settings:
+    def seeded(self) -> bool:
         with self._lock:
-            row = self._db.execute("SELECT data FROM settings WHERE key = 'pid'").fetchone()
-        return Settings.model_validate_json(row[0]) if row else Settings()
+            return self._db.execute("SELECT 1 FROM settings WHERE key = 'symbols_seeded'").fetchone() is not None
 
-    def save_settings(self, s: Settings) -> Settings:
+    def mark_seeded(self) -> None:
         with self._lock, self._db:
-            self._db.execute("INSERT INTO settings VALUES ('pid', ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data",
-                             (s.model_dump_json(),))
-        return s
+            self._db.execute("INSERT INTO settings VALUES ('symbols_seeded', '1') ON CONFLICT(key) DO NOTHING")
 
 
 _store: Store | None = None
@@ -542,5 +612,5 @@ def get_ref() -> RefStore:
     return RefStore(get_store())
 
 
-def get_pid() -> PidStore:
-    return PidStore(get_store())
+def get_symbols() -> SymbolStore:
+    return SymbolStore(get_store())

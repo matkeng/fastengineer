@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .models import Box, PageOverride, SkippedTemplate, Symbol, Template
-from .templates import ink, make_mask
+from .templates import effective_mask, ink
 
 MAX_PIXELS = 80_000_000  # downscale guard (PRD 5.6 step 1)
 
@@ -22,7 +22,7 @@ MAX_PIXELS = 80_000_000  # downscale guard (PRD 5.6 step 1)
 class TemplateImage:
     template: Template
     gray: object  # uint8 array
-    mask: object | None = None  # uint8 array, or None when use_mask is off
+    mask: object | None = None  # uint8 array, or None to score the whole rectangle
 
 
 @dataclass
@@ -169,5 +169,6 @@ def locate_symbols(gray, templates: list[TemplateImage], overrides: dict[str, Pa
     return out
 
 
-def prepare(template: Template, gray) -> TemplateImage:
-    return TemplateImage(template, gray, make_mask(gray, template.buffer_space) if template.use_mask else None)
+def prepare(template: Template, gray, custom_mask=None) -> TemplateImage:
+    """custom_mask: the user's mask image (greyscale array), used when mask_mode is "custom"."""
+    return TemplateImage(template, gray, effective_mask(template.mask_mode, gray, template.buffer_space, custom_mask))

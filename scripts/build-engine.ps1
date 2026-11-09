@@ -17,7 +17,7 @@ try {
         --assume-yes-for-downloads `
         --include-package=uvicorn `
         --include-package=winrt `
-        --noinclude-custom-mode=pymupdf.mupdf:bytecode `
+        --noinclude-dlls=opencv_videoio_ffmpeg* `
         --nofollow-import-to=watchfiles,uvloop,httptools,websockets,wsproto `
         --product-name="Drawing Workbench Engine" `
         --file-version=0.1.0 --product-version=0.1.0 `

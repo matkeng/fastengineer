@@ -93,6 +93,14 @@ export function apiPut<T>(path: string, body: unknown): Promise<T> {
 	});
 }
 
+export function apiPutBytes<T>(path: string, body: Blob | ArrayBuffer): Promise<T> {
+	return request<T>(path, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/octet-stream' },
+		body,
+	});
+}
+
 export function apiDelete(path: string): Promise<unknown> {
 	return request(path, { method: 'DELETE' });
 }

@@ -12,7 +12,7 @@ dependencies = [
     "openpyxl>=3.1.3",
     "asteval>=1.0",
     # P&ID analysis
-    "pymupdf>=1.26,<2",
+    "pypdfium2>=4.30",
     "opencv-python-headless>=4.10,<5",
     "numpy>=1.26",
     # Windows built-in OCR for scanned P&IDs (nothing to bundle; Windows provides the engine)

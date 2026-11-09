@@ -1,4 +1,4 @@
-"""CSV / xlsx of the P&ID tags list, with a per-symbol detail sheet."""
+"""CSV / xlsx of the tags list, with a per-symbol detail sheet."""
 
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ FILL = PatternFill("solid", fgColor="305496")
 DETAIL = ["Drawing", "Page", "Tag", "Source", "Template", "Score", "Variant", "Parts", "x1", "y1", "x2", "y2"]
 
 
-def tags_csv(sheets: list[SheetResult]) -> bytes:
-    headers, rows = tags_table(sheets)
+def tags_csv(sheets: list[SheetResult], columns: list[str] | None = None) -> bytes:
+    headers, rows = tags_table(sheets, columns)
     buf = io.StringIO()
     w = csv.DictWriter(buf, headers, lineterminator="\r\n")
     w.writeheader()
@@ -38,11 +38,11 @@ def _sheet(ws, headers: list[str], rows: list[list]) -> None:
         ws.column_dimensions[get_column_letter(i)].width = min(max(width + 2, 8), 60)
 
 
-def tags_xlsx(sheets: list[SheetResult], title: str) -> bytes:
-    headers, rows = tags_table(sheets)
+def tags_xlsx(sheets: list[SheetResult], title: str, columns: list[str] | None = None) -> bytes:
+    headers, rows = tags_table(sheets, columns)
     wb = Workbook()
     ws = wb.active
-    ws.title = "P&ID tags"
+    ws.title = "Tags"
     _sheet(ws, headers, [[int(r[h]) if h == "Count" else r[h] for h in headers] for r in rows])
     detail = []
     for sh in sheets:
@@ -53,7 +53,7 @@ def tags_xlsx(sheets: list[SheetResult], title: str) -> bytes:
                            parts, *s.box])
         for t in res.tags:
             if t.source == "pattern":
-                detail.append([sh.file_name, res.page, t.tag, "pattern", "", "", "", "", *t.box])
+                detail.append([sh.file_name, res.page, t.tag, "text scan", "", "", "", "", *t.box])
     _sheet(wb.create_sheet("Detections"), DETAIL, detail)
     info = wb.create_sheet("About")
     info.append([title])

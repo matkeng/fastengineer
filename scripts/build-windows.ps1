@@ -31,6 +31,7 @@ New-Item -ItemType Directory -Path $portable | Out-Null
 Copy-Item (Join-Path $release 'drawing-workbench.exe') (Join-Path $portable 'Drawing Workbench.exe')
 Copy-Item (Join-Path $release 'workbench-engine.exe') (Join-Path $portable 'workbench-engine.exe')
 Copy-Item (Join-Path $root 'samples/*') $portable
+Copy-Item (Join-Path $root 'docs/THIRD_PARTY_LICENSES.md') $portable
 @"
 Drawing Workbench $version (portable)
 
@@ -42,6 +43,8 @@ Keep workbench-engine.exe in the same folder: it is the Python engine the app st
 - Needs the Microsoft Edge WebView2 Runtime, already present on most
   Windows 10/11 PCs. If the window stays blank, install it from
   https://developer.microsoft.com/microsoft-edge/webview2/
+- THIRD_PARTY_LICENSES.md lists the open-source components and their licenses.
+- pid-sample*.pdf and pid-library.json are the symbol-detection example.
 - cable-schedule-sample*.xlsx and mel-sample*.csv are synthetic sample data for
   the Excel query, Compare tables and MEL import tabs.
 - Saved MEL imports are kept in %APPDATA%\com.drawingworkbench.poc\workbench.db

@@ -55,8 +55,8 @@ onMounted(() => mel.refreshList());
 		<section v-if="!mel.draft" class="card">
 			<h2>List imports</h2>
 			<p class="hint">
-				Turn a Mechanical Equipment List into a load list, or a P&amp;ID tags list (from the P&amp;ID analysis tab, or a
-				CSV) into an instrument list, with a saved recipe of rules. The source file is never changed, and the same rules
+				Turn a Mechanical Equipment List into a load list, or a tags list (from the Symbol detection tab, or a CSV)
+				into an instrument list, with a saved recipe of rules. The source file is never changed, and the same rules
 				re-apply when you upload a revision.
 			</p>
 			<table v-if="mel.recipes.length" class="grid simple">

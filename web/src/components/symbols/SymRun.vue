@@ -4,18 +4,18 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
 import { apiGet } from '../../lib/engine';
-import type { RecipeSummary } from '../../lib/melTypes';
-import type { TagsTable } from '../../lib/pidTypes';
-import { usePid } from '../../stores/pid';
+import { TARGET_LABELS, TARGETS, type RecipeSummary, type TargetList } from '../../lib/melTypes';
+import type { TagsTable } from '../../lib/symbolTypes';
+import { useSymbols } from '../../stores/symbols';
 
 const props = defineProps<{ runId: string }>();
 const emit = defineEmits<{ 'open-import': [recipeId: string] }>();
-const pid = usePid();
+const sym = useSymbols();
 
-const run = computed(() => pid.runs.find((r) => r.id === props.runId) ?? null);
+const run = computed(() => sym.runs.find((r) => r.id === props.runId) ?? null);
 const finished = computed(() => !!run.value && !['queued', 'running'].includes(run.value.status));
 const names = computed(() =>
-	(run.value?.doc_ids ?? []).map((id) => pid.drawings.find((d) => d.id === id)?.file_name ?? '(deleted drawing)'),
+	(run.value?.doc_ids ?? []).map((id) => sym.drawings.find((d) => d.id === id)?.file_name ?? '(deleted drawing)'),
 );
 const tags = ref<TagsTable | null>(null);
 const host = ref<HTMLDivElement | null>(null);
@@ -24,15 +24,16 @@ let table: FilteredTable<Record<string, string>> | null = null;
 
 // Send to the list import
 const sending = ref(false);
-const pilRecipes = ref<RecipeSummary[]>([]);
+const recipes = ref<RecipeSummary[]>([]);
 const target = ref<string>('');
 const newName = ref('Instrument list');
+const newTarget = ref<TargetList>('PIL');
 const sent = ref<{ id: string; name: string } | null>(null);
 
 async function load() {
 	tags.value = null;
 	sent.value = null;
-	if (finished.value) tags.value = (await pid.runTags(props.runId)) ?? null;
+	if (finished.value) tags.value = (await sym.runTags(props.runId)) ?? null;
 }
 
 function build() {
@@ -41,7 +42,7 @@ function build() {
 	const t = tags.value;
 	if (!host.value || !t) return;
 	if (!t.rows.length) {
-		host.value.innerHTML = '<p class="hint">No tags were found. Check the warnings above, add templates, or look at the tag pattern in Settings.</p>';
+		host.value.innerHTML = '<p class="hint">No tags were found. Check the warnings above, add templates, or check the library\'s tag pattern.</p>';
 		return;
 	}
 	const columns: ColumnsConfig[] = t.headers.map((h): ColumnsConfig => ({
@@ -60,7 +61,7 @@ function build() {
 		],
 	}, src < 0 ? {} : {
 		[src]: {
-			options: [{ value: '', label: 'All' }, { value: 'template', label: 'Template' }, { value: 'pattern', label: 'Text scan' }],
+			options: [{ value: '', label: 'All' }, { value: 'template', label: 'Template' }, { value: 'text scan', label: 'Text scan' }],
 			test: (v, row) => !v || row.Source === v,
 		},
 	});
@@ -69,21 +70,21 @@ function build() {
 async function openSend() {
 	sending.value = true;
 	sent.value = null;
-	pilRecipes.value = (await apiGet<RecipeSummary[]>('/api/mel/recipes')).filter((r) => r.target === 'PIL');
-	target.value = pilRecipes.value[0]?.id ?? '';
+	recipes.value = await apiGet<RecipeSummary[]>('/api/mel/recipes');
+	target.value = recipes.value.find((r) => r.target === 'PIL')?.id ?? '';
 }
 
 async function send() {
-	const id = await pid.sendToImport(props.runId, target.value || null, newName.value);
+	const id = await sym.sendToImport(props.runId, target.value || null, newName.value, newTarget.value);
 	if (id) {
-		const r = pilRecipes.value.find((x) => x.id === id);
+		const r = recipes.value.find((x) => x.id === id);
 		sent.value = { id, name: r?.name ?? newName.value };
 		sending.value = false;
 	}
 }
 
 function remove() {
-	if (confirm('Delete this analysis run? The drawings and templates are kept.')) void pid.deleteRun(props.runId);
+	if (confirm('Delete this analysis run? The drawings and templates are kept.')) void sym.deleteRun(props.runId);
 }
 
 watch(() => [props.runId, finished.value], load, { immediate: true });
@@ -92,45 +93,50 @@ onBeforeUnmount(() => table?.api.destroy());
 </script>
 
 <template>
-	<section v-if="run" class="card pid-main pid-run">
+	<section v-if="run" class="card sym-main sym-run">
 		<div class="mel-head">
 			<h3>Analysis {{ run.started_at ? new Date(run.started_at).toLocaleString() : '' }}</h3>
 			<span class="chip" :class="run.status">{{ run.status }}</span>
 			<span class="chip" :title="names.join('\n')">{{ names.length }} drawing(s)</span>
 			<span class="spacer" />
 			<template v-if="finished && tags?.rows.length">
-				<button type="button" class="secondary" :disabled="pid.busy" @click="pid.exportRun(run.id, 'xlsx')">Export .xlsx</button>
-				<button type="button" class="secondary" :disabled="pid.busy" @click="pid.exportRun(run.id, 'csv')">Export .csv</button>
-				<button type="button" :disabled="pid.busy" @click="openSend">Send to instrument list import…</button>
+				<button type="button" class="secondary" :disabled="sym.busy" @click="sym.exportRun(run.id, 'xlsx')">Export .xlsx</button>
+				<button type="button" class="secondary" :disabled="sym.busy" @click="sym.exportRun(run.id, 'csv')">Export .csv</button>
+				<button type="button" :disabled="sym.busy" @click="openSend">Send to a list import…</button>
 			</template>
-			<button v-if="!finished" type="button" class="secondary" @click="pid.cancelRun(run.id)">Cancel</button>
+			<button v-if="!finished" type="button" class="secondary" @click="sym.cancelRun(run.id)">Cancel</button>
 			<button v-else type="button" class="secondary small" @click="remove">Delete</button>
 		</div>
 
-		<div v-if="!finished" class="pid-progress">
+		<div v-if="!finished" class="sym-progress">
 			<progress :value="run.done_steps" :max="run.total_steps || 1" />
 			<span class="small">{{ run.done_steps }} / {{ run.total_steps }} pages · {{ run.current || 'waiting…' }}</span>
 		</div>
 		<p v-if="run.error" class="error">{{ run.error }}</p>
-		<p v-if="pid.error" class="error">{{ pid.error }}</p>
-		<p v-else-if="pid.message" class="saved">{{ pid.message }}</p>
+		<p v-if="sym.error" class="error">{{ sym.error }}</p>
+		<p v-else-if="sym.message" class="saved">{{ sym.message }}</p>
 
-		<div v-if="sending" class="pid-banner">
+		<div v-if="sending" class="sym-banner">
 			<span>Add these {{ tags?.rows.length }} tags as the next file revision of</span>
 			<select v-model="target" aria-label="Import">
-				<option v-for="r in pilRecipes" :key="r.id" :value="r.id">{{ r.name }} (rev {{ (r.latest_rev ?? 0) + 1 }})</option>
-				<option value="">a new instrument list import…</option>
+				<option v-for="r in recipes" :key="r.id" :value="r.id">{{ r.name }} · {{ TARGET_LABELS[r.target] }} (rev {{ (r.latest_rev ?? 0) + 1 }})</option>
+				<option value="">a new list import…</option>
 			</select>
-			<input v-if="!target" v-model="newName" placeholder="Import name" aria-label="New import name" />
-			<button type="button" class="small" :disabled="pid.busy" @click="send">Send</button>
+			<template v-if="!target">
+				<input v-model="newName" placeholder="Import name" aria-label="New import name" />
+				<select v-model="newTarget" aria-label="List type">
+					<option v-for="t in TARGETS" :key="t" :value="t">{{ TARGET_LABELS[t] }}</option>
+				</select>
+			</template>
+			<button type="button" class="small" :disabled="sym.busy" @click="send">Send</button>
 			<button type="button" class="secondary small" @click="sending = false">Cancel</button>
 		</div>
-		<div v-if="sent" class="pid-banner ok">
+		<div v-if="sent" class="sym-banner ok">
 			<span>✓ Sent to <strong>{{ sent.name }}</strong>. Its saved rules (columns, overrides, calculated columns, mapping) re-apply to the new tags.</span>
 			<button type="button" class="small" @click="emit('open-import', sent.id)">Open it in List import</button>
 		</div>
 
-		<div v-if="run.warnings.length" class="pid-warnings">
+		<div v-if="run.warnings.length" class="sym-warnings">
 			<button type="button" class="link small" @click="showWarnings = !showWarnings">
 				{{ showWarnings ? '▾' : '▸' }} {{ run.warnings.length }} warning(s)
 			</button>
@@ -140,7 +146,7 @@ onBeforeUnmount(() => table?.api.destroy());
 		<div v-if="finished" class="results">
 			<p class="hint small">
 				One row per tag. <strong>Template</strong> tags were read from matched symbols; <strong>text scan</strong> tags are
-				ISA-style text found anywhere on the sheet. Repeats across sheets are counted.
+				text matching the library's tag pattern elsewhere on the sheet. Repeats across sheets are counted.
 			</p>
 			<div ref="host" class="result-table" />
 		</div>
