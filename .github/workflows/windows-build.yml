@@ -143,12 +143,19 @@ jobs:
             "Portable app running (pid $($app.Id)); engine pid(s): $($engine.Id -join ', ')"
           } finally {
             Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 3
-            # The engine watches the app's PID and should exit by itself.
-            $left = Get-Process workbench-engine -ErrorAction SilentlyContinue
-            if ($left) { "Warning: engine still running after app exit: $($left.Id -join ', ')"; $left | Stop-Process -Force }
-            else { 'Engine exited with the app.' }
           }
+          # The engine watches the app's PID and must exit by itself, even when the app is
+          # killed while the engine is still starting (its watchdog starts with Python).
+          $t = [Diagnostics.Stopwatch]::StartNew()
+          do {
+            Start-Sleep -Milliseconds 500
+            $left = Get-Process workbench-engine -ErrorAction SilentlyContinue
+          } while ($left -and $t.Elapsed.TotalSeconds -lt 60)
+          if ($left) {
+            $left | Stop-Process -Force
+            throw "engine still running $([int]$t.Elapsed.TotalSeconds)s after the app was killed: $($left.Id -join ', ')"
+          }
+          "Engine exited $([math]::Round($t.Elapsed.TotalSeconds, 1))s after the app was killed."
 
       - name: Upload portable app
         uses: actions/upload-artifact@v4

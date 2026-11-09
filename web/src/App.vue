@@ -67,7 +67,13 @@ onMounted(() => wb.connect());
 			<RefView v-show="tab === 'ref'" />
 		</template>
 		<section v-else-if="tab !== 'engine'" class="card">
-			<p v-if="wb.status === 'connecting'">Waiting for the Python engine to start…</p>
+			<template v-if="wb.status === 'connecting'">
+				<p>Waiting for the Python engine to start…</p>
+				<p v-if="wb.slowStart" class="hint">
+					The first start after installing or updating can take up to a minute while the engine unpacks and
+					Windows checks it. Later starts are quicker.
+				</p>
+			</template>
 			<template v-else>
 				<p class="error">{{ wb.error }}</p>
 				<button type="button" @click="wb.connect()">Retry</button>

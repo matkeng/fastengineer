@@ -14,10 +14,13 @@ export const useWorkbench = defineStore('workbench', () => {
 	const equipment = ref<Equipment[]>([]);
 	const startedAt = performance.now();
 	const connectMs = ref<number | null>(null);
+	const slowStart = ref(false); // shown after a few seconds of waiting
 
 	async function connect() {
 		status.value = 'connecting';
 		error.value = null;
+		slowStart.value = false;
+		const slow = setTimeout(() => (slowStart.value = true), 5000);
 		try {
 			baseUrl.value = await resolveEngineUrl();
 			await waitForEngine(baseUrl.value);
@@ -27,6 +30,8 @@ export const useWorkbench = defineStore('workbench', () => {
 		} catch (err) {
 			status.value = 'error';
 			error.value = String(err);
+		} finally {
+			clearTimeout(slow);
 		}
 	}
 
@@ -43,5 +48,5 @@ export const useWorkbench = defineStore('workbench', () => {
 		equipment.value = await getJson<Equipment[]>(baseUrl.value, '/api/model/demo');
 	}
 
-	return { baseUrl, status, error, info, greeting, equipment, connectMs, connect, sayHello, loadDemoModel };
+	return { baseUrl, status, error, info, greeting, equipment, connectMs, slowStart, connect, sayHello, loadDemoModel };
 });

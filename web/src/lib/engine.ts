@@ -94,9 +94,9 @@ export function apiDelete(path: string): Promise<unknown> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// The compiled sidecar can take a few seconds on first launch (onefile
-// extraction, antivirus scan), so poll the health endpoint.
-export async function waitForEngine(baseUrl: string, timeoutMs = 30000): Promise<void> {
+// The compiled sidecar can be slow on first launch (onefile extraction plus an
+// antivirus scan took ~25 s on a cold CI machine), so poll generously.
+export async function waitForEngine(baseUrl: string, timeoutMs = 120000): Promise<void> {
 	const start = Date.now();
 	let lastError: unknown;
 	while (Date.now() - start < timeoutMs) {
