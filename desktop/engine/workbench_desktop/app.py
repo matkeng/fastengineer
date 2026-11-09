@@ -11,6 +11,7 @@ import workbench_core
 from workbench_core.hello import EngineInfo, Greeting
 from workbench_core.model import Equipment
 
+from .dashboard_api import router as dashboard_router
 from .excel_api import router as excel_router
 from .mel_api import router as mel_router
 from .symbols_api import router as symbols_router
@@ -32,6 +33,7 @@ app.include_router(excel_router)
 app.include_router(mel_router)
 app.include_router(refdata_router)
 app.include_router(symbols_router)
+app.include_router(dashboard_router)
 
 
 @app.get("/api/health")

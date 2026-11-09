@@ -127,9 +127,14 @@ function draw() {
 	}
 	const ctx = c.getContext('2d')!;
 	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-	ctx.fillStyle = '#e5e7eb';
-	ctx.fillRect(0, 0, w, h);
+	ctx.clearRect(0, 0, w, h); // the host's grid paper shows around the sheet
 	if (!img.value) return;
+	ctx.shadowColor = 'rgba(0, 0, 0, 0.18)';
+	ctx.shadowBlur = 6;
+	ctx.fillStyle = '#fff';
+	ctx.fillRect(ox, oy, img.value.width * scale, img.value.height * scale);
+	ctx.shadowColor = 'transparent';
+	ctx.shadowBlur = 0;
 	ctx.imageSmoothingEnabled = scale < 1;
 	ctx.imageSmoothingQuality = 'high';
 	ctx.drawImage(img.value, ox, oy, img.value.width * scale, img.value.height * scale);
@@ -187,7 +192,7 @@ function draw() {
 	}
 	if (selection.value) {
 		ctx.lineWidth = 2;
-		ctx.strokeStyle = mode.value === 'exclude' ? '#475569' : '#e11d48';
+		ctx.strokeStyle = mode.value === 'exclude' ? '#5f6368' : '#1a73e8';
 		ctx.setLineDash([5, 3]);
 		rect(ctx, selection.value);
 		ctx.setLineDash([]);

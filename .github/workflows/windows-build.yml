@@ -187,6 +187,12 @@ jobs:
             $il = Invoke-RestMethod -Method Post -Uri "$mel/recipes/$($pil.id)/loadlist" -Body '{}' -ContentType 'application/json'
             "Instrument list: $($il.rows.Count) rows; fields $($il.fields -join ', ')"
             if ($il.rows.Count -ne 11) { throw 'instrument list wrong' }
+
+            # Dashboard summary across every feature.
+            $dash = Invoke-RestMethod 'http://127.0.0.1:8799/api/dashboard'
+            $dc = $dash.counts
+            "Dashboard: $($dc.libraries) libraries, $($dc.drawings) drawings, latest $($dc.latest_tags) tags, $($dc.recipes) imports, $($dc.tables) tables, $($dash.recent.Count) recent events"
+            if ($dc.latest_tags -lt 1 -or $dc.recipes -lt 2 -or $dash.runs.Count -lt 1) { throw 'dashboard summary wrong' }
           } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
 
       - name: Smoke-test the portable app
