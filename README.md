@@ -458,6 +458,11 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
   **To value** (decimals, stored exactly; From must not exceed To), **STD Drg**,
   **Bucket type**, **Load type**, **Field options** (text), **Multi load**
   (yes/no) and **Load qty** (a whole number).
+  A load type can also have a **PDF** attached (one per load type, up to
+  50 MB): attach, replace or remove it in the form, open it from the form or
+  the grid's PDF column (it is shown in the app), or save a copy. The file is
+  kept in the project folder (`keylists/load-types/`) and goes when its load
+  type is deleted; attaching and removing are recorded in the change log.
 - Plant Areas and Equipment Packages each keep their own unsaved draft when you
   switch between lists.
 - A new project starts with empty lists; copying standards from another

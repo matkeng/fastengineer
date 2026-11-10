@@ -11,6 +11,7 @@ Load Types is a flat list of electrical load definitions.
 
 from .models import (
     AREA_TYPES,
+    AttachedFile,
     PACKAGE_TYPES,
     PHASES,
     RATING_UNITS,
@@ -27,7 +28,7 @@ from .models import (
 from .validate import check_equipment_packages, check_load_types, check_plant_areas, plant_area_depth
 
 __all__ = [
-    "AREA_TYPES", "PACKAGE_TYPES", "AreaType", "EquipmentPackage", "EquipmentPackageList", "EquipmentType", "PackageType",
+    "AREA_TYPES", "AttachedFile", "PACKAGE_TYPES", "AreaType", "EquipmentPackage", "EquipmentPackageList", "EquipmentType", "PackageType",
     "PlantArea", "PlantAreaList", "LoadType", "LoadTypeList", "PHASES", "RATING_UNITS", "check_load_types",
     "check_equipment_packages", "check_plant_areas", "plant_area_depth",
 ]

@@ -2,10 +2,14 @@
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
 import type { ColumnsConfig } from 'datatables.net';
+import { invoke } from '@tauri-apps/api/core';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, type SelectFilter, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
-import { PHASES, RATING_UNITS, type LoadType, type LoadTypeField, type LoadTypeForm, loadTypeProblems } from '../../lib/keyListTypes';
+import { runningInTauri } from '../../lib/engine';
+import {
+	PHASES, RATING_UNITS, type AttachedFile, type LoadType, type LoadTypeField, type LoadTypeForm, fileSize, loadTypeProblems,
+} from '../../lib/keyListTypes';
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
@@ -49,6 +53,16 @@ function build() {
 			return type === 'display' ? escapeHtml(String(v)) : String(v);
 		},
 	}));
+	// The attached PDF: its name opens it (see onClick).
+	columns.push({
+		title: 'PDF',
+		data: (row: LoadType) => row.pdf?.file_name ?? '',
+		className: 'pdf-col',
+		render: (name: string, type: string, row: LoadType) => {
+			if (type !== 'display') return name.toLowerCase();
+			return name ? `<button type="button" class="link pdf-link" data-pdf="${escapeHtml(row.id)}" title="Open ${escapeHtml(name)}">📄 ${escapeHtml(name)}</button>` : '';
+		},
+	});
 	const selects: Record<number, SelectFilter<LoadType>> = {};
 	COLS.forEach((c, i) => {
 		if (c.kind === 'choice') {
@@ -63,6 +77,10 @@ function build() {
 			};
 		}
 	});
+	selects[COLS.length] = {
+		options: [{ value: '', label: 'All' }, { value: 'y', label: 'With PDF' }, { value: 'n', label: 'No PDF' }],
+		test: (v, r) => v === '' || !!r.pdf === (v === 'y'),
+	};
 	table = createFilteredTable<LoadType>(host.value, columns.length, {
 		data: items.value,
 		columns,
@@ -80,15 +98,22 @@ function build() {
 }
 
 // -- the form ---------------------------------------------------------------------------
-const editing = ref<{ isNew: boolean; form: LoadTypeForm } | null>(null);
-const formErrors = ref<Partial<Record<LoadTypeField, string>>>({});
+const editing = ref<{ isNew: boolean; form: LoadTypeForm; pdf: AttachedFile | null } | null>(null);
+// A PDF chosen in the form, or 'remove': applied when the form is saved.
+const pdfChange = ref<File | 'remove' | null>(null);
+const pdfInput = ref<HTMLInputElement | null>(null);
+const newPdf = computed(() => (pdfChange.value instanceof File ? pdfChange.value : null));
+const MAX_PDF = 50 * 1024 * 1024;
+const formErrors = ref<Partial<Record<LoadTypeField | 'pdf', string>>>({});
 const text = (v: string | number | null | undefined) => (v === null || v === undefined ? '' : String(v));
 
 function open(row: LoadType | null) {
 	formErrors.value = {};
 	kl.error = null;
+	pdfChange.value = null;
 	editing.value = {
 		isNew: !row,
+		pdf: row?.pdf ?? null,
 		form: {
 			id: row?.id ?? newId(), code: row?.code ?? '', name: row?.name ?? '', rating_unit: row?.rating_unit ?? '',
 			voltage: text(row?.voltage), phases: row?.phases ?? '', from_value: text(row?.from_value), to_value: text(row?.to_value),
@@ -99,6 +124,12 @@ function open(row: LoadType | null) {
 }
 
 function onClick(e: MouseEvent) {
+	const link = (e.target as HTMLElement).closest<HTMLElement>('[data-pdf]');
+	if (link) {
+		const row = items.value.find((r) => r.id === link.dataset.pdf);
+		if (row?.pdf) void view(row.id, row.pdf.file_name);
+		return;
+	}
 	const tr = (e.target as HTMLElement).closest('tbody tr');
 	if (!tr || !table) return;
 	const row = table.api.row(tr as HTMLTableRowElement).data() as LoadType | undefined;
@@ -110,6 +141,12 @@ async function save(addAnother = false) {
 	if (!e) return;
 	formErrors.value = loadTypeProblems(e.form, items.value.filter((r) => r.id !== e.form.id));
 	if (Object.keys(formErrors.value).length) return;
+	if (pdfChange.value instanceof File) {
+		const f = pdfChange.value;
+		if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') formErrors.value.pdf = 'Choose a PDF file';
+		else if (f.size > MAX_PDF) formErrors.value.pdf = 'The file is larger than 50 MB';
+		if (formErrors.value.pdf) return;
+	}
 	if (!(await kl.saveLoadType(e.form))) {
 		// The engine names problems as "<row id>.<field>"; show this row's beside its inputs.
 		const mine: Partial<Record<LoadTypeField, string>> = {};
@@ -119,6 +156,15 @@ async function save(addAnother = false) {
 		formErrors.value = mine;
 		return;
 	}
+	// The row is saved now; then the PDF (it can only be attached to a saved row).
+	e.isNew = false;
+	const change = pdfChange.value;
+	if (change instanceof File ? !(await kl.attachLoadTypePdf(e.form.id, change)) : change === 'remove' && !(await kl.removeLoadTypePdf(e.form.id))) {
+		formErrors.value = { pdf: `The load type was saved, but not the PDF change: ${kl.error}` };
+		kl.error = null;
+		return;
+	}
+	pdfChange.value = null;
 	if (addAnother) {
 		open(null);
 		await nextTick();
@@ -126,7 +172,17 @@ async function save(addAnother = false) {
 	} else editing.value = null;
 }
 
+function choosePdf(ev: Event) {
+	const input = ev.target as HTMLInputElement;
+	const f = input.files?.[0];
+	input.value = ''; // choosing the same file again still counts
+	if (!f) return;
+	pdfChange.value = f;
+	delete formErrors.value.pdf;
+}
+
 function close() {
+	pdfChange.value = null;
 	editing.value = null;
 	formErrors.value = {};
 	kl.error = null;
@@ -138,8 +194,46 @@ async function remove() {
 	if (await kl.deleteLoadType(e.form.id)) editing.value = null;
 }
 
+// -- viewing and saving a copy of a PDF --------------------------------------------------
+const viewer = ref<{ id: string; name: string; url: string } | null>(null);
+
+async function view(id: string, name: string) {
+	const blob = await kl.loadTypePdf(id);
+	if (!blob) return;
+	closeViewer();
+	viewer.value = { id, name, url: URL.createObjectURL(blob) };
+}
+
+function closeViewer() {
+	if (viewer.value) URL.revokeObjectURL(viewer.value.url);
+	viewer.value = null;
+}
+
+async function saveCopy(id: string, name: string) {
+	const blob = await kl.loadTypePdf(id);
+	if (!blob) return;
+	if (runningInTauri) {
+		const { save: saveDialog } = await import('@tauri-apps/plugin-dialog');
+		const path = await saveDialog({ defaultPath: name, filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+		if (!path) return;
+		try {
+			await invoke('save_bytes', { path, bytes: Array.from(new Uint8Array(await blob.arrayBuffer())) });
+			kl.message = `Saved ${path}`;
+		} catch (err) {
+			kl.error = String(err);
+		}
+	} else {
+		const url = URL.createObjectURL(blob);
+		Object.assign(document.createElement('a'), { href: url, download: name }).click();
+		setTimeout(() => URL.revokeObjectURL(url), 10_000);
+	}
+}
+
 watch(() => [host.value, kl.loadTypes], build);
-onBeforeUnmount(() => table?.api.destroy());
+onBeforeUnmount(() => {
+	table?.api.destroy();
+	closeViewer();
+});
 </script>
 
 <template>
@@ -175,6 +269,34 @@ onBeforeUnmount(() => table?.api.destroy());
 					</template>
 					<span v-if="formErrors[c.field]" class="warn small">{{ formErrors[c.field] }}</span>
 				</label>
+				<div class="field pdf-field">
+					<span>PDF</span>
+					<div class="pdf-box" :class="{ invalid: formErrors.pdf }">
+						<template v-if="newPdf">
+							<span class="pdf-name">📄 {{ newPdf.name }}</span>
+							<span class="hint small">{{ fileSize(newPdf.size) }} · attached when you save</span>
+							<span class="spacer" />
+							<button type="button" class="secondary small" @click="pdfInput?.click()">Choose another…</button>
+							<button type="button" class="secondary small" @click="pdfChange = null; delete formErrors.pdf">Undo</button>
+						</template>
+						<template v-else-if="editing.pdf && pdfChange !== 'remove'">
+							<button type="button" class="link pdf-name" title="Open" @click="view(editing.form.id, editing.pdf.file_name)">📄 {{ editing.pdf.file_name }}</button>
+							<span class="hint small">{{ fileSize(editing.pdf.size) }} · {{ editing.pdf.pages }} page(s)</span>
+							<span class="spacer" />
+							<button type="button" class="secondary small" @click="saveCopy(editing.form.id, editing.pdf.file_name)">Save a copy</button>
+							<button type="button" class="secondary small" @click="pdfInput?.click()">Replace…</button>
+							<button type="button" class="secondary small" @click="pdfChange = 'remove'">Remove</button>
+						</template>
+						<template v-else>
+							<span class="hint small">{{ pdfChange === 'remove' ? 'The PDF is removed when you save.' : 'No PDF attached.' }}</span>
+							<span class="spacer" />
+							<button v-if="pdfChange === 'remove'" type="button" class="secondary small" @click="pdfChange = null">Undo</button>
+							<button type="button" class="secondary small" @click="pdfInput?.click()">Attach PDF…</button>
+						</template>
+						<input ref="pdfInput" type="file" accept="application/pdf,.pdf" hidden @change="choosePdf" />
+					</div>
+					<span v-if="formErrors.pdf" class="warn small">{{ formErrors.pdf }}</span>
+				</div>
 				<button type="submit" hidden />
 			</form>
 			<p v-if="kl.error" class="error">{{ kl.error }}</p>
@@ -184,6 +306,15 @@ onBeforeUnmount(() => table?.api.destroy());
 				<button type="button" class="secondary" @click="close">Cancel</button>
 				<button v-if="editing?.isNew" type="button" class="secondary" :disabled="kl.busy" @click="save(true)">Save and add another</button>
 				<button type="button" :disabled="kl.busy" @click="save()">Save</button>
+			</template>
+		</AppModal>
+
+		<AppModal class="pdf-viewer" :open="!!viewer" :title="viewer?.name ?? ''" @close="closeViewer">
+			<iframe v-if="viewer" :src="viewer.url" :title="viewer.name" />
+			<template #footer>
+				<span class="spacer" />
+				<button type="button" class="secondary" @click="viewer && saveCopy(viewer.id, viewer.name)">Save a copy</button>
+				<button type="button" @click="closeViewer">Close</button>
 			</template>
 		</AppModal>
 	</section>

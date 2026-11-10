@@ -731,6 +731,16 @@ main.fill .key-packages { overflow: hidden; }
 .form-grid.two-col .field.check { flex-direction: row; align-items: center; gap: 8px; align-self: center; }
 .form-grid.two-col .field.check input { width: auto; }
 @media (max-width: 620px) { .form-grid.two-col { grid-template-columns: 1fr; } }
+.form-grid.two-col .pdf-field { grid-column: 1 / -1; }
+.pdf-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border: 1px dashed var(--border-strong); border-radius: 3px; color: var(--text); }
+.pdf-box.invalid { border-color: var(--danger); }
+.pdf-box .hint { margin: 0; }
+button.link { padding: 0; border: 0; background: none; color: var(--accent); font-weight: 500; cursor: pointer; text-align: left; }
+button.link:hover:not(:disabled) { background: none; border: 0; text-decoration: underline; }
+.key-loads td.pdf-col { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+dialog.modal.pdf-viewer { width: min(1100px, calc(100vw - 32px)); }
+.pdf-viewer .modal-body { padding: 0; overflow: hidden; }
+.pdf-viewer iframe { display: block; width: 100%; height: calc(100vh - 200px); border: 0; background: var(--chrome); }
 /* Inputs directly in a column layout must not grow vertically. */
 .ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }
 

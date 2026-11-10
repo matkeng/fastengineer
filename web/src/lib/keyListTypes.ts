@@ -19,11 +19,14 @@ export type RatingUnit = (typeof RATING_UNITS)[number];
 export const PHASES = ['AC-3-phase', 'AC-3-phase+N', 'AC-1-phase-LN', 'AC-1-phase-LL', 'DC', 'DC-mA'] as const;
 export type Phases = (typeof PHASES)[number];
 
+/** A file attached to a row: the engine keeps the file and fills this in. */
+export interface AttachedFile { file_name: string; size: number; pages: number; uploaded_at: string }
+
 /** A row of the Load Types list. from_value/to_value are exact decimals kept as text. */
 export interface LoadType {
 	id: string; code: string; name: string; rating_unit: RatingUnit; voltage: number; phases: Phases;
 	from_value: string | null; to_value: string | null; std_drg: string; bucket_type: string; load_type: string;
-	field_options: string; multi_load: boolean; load_qty: number | null;
+	field_options: string; multi_load: boolean; load_qty: number | null; pdf: AttachedFile | null;
 }
 export interface LoadTypeList { items: LoadType[]; updated_at: string | null }
 /** A load type as it is typed into the form: numbers are text until the engine converts them. */
@@ -130,4 +133,10 @@ export function loadTypeProblems(f: LoadTypeForm, others: LoadType[]): Partial<R
 	const to = decimal('to_value');
 	if (from !== null && to !== null && from > to) out.to_value = 'Must not be less than the From value';
 	return out;
+}
+
+/** "1.2 MB", "350 KB" */
+export function fileSize(bytes: number): string {
+	if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+	return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }

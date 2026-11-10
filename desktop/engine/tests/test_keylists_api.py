@@ -240,3 +240,65 @@ def test_load_types_change_log_and_conflicts() -> None:
     assert [e["user"] for e in entries] == ["ACME\\bob", "ACME\\ann"]
     assert all(e["label"] == "Load Types" for e in entries)
     assert any(c["path"].endswith("items[Direct on line].voltage") and c["new"] == 400 for c in entries[0]["changes"])
+
+
+def _pdf(pages: int = 1) -> bytes:
+    import io
+
+    import pypdfium2 as pdfium
+    doc = pdfium.PdfDocument.new()
+    for _ in range(pages):
+        doc.new_page(200, 200)
+    buf = io.BytesIO()
+    doc.save(buf)
+    doc.close()
+    return buf.getvalue()
+
+
+def test_load_type_pdf_attach_view_replace_remove(data_dir: Path) -> None:
+    client.put(LOAD_URL, json={"items": LOADS})
+    url = f"{LOAD_URL}/l1/pdf"
+    assert client.get(url).status_code == 404  # nothing attached yet
+
+    # Only a real PDF, and only to a load type that exists.
+    bad = client.put(url, params={"filename": "notes.pdf"}, content=b"not a pdf")
+    assert bad.status_code == 400 and "PDF" in bad.json()["detail"]
+    assert client.put(f"{LOAD_URL}/nope/pdf", params={"filename": "a.pdf"}, content=_pdf()).status_code == 404
+    assert client.put(f"{LOAD_URL}/../pdf", params={"filename": "a.pdf"}, content=_pdf()).status_code == 404
+
+    data = _pdf(2)
+    r = client.put(url, params={"filename": "C:\\drawings\\DOL starter.pdf"}, content=data)
+    assert r.status_code == 200, r.text
+    dol = next(i for i in r.json()["items"] if i["id"] == "l1")
+    assert (dol["pdf"]["file_name"], dol["pdf"]["size"], dol["pdf"]["pages"]) == ("DOL starter.pdf", len(data), 2)
+    assert next(i for i in r.json()["items"] if i["id"] == "l2")["pdf"] is None
+    got = client.get(url)
+    assert got.status_code == 200 and got.content == data
+    assert got.headers["content-type"] == "application/pdf" and got.headers["content-disposition"].startswith("inline")
+
+    # Saving the rows keeps the PDF, and a client can't set or clear it through a row.
+    rows = [dict(row, voltage=400) if row["id"] == "l1" else row for row in LOADS]
+    rows[0] = dict(rows[0], pdf={"file_name": "fake.pdf", "size": 1, "pages": 1, "uploaded_at": "2026-01-01T00:00:00Z"})
+    saved = client.put(LOAD_URL, json={"items": rows}).json()["items"]
+    assert [(i["id"], i["pdf"] and i["pdf"]["file_name"]) for i in saved] == [
+        ("l2", None), ("l1", "DOL starter.pdf"), ("l3", None)]
+
+    # Replacing, then removing; each is in the change log. The file goes with it.
+    storage.configure(data_dir)
+    assert client.put(url, params={"filename": "rev B.pdf"}, content=_pdf(3)).json()["items"][1]["pdf"]["pages"] == 3
+    assert client.get(url).content != data
+    assert client.delete(url).json()["items"][1]["pdf"] is None
+    assert client.get(url).status_code == 404
+    log = client.get("/api/audit", params={"entity": "load_types", "record_id": "load-types"}).json()
+    entries = log["entries"] if isinstance(log, dict) else log
+    notes = [c["new"] for e in entries for c in e["changes"] if c["path"] == "(note)"]
+    assert notes[:3] == ["PDF removed", f"PDF attached: rev B.pdf ({len(_pdf(3)):,} bytes)",
+                         f"PDF attached: DOL starter.pdf ({len(data):,} bytes)"]
+
+    # Deleting a load type deletes its PDF.
+    client.put(url, params={"filename": "again.pdf"}, content=data)
+    files = list((data_dir).rglob("l1.pdf"))
+    assert len(files) == 1
+    assert client.put(LOAD_URL, json={"items": LOADS[:1]}).status_code == 200
+    assert not files[0].exists()
+    assert client.delete(url).status_code == 404

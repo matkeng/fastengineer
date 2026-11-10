@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from workbench_core.keylists import EquipmentPackageList, LoadTypeList, PlantAreaList
+from workbench_core.keylists import AttachedFile, EquipmentPackageList, LoadTypeList, PlantAreaList
 from workbench_core.mel import Recipe, Revision
 from workbench_core.refdata import EnumList, RefRow, RefTable, RefTree, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
@@ -498,6 +498,7 @@ class KeyListStore:
     def __init__(self, store: Store):
         self._db = store._db
         self._lock = store._lock
+        self._files = store.path.parent / "keylists" / self.LOAD_TYPES  # the PDFs attached to load types
 
     def plant_areas(self) -> PlantAreaList:
         with self._lock:
@@ -537,13 +538,65 @@ class KeyListStore:
         return LoadTypeList.model_validate_json(row[0]) if row else LoadTypeList()
 
     def save_load_types(self, loads: LoadTypeList) -> LoadTypeList:
-        loads = loads.model_copy(update={"updated_at": _now()})
+        """Save the rows. Attached PDFs are the engine's to record: each row keeps the PDF it
+        has now (whatever the client sent), and the PDFs of deleted rows are deleted."""
         with self._lock, self._db:
             before = audit.data_of(self._db, "key_lists", "id = ?", (self.LOAD_TYPES,))
-            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
-                             (self.LOAD_TYPES, loads.model_dump_json()))
-            audit.log(self._db, "load_types", self.LOAD_TYPES, before or LoadTypeList().model_dump_json(),
-                      loads.model_dump_json(), label="Load Types")
+            old = LoadTypeList.model_validate_json(before) if before else LoadTypeList()
+            pdfs = {r.id: r.pdf for r in old.items}
+            loads = loads.model_copy(update={"updated_at": _now(), "items": [
+                r.model_copy(update={"pdf": pdfs.get(r.id)}) for r in loads.items]})
+            self._write_load_types(before, loads)
+        kept = {r.id for r in loads.items}
+        for r in old.items:
+            if r.pdf and r.id not in kept:
+                self.load_type_pdf(r.id).unlink(missing_ok=True)
+        return loads
+
+    def _write_load_types(self, before: str | None, loads: LoadTypeList, note: str | None = None) -> None:
+        """Caller holds the lock and the transaction."""
+        self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                         (self.LOAD_TYPES, loads.model_dump_json()))
+        audit.log(self._db, "load_types", self.LOAD_TYPES, before or LoadTypeList().model_dump_json(),
+                  loads.model_dump_json(), label="Load Types", note=note)
+
+    def load_type_pdf(self, load_id: str) -> Path:
+        """Where the PDF of a load type is kept (it may not exist)."""
+        if not load_id.isalnum():
+            raise NotFound(load_id)
+        return self._files / f"{load_id}.pdf"
+
+    def _set_load_type_pdf(self, load_id: str, pdf: AttachedFile | None, note: str) -> LoadTypeList:
+        """Caller holds the lock and the transaction."""
+        before = audit.data_of(self._db, "key_lists", "id = ?", (self.LOAD_TYPES,))
+        loads = LoadTypeList.model_validate_json(before) if before else LoadTypeList()
+        if not any(r.id == load_id for r in loads.items):
+            raise NotFound(load_id)
+        loads = loads.model_copy(update={"updated_at": _now(), "items": [
+            r.model_copy(update={"pdf": pdf}) if r.id == load_id else r for r in loads.items]})
+        self._write_load_types(before, loads, note=note)
+        return loads
+
+    def attach_load_type_pdf(self, load_id: str, data: bytes, file_name: str, pages: int) -> LoadTypeList:
+        """Attach a PDF to a load type, replacing any it had."""
+        path = self.load_type_pdf(load_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".pdf.part")
+        tmp.write_bytes(data)
+        try:
+            with self._lock, self._db:
+                pdf = AttachedFile(file_name=file_name, size=len(data), pages=pages, uploaded_at=_now())
+                loads = self._set_load_type_pdf(load_id, pdf, f"PDF attached: {file_name} ({len(data):,} bytes)")
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
+        return loads
+
+    def remove_load_type_pdf(self, load_id: str) -> LoadTypeList:
+        path = self.load_type_pdf(load_id)
+        with self._lock, self._db:
+            loads = self._set_load_type_pdf(load_id, None, "PDF removed")
+        path.unlink(missing_ok=True)
         return loads
 
 

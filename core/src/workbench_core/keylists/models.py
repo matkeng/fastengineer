@@ -64,6 +64,15 @@ Phases = Literal["AC-3-phase", "AC-3-phase+N", "AC-1-phase-LN", "AC-1-phase-LL",
 PHASES: list[str] = ["AC-3-phase", "AC-3-phase+N", "AC-1-phase-LN", "AC-1-phase-LL", "DC", "DC-mA"]
 
 
+class AttachedFile(BaseModel):
+    """A file attached to a row. The engine keeps the file itself in the project folder and
+    fills this in; it is never taken from a client's save."""
+    file_name: str
+    size: int
+    pages: int
+    uploaded_at: datetime
+
+
 class LoadType(BaseModel):
     """A row of the Load Types list. from_value/to_value are a range of the rating (kW or
     amps), kept as normalised decimal text so they stay exact."""
@@ -81,6 +90,7 @@ class LoadType(BaseModel):
     field_options: str = ""
     multi_load: bool = False
     load_qty: int | None = None
+    pdf: AttachedFile | None = None
 
 
 class LoadTypeList(BaseModel):

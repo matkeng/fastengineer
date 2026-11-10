@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Matthew Kelly
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { ApiError, apiGet, apiPut } from '../lib/engine';
+import { ApiError, apiDelete, apiGet, apiGetBlob, apiPut, apiPutBytes } from '../lib/engine';
 import type { EquipmentPackageList, KeyListId, KeyListOverview, LoadTypeForm, LoadTypeList, PlantAreaList } from '../lib/keyListTypes';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -99,6 +99,25 @@ export const useKeyLists = defineStore('keylists', () => {
 		return putLoadTypes((loadTypes.value?.items ?? []).filter((r) => r.id !== id));
 	}
 
+	/** Attach a PDF to a saved load type (replacing any it had). False (with error set) if refused. */
+	async function attachLoadTypePdf(id: string, file: File): Promise<boolean> {
+		const l = await run(() => apiPutBytes<LoadTypeList>(`${LOAD_TYPES}/${id}/pdf?filename=${encodeURIComponent(file.name)}`, file));
+		if (l) loadTypes.value = l;
+		return !!l;
+	}
+
+	async function removeLoadTypePdf(id: string): Promise<boolean> {
+		const l = await run(() => apiDelete(`${LOAD_TYPES}/${id}/pdf`) as Promise<LoadTypeList>);
+		if (l) loadTypes.value = l;
+		return !!l;
+	}
+
+	/** The PDF of a load type, as a file to show or save. */
+	async function loadTypePdf(id: string): Promise<Blob | undefined> {
+		const b = await run(() => apiGetBlob(`${LOAD_TYPES}/${id}/pdf`));
+		return b && new Blob([b], { type: 'application/pdf' });
+	}
+
 	async function saveAreas() {
 		const d = areasDraft.value;
 		if (!d) return;
@@ -134,6 +153,6 @@ export const useKeyLists = defineStore('keylists', () => {
 	return {
 		overview, selected, busy, error, fieldErrors, message, areasSaved, areasDraft, packagesSaved, packagesDraft,
 		loadTypes, areasDirty, packagesDirty, dirty, refresh, select, load, saveAreas, savePackages, discard,
-		saveLoadType, deleteLoadType,
+		saveLoadType, deleteLoadType, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf,
 	};
 });
