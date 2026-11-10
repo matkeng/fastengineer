@@ -37,13 +37,32 @@ export interface LoadTypeForm {
 }
 export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id'>;
 
-export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types';
+export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list';
+
+/** A Load List row: an import's row, remembered by (import, key), with its two allocations.
+ *  "auto" allocations come from the row's area / load type text; "user" ones a person chose. */
+export interface LoadListRow {
+	recipe_id: string; key: string; source: string; target: string;
+	values: Record<string, string | number | boolean | null>;
+	status: 'active' | 'deleted'; deleted_reason: string;
+	plant_area_id: string | null; plant_area_by: 'auto' | 'user' | null;
+	load_type_id: string | null; load_type_by: 'auto' | 'user' | null;
+	updated_at: string | null;
+}
+export interface LoadListChoice { id: string; label: string; depth: number }
+export interface LoadListView {
+	fields: string[]; rows: LoadListRow[];
+	sources: { id: string; name: string; target: string; rows: number; has_file: boolean }[];
+	plant_areas: LoadListChoice[]; load_types: LoadListChoice[]; warnings: string[];
+}
+export type Allocation = { plant_area_id?: string | null; load_type_id?: string | null };
 export interface KeyListOverview {
 	plant_areas: { items: number; depth: number };
 	area_types: string[];
 	equipment_packages: { items: number; types: number };
 	package_types: string[];
 	load_types: { items: number };
+	load_list: { rows: number; unallocated: number };
 	rating_units: string[];
 	phases: string[];
 }

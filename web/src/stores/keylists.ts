@@ -2,8 +2,10 @@
 // Copyright (C) 2026 Matthew Kelly
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { ApiError, apiDelete, apiGet, apiGetBlob, apiPut, apiPutBytes } from '../lib/engine';
-import type { EquipmentPackageList, KeyListId, KeyListOverview, LoadTypeForm, LoadTypeList, PlantAreaList } from '../lib/keyListTypes';
+import { ApiError, apiDelete, apiGet, apiGetBlob, apiPut, apiPutBytes, apiPutWith } from '../lib/engine';
+import type {
+	Allocation, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList,
+} from '../lib/keyListTypes';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const PLANT_AREAS = '/api/keylists/plant-areas';
@@ -26,6 +28,8 @@ export const useKeyLists = defineStore('keylists', () => {
 	const packagesDraft = ref<EquipmentPackageList | null>(null);
 	// Load types have no draft: a row is saved from its form straight away.
 	const loadTypes = ref<LoadTypeList | null>(null);
+	// The Load List is built from the imports each time it is opened (it can take a moment).
+	const loadList = ref<LoadListView | null>(null);
 	const areasDirty = computed(() => differ(areasDraft.value, areasSaved.value));
 	const packagesDirty = computed(() => differ(packagesDraft.value, packagesSaved.value));
 	const dirty = computed(() => areasDirty.value || packagesDirty.value);
@@ -60,6 +64,23 @@ export const useKeyLists = defineStore('keylists', () => {
 		error.value = null;
 		fieldErrors.value = {};
 		message.value = null;
+		if (id === 'load-list') void loadLoadList();
+	}
+
+	async function loadLoadList() {
+		const v = await run(() => apiGet<LoadListView>('/api/loadlist'));
+		if (v) loadList.value = v;
+		await refresh();
+	}
+
+	/** Give rows a plant area and/or load type. Returns the saved rows, or undefined (error set).
+	 *  One row's edit tells the engine which copy it was made on, so a colleague's newer change isn't overwritten. */
+	async function allocate(rows: LoadListRow[], change: Allocation): Promise<LoadListRow[] | undefined> {
+		const body = { rows: rows.map((r) => ({ recipe_id: r.recipe_id, key: r.key })), ...change };
+		const seen: Record<string, string> = rows.length === 1 && rows[0].updated_at ? { 'X-Workbench-Base-Time': rows[0].updated_at } : {};
+		const saved = await run(() => apiPutWith<LoadListRow[]>('/api/loadlist/allocations', body, seen));
+		if (saved) void refresh();
+		return saved;
 	}
 
 	/** Load the lists from the engine. A list with unsaved changes is left as it is. */
@@ -74,7 +95,8 @@ export const useKeyLists = defineStore('keylists', () => {
 		}
 		const l = await run(() => apiGet<LoadTypeList>(LOAD_TYPES));
 		if (l) loadTypes.value = l;
-		await refresh();
+		if (selected.value === 'load-list') await loadLoadList();
+		else await refresh();
 	}
 
 	/** Save the whole list of load types with `items`. False (with error/fieldErrors set) if refused. */
@@ -153,6 +175,6 @@ export const useKeyLists = defineStore('keylists', () => {
 	return {
 		overview, selected, busy, error, fieldErrors, message, areasSaved, areasDraft, packagesSaved, packagesDraft,
 		loadTypes, areasDirty, packagesDirty, dirty, refresh, select, load, saveAreas, savePackages, discard,
-		saveLoadType, deleteLoadType, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf,
+		saveLoadType, deleteLoadType, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate,
 	};
 });

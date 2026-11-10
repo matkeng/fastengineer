@@ -1,0 +1,139 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Matthew Kelly
+"""The project Load List: the MEL and EEL imports' rows, combined and live, each with a
+plant area and a load type allocated (see workbench_core.keylists.loadlist)."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from workbench_core.keylists import LOAD_LIST_TARGETS, LoadListRow, match_index
+from workbench_core.mel import run_pipeline
+from workbench_core.mel.models import ELEC_LOAD_FIELDS
+from workbench_core.mel.pipeline import output_list
+from workbench_core.refdata import RefValidationError
+
+from .refdata_api import invalid
+from .storage import NotFound, get_keylists, get_loadlist, get_store
+
+router = APIRouter(prefix="/api/loadlist", tags=["load list"])
+
+
+class Choice(BaseModel):
+    id: str
+    label: str
+    depth: int = 0  # plant areas: the level in the tree (0 = top)
+
+
+class Source(BaseModel):
+    id: str
+    name: str
+    target: str
+    rows: int
+    has_file: bool
+
+
+class LoadListView(BaseModel):
+    fields: list[str]  # mapped load-list fields, in load-list order
+    rows: list[LoadListRow]
+    sources: list[Source]
+    plant_areas: list[Choice]
+    load_types: list[Choice]
+    warnings: list[str] = Field(default_factory=list)
+
+
+def _choices() -> tuple[list[Choice], list[Choice]]:
+    lists = get_keylists()
+    nodes = lists.plant_areas().nodes  # parents first
+    depth: dict[str, int] = {}
+    for n in nodes:
+        depth[n.id] = depth[n.parent_id] + 1 if n.parent_id in depth else 0
+    areas = [Choice(id=n.id, label=f"{n.tag} – {n.description}", depth=depth[n.id]) for n in nodes]
+    types = [Choice(id=t.id, label=f"{t.code} – {t.name}") for t in lists.load_types().items]
+    return areas, types
+
+
+@router.get("", response_model=LoadListView)
+def load_list() -> LoadListView:
+    st = get_store()
+    lists = get_keylists()
+    live: list[LoadListRow] = []
+    gone: dict[str, str] = {}
+    sources: list[Source] = []
+    warnings: list[str] = []
+    recipes = st.list_recipes()
+    for info in recipes:
+        rid = info["id"]
+        if info["target"] not in LOAD_LIST_TARGETS:
+            gone[rid] = "Its import is no longer a MEL or EEL import"
+            continue
+        recipe = st.get_recipe(rid)
+        rev = st.latest_revision(rid)
+        if rev is None:
+            gone[rid] = "Its import has no file"
+            sources.append(Source(id=rid, name=recipe.name, target=recipe.target, rows=0, has_file=False))
+            continue
+        result = run_pipeline(rev, recipe)
+        out = output_list(result, recipe)
+        warnings += [f"{recipe.name}: {i.rule}: {i.message}" for i in result.issues]
+        warnings += [f"{recipe.name}: {w}" for w in out.warnings]
+        for prow, values in zip(result.rows, out.rows):
+            marked = values.get("is_deleted") is True
+            live.append(LoadListRow(recipe_id=rid, key=prow.key, source=recipe.name, target=recipe.target, values=values,
+                                    status="deleted" if marked else "active",
+                                    deleted_reason="Marked deleted in the file" if marked else ""))
+        gone[rid] = "Not in the latest file"
+        sources.append(Source(id=rid, name=recipe.name, target=recipe.target, rows=len(out.rows), has_file=True))
+    known = {info["id"] for info in recipes}
+    loadlist = get_loadlist()
+    for r in loadlist.rows():
+        if r.recipe_id not in known:
+            gone[r.recipe_id] = "Its import was deleted"
+
+    areas, types = _choices()
+    area_index = match_index([(n.id, n.tag) for n in lists.plant_areas().nodes])
+    type_index = match_index([(t.id, t.code) for t in lists.load_types().items])
+    rows = loadlist.sync(live, gone, area_index, type_index)
+
+    used = {f for r in rows for f in r.values}
+    tags: dict[str, tuple[str, list[str]]] = {}
+    for r in rows:
+        tag = r.values.get("tag")
+        if r.status == "active" and isinstance(tag, str) and tag.strip():
+            tags.setdefault(tag.strip().casefold(), (tag.strip(), []))[1].append(r.source)
+    for tag, sources_of in (t for t in tags.values() if len(t[1]) > 1):
+        warnings.append(f"Tag {tag} is in more than one row ({', '.join(sorted(set(sources_of)))}).")
+    return LoadListView(fields=[f for f in ELEC_LOAD_FIELDS if f in used], rows=rows, sources=sources,
+                        plant_areas=areas, load_types=types, warnings=sorted(set(warnings)))
+
+
+class RowRef(BaseModel):
+    recipe_id: str
+    key: str
+
+
+class Allocation(BaseModel):
+    """Rows, and the plant area and/or load type to give them (null = not allocated).
+    A field left out is not changed."""
+    rows: list[RowRef]
+    plant_area_id: str | None = None
+    load_type_id: str | None = None
+
+
+@router.put("/allocations", response_model=list[LoadListRow])
+def allocate(body: Allocation):
+    change = {f: getattr(body, f) for f in ("plant_area_id", "load_type_id") if f in body.model_fields_set}
+    if not change or not body.rows:
+        return invalid(RefValidationError("Choose rows and a plant area or load type."))
+    areas, types = _choices()
+    known = {"plant_area_id": {a.id for a in areas}, "load_type_id": {t.id for t in types}}
+    for field, value in change.items():
+        if value is not None and value not in known[field]:
+            what = "plant area" if field == "plant_area_id" else "load type"
+            return invalid(RefValidationError(f"That {what} no longer exists. Open the Load List again.", {field: "Not found"}))
+    labels = {c.id: c.label for c in areas + types}
+    try:
+        return get_loadlist().allocate([(r.recipe_id, r.key) for r in body.rows], change, labels)
+    except NotFound as exc:
+        raise HTTPException(404, "A row is no longer in the Load List. Open it again.") from exc

@@ -13,7 +13,7 @@ export interface RunBar { id: string; at: string; template: number; text_scan: n
 export interface DashCounts {
 	libraries: number; templates: number; drawings: number; pages: number; pages_unanalysed: number; runs: number;
 	latest_tags: number | null; latest_run_at: string | null; recipes: number; revisions: number;
-	latest_revision_at: string | null; enums: number; trees: number; tables: number; rows: number; plant_areas: number; equipment_packages: number; equipment_types: number; load_types: number; open_workbooks: number;
+	latest_revision_at: string | null; enums: number; trees: number; tables: number; rows: number; plant_areas: number; equipment_packages: number; equipment_types: number; load_types: number; load_list_rows: number; open_workbooks: number;
 	generators: number; gen_builds: number; latest_build_at: string | null; plc_panels: number; plc_cards: number;
 }
 export interface DashStorage {

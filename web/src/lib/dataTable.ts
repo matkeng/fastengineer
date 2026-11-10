@@ -54,6 +54,7 @@ export function createFilteredTable<Row>(
 		titleRow: 0, // titles in the first header row; the second holds the filters
 		autoWidth: false, // no scrollX: see style.css (one table in a scrolling cell)
 		...options,
+		buttons: titlesOnlyInExports(options.buttons),
 	});
 
 	const cells = el.querySelectorAll<HTMLTableCellElement>('thead tr.filters th');
@@ -99,6 +100,26 @@ export function createFilteredTable<Row>(
 			select.dispatchEvent(new Event('change'));
 		},
 	};
+}
+
+/** Copy / CSV / Excel buttons export only the title row of the header, not the filter row. */
+function titlesOnlyInExports(buttons: Config['buttons']): Config['buttons'] {
+	if (!Array.isArray(buttons)) return buttons;
+	return buttons.map((b) => {
+		if (typeof b !== 'object' || b === null || !('extend' in b) || b.extend === 'colvis') return b;
+		const opts = (b as { exportOptions?: Record<string, unknown> }).exportOptions ?? {};
+		const own = opts.customizeData as ((d: { headerStructure: unknown[] }) => void) | undefined;
+		return {
+			...b,
+			exportOptions: {
+				...opts,
+				customizeData: (d: { headerStructure: unknown[] }) => {
+					d.headerStructure = d.headerStructure.slice(0, 1);
+					own?.(d);
+				},
+			},
+		};
+	}) as Config['buttons'];
 }
 
 /** Standard toolbar layout ('buttons' is a feature added by the Buttons extension). */

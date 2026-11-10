@@ -35,7 +35,7 @@ The app's tabs:
 - **List import**: turn an equipment list into a load list, or a tags list
   into an instrument list, with a saved, re-applicable recipe of rules (see below).
 - **Project lists**: the key lists every project has: Plant Areas, Equipment
-  Packages and Load Types (see below).
+  Packages, Load Types and the Load List (see below).
 - **Lists & tables**: your own enumerated lists and typed tables (see below).
 - **Engine**: engine status (port, Python version, whether it's
   Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
@@ -463,6 +463,22 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
   the grid's PDF column (it is shown in the app), or save a copy. The file is
   kept in the project folder (`keylists/load-types/`) and goes when its load
   type is deleted; attaching and removing are recorded in the change log.
+- **Load List**: the rows of every **MEL and EEL** import in the project,
+  combined and always live (each import's latest file through its saved rules
+  and mapping), with the mapped fields as read-only, sortable, filterable
+  columns plus Status and Source. Two columns are edited here and saved as soon
+  as they are chosen: the row's **Plant area** and **Load type**. **Set plant
+  area… / Set load type…** give every row the filters show the same value.
+  - Rows are remembered by import and key: a row that leaves its import (or
+    whose import is deleted, or whose file marks it deleted) stays in the list,
+    marked **Deleted**, with its allocations, and gets them back if it returns.
+  - **Filled in automatically** (shown in italics): when a row's mapped area
+    text equals exactly one plant area's tag number, or its load type text one
+    load type's code (ignoring case and extra spaces). These follow the import
+    until a person chooses a value, which is then never changed automatically.
+  - A plant area or load type that a person allocated can't be deleted from its
+    list until those rows are changed.
+  - Every allocation change is in the change log, with the row's tag.
 - Plant Areas and Equipment Packages each keep their own unsaved draft when you
   switch between lists.
 - A new project starts with empty lists; copying standards from another

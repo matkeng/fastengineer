@@ -24,6 +24,7 @@ from .symbols_api import router as symbols_router
 from .refdata_api import router as refdata_router
 from .generators_api import router as generators_router
 from .keylists_api import router as keylists_router
+from .loadlist_api import router as loadlist_router
 from .projects_api import router as projects_router
 from .storage import get_store
 
@@ -89,6 +90,7 @@ app.include_router(excel_router)
 app.include_router(mel_router)
 app.include_router(refdata_router)
 app.include_router(keylists_router)
+app.include_router(loadlist_router)
 app.include_router(symbols_router)
 app.include_router(generators_router)
 app.include_router(dashboard_router)

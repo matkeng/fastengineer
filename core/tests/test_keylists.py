@@ -234,3 +234,24 @@ def test_load_type_numbers() -> None:
         check_load_types([_load(voltage=-24, load_qty=-1, from_value="10", to_value="9.99")])
     assert e.value.fields == {"a.voltage": "Can't be negative", "a.load_qty": "Can't be negative",
                               "a.to_value": "Must not be less than the From value"}
+
+
+# -- load list: automatic fill ---------------------------------------------------------
+
+def test_auto_match_is_exact_and_unambiguous() -> None:
+    from workbench_core.keylists import LoadListRow, apply_auto, auto_match, match_index
+
+    index = match_index([("a", "100"), ("b", " Area  2 "), ("c", "dup"), ("d", "DUP"), ("e", "")])
+    assert auto_match("100", index) == "a" and auto_match("area 2", index) == "b"
+    assert auto_match("dup", index) is None  # two items share the text
+    assert auto_match("10", index) is None and auto_match(None, index) is None and auto_match(True, index) is None
+    assert auto_match(100, index) == "a"  # a number read from the file
+
+    row = LoadListRow(recipe_id="r", key="P-1", source="MEL", target="MEL", values={"area": "100", "load_type": "x"})
+    row = apply_auto(row, index, {})
+    assert (row.plant_area_id, row.plant_area_by, row.load_type_id, row.load_type_by) == ("a", "auto", None, None)
+    # Automatic allocations follow the text; a person's choice (even "none") is kept.
+    moved = apply_auto(row.model_copy(update={"values": {"area": "area 2"}}), index, {})
+    assert (moved.plant_area_id, moved.plant_area_by) == ("b", "auto")
+    mine = row.model_copy(update={"plant_area_id": None, "plant_area_by": "user"})
+    assert apply_auto(mine, index, {}).plant_area_id is None

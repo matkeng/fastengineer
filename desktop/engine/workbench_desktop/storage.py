@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from workbench_core.keylists import AttachedFile, EquipmentPackageList, LoadTypeList, PlantAreaList
+from workbench_core.keylists import AttachedFile, EquipmentPackageList, LoadListRow, LoadTypeList, PlantAreaList, apply_auto
 from workbench_core.mel import Recipe, Revision
 from workbench_core.refdata import EnumList, RefRow, RefTable, RefTree, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
@@ -151,6 +151,13 @@ CREATE TABLE IF NOT EXISTS gen_hardware (
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     data TEXT NOT NULL
+);
+-- The Load List: every row seen in a MEL/EEL import (by import and key), with its allocations.
+CREATE TABLE IF NOT EXISTS load_list (
+    recipe_id TEXT NOT NULL,
+    row_key TEXT NOT NULL,
+    data TEXT NOT NULL,
+    PRIMARY KEY (recipe_id, row_key)
 );
 -- Key lists: the project's built-in lists, one JSON document each (id 'plant-areas', ...).
 CREATE TABLE IF NOT EXISTS key_lists (
@@ -598,6 +605,94 @@ class KeyListStore:
             loads = self._set_load_type_pdf(load_id, None, "PDF removed")
         path.unlink(missing_ok=True)
         return loads
+
+
+class LoadListStore:
+    """The Load List's remembered rows and their allocations. Shares the Store's connection and lock."""
+
+    def __init__(self, store: Store):
+        self._db = store._db
+        self._lock = store._lock
+
+    def _rows(self) -> dict[tuple[str, str], LoadListRow]:
+        rows = (LoadListRow.model_validate_json(r[0]) for r in self._db.execute("SELECT data FROM load_list"))
+        return {(r.recipe_id, r.key): r for r in rows}
+
+    def rows(self) -> list[LoadListRow]:
+        with self._lock:
+            return list(self._rows().values())
+
+    def _put(self, row: LoadListRow) -> None:
+        self._db.execute("INSERT INTO load_list VALUES (?, ?, ?) ON CONFLICT(recipe_id, row_key) DO UPDATE SET "
+                         "data = excluded.data", (row.recipe_id, row.key, row.model_dump_json()))
+
+    def sync(self, live: list[LoadListRow], gone: dict[str, str], areas: dict[str, str | None],
+             types: dict[str, str | None]) -> list[LoadListRow]:
+        """Bring the remembered rows up to date with the imports and return them all.
+
+        `live`: the rows the imports give now (status set: a row its file marks deleted is
+        "deleted"). `gone`: import id -> why its remembered rows that aren't live are now
+        deleted, for each import whose rows are known (every MEL/EEL import, and any
+        remembered import that is no longer one). Imports not in `gone` keep their rows as
+        they are. `areas` / `types`: the automatic-fill indexes (see keylists.loadlist)."""
+        with self._lock, self._db:
+            stored = self._rows()
+            out: dict[tuple[str, str], LoadListRow] = {}
+            filled = 0
+            for row in live:
+                old = stored.get((row.recipe_id, row.key))
+                base = old or LoadListRow(recipe_id=row.recipe_id, key=row.key, source=row.source, target=row.target)
+                new = apply_auto(base.model_copy(update={
+                    "source": row.source, "target": row.target, "values": row.values, "status": row.status,
+                    "deleted_reason": row.deleted_reason}), areas, types)
+                filled += sum(getattr(new, f"{k}_by") == "auto" and getattr(new, f"{k}_id") != getattr(base, f"{k}_id")
+                              for k in ("plant_area", "load_type"))
+                out[(row.recipe_id, row.key)] = new
+            for k, old in stored.items():
+                if k in out:
+                    continue
+                reason = gone.get(old.recipe_id)
+                out[k] = old if reason is None else old.model_copy(update={"status": "deleted", "deleted_reason": reason})
+            for k, row in out.items():
+                if stored.get(k) != row:
+                    self._put(row)
+            if filled:
+                audit.log(self._db, "load_list", "load-list", None, {"allocations filled in": filled}, label="Load List",
+                          note="Filled in automatically from the imports' area and load type")
+        return list(out.values())
+
+    def allocate(self, keys: list[tuple[str, str]], change: dict[str, str | None], labels: dict[str, str]) -> list[LoadListRow]:
+        """Set the plant area and/or load type (`change`: "plant_area_id" / "load_type_id") of
+        rows, as a person's choice. `labels`: id -> text for the change log. One row's edit is
+        checked against the version the client last saw (see audit.check)."""
+        shown = lambda r: {"plant area": labels.get(r.plant_area_id or "", r.plant_area_id),  # noqa: E731
+                           "load type": labels.get(r.load_type_id or "", r.load_type_id)}
+        out = []
+        with self._lock, self._db:
+            stored = self._rows()
+            for k in keys:
+                row = stored.get(k)
+                if row is None:
+                    raise NotFound(f"{k[0]}/{k[1]}")
+                update: dict[str, object] = {"updated_at": _now()}
+                for field, value in change.items():
+                    update[field] = value
+                    update[field.replace("_id", "_by")] = "user"
+                new = row.model_copy(update=update)
+                self._put(new)
+                audit.log(self._db, "load_list_row", f"{row.recipe_id}/{row.key}", shown(row), shown(new),
+                          parent_id=row.recipe_id, label=str(row.values.get("tag") or row.key),
+                          stored_time=row.updated_at.isoformat() if row.updated_at and len(keys) == 1 else None)
+                out.append(new)
+        return out
+
+    def used(self, kind: str) -> dict[str, int]:
+        """Ids a person allocated (kind "plant_area" or "load_type") -> how many rows."""
+        counts: dict[str, int] = {}
+        for r in self.rows():
+            if getattr(r, f"{kind}_by") == "user" and getattr(r, f"{kind}_id"):
+                counts[getattr(r, f"{kind}_id")] = counts.get(getattr(r, f"{kind}_id"), 0) + 1
+        return counts
 
 
 class InUse(ValueError):
@@ -1191,6 +1286,10 @@ def get_store() -> Store:
 
 def get_ref() -> RefStore:
     return RefStore(get_store())
+
+
+def get_loadlist() -> LoadListStore:
+    return LoadListStore(get_store())
 
 
 def get_keylists() -> KeyListStore:

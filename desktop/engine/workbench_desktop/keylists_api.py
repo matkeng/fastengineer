@@ -31,7 +31,7 @@ from workbench_core.refdata import RefValidationError
 from workbench_core.symbols.render import PdfError, page_count
 
 from .refdata_api import invalid
-from .storage import NotFound, get_keylists
+from .storage import NotFound, get_keylists, get_loadlist
 
 router = APIRouter(prefix="/api/keylists", tags=["key lists"])
 
@@ -46,7 +46,23 @@ def overview() -> dict:
     return {"plant_areas": {"items": len(areas.nodes), "depth": plant_area_depth(areas)}, "area_types": AREA_TYPES,
             "equipment_packages": {"items": len(packages.items), "types": len(packages.types)},
             "package_types": PACKAGE_TYPES,
-            "load_types": {"items": len(lists.load_types().items)}, "rating_units": RATING_UNITS, "phases": PHASES}
+            "load_types": {"items": len(lists.load_types().items)}, "rating_units": RATING_UNITS, "phases": PHASES,
+            "load_list": _load_list_counts()}
+
+
+def _load_list_counts() -> dict[str, int]:
+    """From the remembered rows (the Load List brings them up to date when it is opened)."""
+    rows = [r for r in get_loadlist().rows() if r.status == "active"]
+    return {"rows": len(rows), "unallocated": sum(not (r.plant_area_id and r.load_type_id) for r in rows)}
+
+
+def _refuse_in_use(kind: str, removed: dict[str, str], what: str) -> None:
+    """Refuse to delete items a person allocated in the Load List. `removed`: id -> label."""
+    used = get_loadlist().used(kind)
+    in_use = [f"{label} ({used[i]} row{'s' if used[i] > 1 else ''})" for i, label in removed.items() if i in used]
+    if in_use:
+        raise RefValidationError(f"These {what} are allocated in the Load List and can't be deleted: "
+                                 f"{', '.join(in_use)}. Change those rows first.")
 
 
 @router.get("/plant-areas", response_model=PlantAreaList)
@@ -61,7 +77,11 @@ class PlantAreasUpdate(BaseModel):
 @router.put("/plant-areas", response_model=PlantAreaList)
 def update_plant_areas(body: PlantAreasUpdate):
     try:
-        return get_keylists().save_plant_areas(check_plant_areas(PlantAreaList(nodes=body.nodes)))
+        areas = check_plant_areas(PlantAreaList(nodes=body.nodes))
+        kept = {n.id for n in areas.nodes}
+        _refuse_in_use("plant_area", {n.id: n.tag for n in get_keylists().plant_areas().nodes if n.id not in kept},
+                       "plant areas")
+        return get_keylists().save_plant_areas(areas)
     except RefValidationError as exc:
         return invalid(exc)
 
@@ -98,7 +118,11 @@ class LoadTypesUpdate(BaseModel):
 @router.put("/load-types", response_model=LoadTypeList)
 def update_load_types(body: LoadTypesUpdate):
     try:
-        return get_keylists().save_load_types(check_load_types(body.items))
+        loads = check_load_types(body.items)
+        kept = {r.id for r in loads.items}
+        _refuse_in_use("load_type", {r.id: r.code for r in get_keylists().load_types().items if r.id not in kept},
+                       "load types")
+        return get_keylists().save_load_types(loads)
     except RefValidationError as exc:
         return invalid(exc)
 

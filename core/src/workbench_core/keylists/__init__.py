@@ -7,6 +7,8 @@ number, a tag number, a description and an area type.
 Equipment Packages is a flat list of package number, description, vendor name
 and package type; each package has equipment types under it.
 Load Types is a flat list of electrical load definitions.
+The Load List combines the MEL and EEL imports, with a plant area and a load type
+allocated to each row.
 """
 
 from .models import (
@@ -25,9 +27,11 @@ from .models import (
     PlantArea,
     PlantAreaList,
 )
+from .loadlist import LOAD_LIST_TARGETS, LoadListRow, apply_auto, auto_match, match_index
 from .validate import check_equipment_packages, check_load_types, check_plant_areas, plant_area_depth
 
 __all__ = [
+    "LOAD_LIST_TARGETS", "LoadListRow", "apply_auto", "auto_match", "match_index",
     "AREA_TYPES", "AttachedFile", "PACKAGE_TYPES", "AreaType", "EquipmentPackage", "EquipmentPackageList", "EquipmentType", "PackageType",
     "PlantArea", "PlantAreaList", "LoadType", "LoadTypeList", "PHASES", "RATING_UNITS", "check_load_types",
     "check_equipment_packages", "check_plant_areas", "plant_area_depth",

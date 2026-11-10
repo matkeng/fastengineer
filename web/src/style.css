@@ -741,6 +741,17 @@ button.link:hover:not(:disabled) { background: none; border: 0; text-decoration:
 dialog.modal.pdf-viewer { width: min(1100px, calc(100vw - 32px)); }
 .pdf-viewer .modal-body { padding: 0; overflow: hidden; }
 .pdf-viewer iframe { display: block; width: 100%; height: calc(100vh - 200px); border: 0; background: var(--chrome); }
+/* Load List: read-only rows with two allocation drop-downs. */
+.key-loadlist .key-title { margin: 0; font-size: 1rem; }
+.key-loadlist > .hint { margin: 2px 0 6px; }
+.key-loadlist .result-table td { white-space: nowrap; }
+.key-loadlist select.alloc { min-width: 170px; max-width: 260px; height: 24px; padding: 0 4px; font-size: 12px; }
+.key-loadlist select.alloc.auto { font-style: italic; color: var(--muted); }
+.key-loadlist tr.row-deleted > td { opacity: 0.55; }
+.key-loadlist tr.row-deleted > td:not(.alloc-col) { text-decoration: line-through; text-decoration-color: var(--muted); }
+.deleted-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--danger); border: 1px solid currentColor; border-radius: 2px; padding: 0 4px; text-decoration: none; display: inline-block; }
+.key-loadlist .result-table thead tr:first-child th.alloc-col { background: color-mix(in srgb, var(--accent) 14%, var(--card)); }
+.ref-nav .count.warn { border-color: var(--warn); color: var(--warn); }
 /* Inputs directly in a column layout must not grow vertically. */
 .ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }
 
