@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Matthew Kelly
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { ApiError, apiDelete, apiGet, apiPostJson, apiPut } from '../lib/engine';
+import { ApiError, apiDelete, apiGet, apiPostJson, apiPut, apiPutWith } from '../lib/engine';
 import type { CellValue, EnumList, RefOverview, RefRow, RefTree, TableDetail } from '../lib/refTypes';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -164,12 +164,17 @@ export const useRefData = defineStore('refdata', () => {
 		}
 	}
 
+	// Rows have no version of their own to read, so the row's last-saved time says which
+	// copy this edit was made on; the engine refuses it if a colleague saved the row since.
+	const lastSeen = (row?: RefRow): Record<string, string> => (row?.updated_at ? { 'X-Workbench-Base-Time': row.updated_at } : {});
+
 	// Rows are saved straight away (no draft). Returns the saved row, or undefined on errors.
 	async function saveRow(rowId: string | null, values: Record<string, CellValue>) {
 		const t = table.value;
 		if (!t) return undefined;
 		const base = `/api/ref/tables/${t.table.id}/rows`;
-		const row = await run(() => (rowId ? apiPut<RefRow>(`${base}/${rowId}`, { values }) : apiPostJson<RefRow>(base, { values })));
+		const seen = lastSeen(t.rows.find((r) => r.id === rowId));
+		const row = await run(() => (rowId ? apiPutWith<RefRow>(`${base}/${rowId}`, { values }, seen) : apiPostJson<RefRow>(base, { values })));
 		if (row) {
 			const i = t.rows.findIndex((r) => r.id === row.id);
 			if (i >= 0) t.rows.splice(i, 1, row);
@@ -182,7 +187,8 @@ export const useRefData = defineStore('refdata', () => {
 	async function deleteRow(rowId: string) {
 		const t = table.value;
 		if (!t) return false;
-		const ok = await run(() => apiDelete(`/api/ref/tables/${t.table.id}/rows/${rowId}`));
+		const seen = lastSeen(t.rows.find((r) => r.id === rowId));
+		const ok = await run(() => apiDelete(`/api/ref/tables/${t.table.id}/rows/${rowId}`, seen));
 		if (ok === undefined) return false;
 		t.rows = t.rows.filter((r) => r.id !== rowId);
 		void refresh();

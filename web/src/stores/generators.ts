@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Matthew Kelly
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { apiDelete, apiGet, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, runningInTauri } from '../lib/engine';
+import { apiDelete, apiGet, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, exportToPath, runningInTauri } from '../lib/engine';
 import type {
 	BuildInfo, BuildRecord, Catalogue, InputsImport, CheckResult, GenRecord, GenSummary, Hardware, HardwareView, ImportReport, PreviewResult,
 } from '../lib/genTypes';
@@ -175,7 +175,7 @@ export const useGenerators = defineStore('generators', () => {
 					filters: [format === 'csv' ? { name: 'CSV', extensions: ['csv'] } : { name: 'Excel workbook', extensions: ['xlsx'] }],
 				});
 				if (!path) return;
-				const res = await apiPostJson<{ path: string }>(url, { format, path });
+				const res = await exportToPath(url, { format }, path);
 				message.value = `Saved ${res.path}`;
 			} else {
 				const blob = await apiPostJsonForBlob(url, { format });
@@ -258,7 +258,7 @@ export const useGenerators = defineStore('generators', () => {
 					filters: [format === 'csv' ? { name: 'CSV', extensions: ['csv'] } : { name: 'Excel workbook', extensions: ['xlsx'] }],
 				});
 				if (!path) return;
-				const res = await apiPostJson<{ path: string }>(url, { format, path });
+				const res = await exportToPath(url, { format }, path);
 				message.value = `Saved ${res.path}`;
 			} else {
 				const blob = await apiPostJsonForBlob(url, { format });
@@ -282,7 +282,7 @@ export const useGenerators = defineStore('generators', () => {
 				const { save: saveDialog } = await import('@tauri-apps/plugin-dialog');
 				const path = await saveDialog({ defaultPath: name, filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }] });
 				if (!path) return;
-				const res = await apiPostJson<{ path: string }>(url, { path });
+				const res = await exportToPath(url, {}, path);
 				message.value = `Saved ${res.path}`;
 			} else {
 				const blob = await apiPostJsonForBlob(url, {});

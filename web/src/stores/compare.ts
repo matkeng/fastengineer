@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Matthew Kelly
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { apiPostJson, apiPostJsonForBlob, runningInTauri } from '../lib/engine';
+import { apiPostJson, apiPostJsonForBlob, exportToPath, runningInTauri } from '../lib/engine';
 import type { CompareResult } from '../lib/types';
 import { tableWizardStore } from './excelWizard';
 
@@ -60,7 +60,7 @@ export const useCompare = defineStore('compare', () => {
 				});
 				if (!path) return; // cancelled
 				busy.value = true;
-				const res = await apiPostJson<{ path: string }>('/api/excel/compare/export', { ...body, path });
+				const res = await exportToPath('/api/excel/compare/export', body, path);
 				exportMessage.value = `Saved ${res.path}`;
 			} else {
 				busy.value = true;

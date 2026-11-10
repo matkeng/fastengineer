@@ -3,6 +3,7 @@
 <script setup lang="ts">
 // PLC hardware register: panels -> racks -> slots -> cards, and the shared catalogue of
 // rack and card types (Network, DI, DO, AI, AO, RTD in 8 / 12 / 16 / 32 channel variants).
+import HistoryButton from '../audit/HistoryButton.vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
 	CARD_KINDS, type Card, type CardKind, type CardType, type Panel, type Rack, asTyped, cellText, newId,
@@ -248,6 +249,7 @@ function insertRackTypes(at: number, n: number) {
 			</template>
 			<template v-else>
 				<button type="button" class="secondary" :disabled="g.busy" @click="g.addDefaultTypes()">Add missing default types</button>
+				<HistoryButton entity="gen_catalogue" record-id="catalogue" label="Card and rack types" />
 				<button type="button" class="secondary" :disabled="!g.catDirty || g.busy" @click="g.discardCatalogue()">Discard</button>
 				<button type="button" :disabled="!g.catDirty || g.busy" @click="g.saveCatalogue()">Save types</button>
 			</template>

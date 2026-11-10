@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import HistoryButton from '../audit/HistoryButton.vue';
 import { onMounted, ref } from 'vue';
 import { TARGET_LABELS, TARGETS, type TargetList } from '../../lib/melTypes';
 import { type MelTab, useMel } from '../../stores/mel';
@@ -98,6 +99,7 @@ onMounted(() => mel.refreshList());
 				<span class="spacer" />
 				<span v-if="mel.dirty" class="unsaved">● Unsaved changes</span>
 				<span v-else-if="mel.message" class="saved" :title="mel.message">✓ {{ mel.message }}</span>
+				<HistoryButton v-if="mel.draft" entity="mel_recipe" :record-id="mel.draft.id" :label="mel.draft.name" />
 				<button type="button" class="secondary" :disabled="!mel.dirty || mel.busy" @click="mel.discard()">Discard</button>
 				<button type="button" :disabled="!mel.dirty || mel.busy" @click="mel.save()">Save</button>
 			</div>

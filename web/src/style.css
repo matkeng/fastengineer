@@ -840,3 +840,22 @@ main.fill > .gen > .wizard { flex: 1; min-height: 320px; display: flex; flex-dir
 .bulk-changes li { margin: 2px 0; }
 .bulk-changes .cell-change { margin-left: 8px; color: var(--muted); }
 .bulk-changes .cell-change s { color: var(--danger); }
+
+/* Change log */
+.audit-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 0 0 12px; }
+.audit-filters label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.audit-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+.audit-table th, .audit-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.audit-table .nowrap { white-space: nowrap; }
+.audit-table .hint { margin: 0; }
+.audit-row { cursor: pointer; }
+.audit-action { font-weight: 600; }
+.audit-row.delete .audit-action { color: var(--danger); }
+.audit-row.create .audit-action { color: var(--ok); }
+.audit-summary { margin-left: 8px; color: var(--muted); font-size: 12px; }
+.audit-detail > td { background: var(--bg, transparent); padding: 6px 8px 12px 28px; }
+.audit-detail table { width: 100%; border-collapse: collapse; }
+.audit-detail pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: 12px; max-height: 12em; overflow: auto; }
+.audit-detail td.old pre { color: var(--danger); }
+.audit-detail td.new pre { color: var(--ok); }
+.statusbar .who { font-weight: 600; }

@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import HistoryButton from '../audit/HistoryButton.vue';
 import { computed, onMounted, ref } from 'vue';
 import sampleUrl from '../../../../samples/generator-sample.xlsx?url';
 import { type ImportReport, KIND_LABELS } from '../../lib/genTypes';
@@ -140,6 +141,7 @@ onMounted(() => g.refreshList());
 				<span class="spacer" />
 				<span v-if="g.dirty" class="unsaved">● Unsaved changes</span>
 				<span v-else-if="g.message" class="saved" :title="g.message">✓ {{ g.message }}</span>
+				<HistoryButton v-if="g.draft" entity="generator" :record-id="g.draft.id" :label="g.draft.name" />
 				<button type="button" class="secondary" :disabled="!g.dirty || g.busy" @click="g.discard()">Discard</button>
 				<button type="button" :disabled="!g.dirty || g.busy" @click="g.save()">Save</button>
 			</div>

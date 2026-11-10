@@ -65,7 +65,7 @@ class Conflict(Exception):
     def __init__(self, entity: str, changed_by: str, changed_at: str):
         what = ENTITIES.get(entity, "record")
         super().__init__(f"This {what} was changed by {changed_by or 'someone else'} after you opened it. "
-                         "Reload it to see their changes, then make yours again.")
+                         "Open it again to see their changes, then make yours again.")
         self.entity, self.changed_by, self.changed_at = entity, changed_by, changed_at
 
 
@@ -136,7 +136,7 @@ def _load(value):
 def _label(*values) -> str:
     for v in values:
         if isinstance(v, dict):
-            for key in ("name", "file_name", "title", "description"):
+            for key in ("name", "file_name", "title", "desc", "description"):
                 if isinstance(v.get(key), str) and v[key]:
                     return v[key][:200]
     return ""

@@ -89,6 +89,78 @@ pwsh scripts/build-windows.ps1
 Installers land in `desktop/src-tauri/target/release/bundle/{nsis,msi}/`.
 The first Nuitka build takes several minutes; later builds are cached.
 
+## Multi-user: one shared server for a team
+
+Out of the box each person has their own data on their own PC. For a team, run
+**one engine on a server** and point everyone's desktop app at it. Everyone then
+works on the same data at the same time, and the app records **who changed which
+record, when, and what changed**.
+
+### On the server
+
+1. Take `workbench-engine.exe` from the portable zip and copy it to the server.
+2. Run it as a service (for example with [NSSM](https://nssm.cc), or a Task
+   Scheduler task that runs at start-up):
+
+   ```
+   workbench-engine.exe --server --host 0.0.0.0 --port 8765 --data-dir D:\WorkbenchData
+   ```
+
+   `--server` makes every change name its user. `--data-dir` holds the database
+   (`workbench.db`) and uploaded drawings (`symbols\`).
+3. Keep `--data-dir` on a **local disk of the server**, not a network share: the
+   database is not safe on a share. Only the engine opens it; nobody else needs
+   file access to that folder.
+4. Allow inbound TCP 8765 in Windows Firewall, for your office network only.
+5. Back up the `--data-dir` folder.
+
+### On each PC
+
+1. Install the app as usual (MSI or setup exe).
+2. Tell it where the server is, in either of these ways (both can be rolled out
+   by Group Policy):
+   - a file `C:\ProgramData\DrawingWorkbench\client.json` containing
+     `{"server_url": "http://SERVERNAME:8765"}` (applies to every user of the PC), or
+   - an environment variable `WORKBENCH_SERVER_URL=http://SERVERNAME:8765`.
+3. Start the app. There is no login screen: it uses the Windows login of whoever
+   is signed in (`DOMAIN\username`) and the PC's name. The status bar shows
+   "shared server" and the user name.
+
+Without either setting the app works as before, with its own private engine and
+data. Changes are still logged, under the local Windows login.
+
+### What users see
+
+- **Change log** (in the menu bar): every create, change and delete with the
+  time, user, PC, and the old and new value of each changed field. Filter by
+  user, record type and date. The **History** button on a list, tree, table,
+  list import, symbol library, template or generator shows that record's history
+  (a table's history includes its rows).
+- **Changed by someone else**: if two people have the same record open and both
+  save, the second save is refused, with the name of whoever saved first and
+  when. Nothing is overwritten silently. Open the record again to get their
+  version, then make the change again. Editing *different* records, or different
+  rows of the same table, at the same time is fine.
+- Exports are saved on the PC of the person exporting, as before.
+
+### Limits to know about
+
+- The user name is **reported by the desktop app, not verified** by the server.
+  It reliably tells colleagues apart on a trusted office network; it is not a
+  security control, and someone with network access and technical skill could
+  send another name. There are no passwords, roles or per-user permissions:
+  everyone who can reach the server can read and change everything.
+- Traffic is plain HTTP. Keep the port closed to anything outside the office
+  network, or put the engine behind a reverse proxy with HTTPS.
+- Large computed data is logged by its details, not its contents: uploaded files
+  (name and size), lookup tables of a generator (row and column counts), builds
+  and detection runs (that they were made or deleted, and by whom).
+- A very large change (more than 200 fields in one save) lists the first 200.
+- Symbol detection runs one job at a time on the server, so jobs from several
+  people queue.
+- For development or a test without the desktop app, open the front end in a
+  browser with `?user=NAME` to stand in for the Windows login.
+
 ## Development
 
 ```powershell

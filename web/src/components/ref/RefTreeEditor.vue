@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import HistoryButton from '../audit/HistoryButton.vue';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { newId, type TreeNode } from '../../lib/refTypes';
 import {
@@ -186,6 +187,7 @@ onMounted(expandAll);
 			<span v-if="problemCount" class="warn small">{{ problemCount }} problem(s)</span>
 			<span v-if="rd.treeDirty" class="unsaved">● Unsaved changes</span>
 			<span v-else-if="rd.message" class="saved">✓ {{ rd.message }}</span>
+			<HistoryButton entity="ref_tree" :record-id="d.id" :label="d.name" />
 			<button type="button" class="secondary" :disabled="!rd.treeDirty || rd.busy" @click="rd.discard()">Discard</button>
 			<button type="button" :disabled="!rd.treeDirty || rd.busy || problemCount > 0" @click="rd.saveTree()">Save</button>
 		</div>

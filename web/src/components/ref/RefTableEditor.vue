@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import HistoryButton from '../audit/HistoryButton.vue';
 import { computed, ref } from 'vue';
 import { useRefData } from '../../stores/refdata';
 import RefColumns from './RefColumns.vue';
@@ -24,6 +25,7 @@ function remove() {
 			<input v-model="d.name" class="name-input" aria-label="Table name" />
 			<span v-if="rd.fieldErrors.name" class="warn small">{{ rd.fieldErrors.name }}</span>
 			<span class="spacer" />
+			<HistoryButton entity="ref_table" :record-id="d.id" :label="d.name" />
 			<template v-if="rd.tableDirty">
 				<span class="unsaved">● Unsaved name or column changes</span>
 				<button type="button" class="secondary" :disabled="rd.busy" @click="rd.discard()">Discard</button>

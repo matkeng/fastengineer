@@ -4,6 +4,8 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import sampleC from '../../samples/cable-schedule-sample.xlsx?url';
 import EnginePanel from './components/EnginePanel.vue';
+import AuditView from './components/audit/AuditView.vue';
+import AppModal from './components/common/AppModal.vue';
 import Icon from './components/common/Icon.vue';
 import CompareView from './components/compare/CompareView.vue';
 import DashboardView from './components/dashboard/DashboardView.vue';
@@ -12,7 +14,7 @@ import GenView from './components/generators/GenView.vue';
 import MelView from './components/mel/MelView.vue';
 import RefView from './components/ref/RefView.vue';
 import SymView from './components/symbols/SymView.vue';
-import { apiGet } from './lib/engine';
+import { apiGet, lastConflict } from './lib/engine';
 import { useCompare } from './stores/compare';
 import { useExcelWizard } from './stores/excelWizard';
 import { useGenerators } from './stores/generators';
@@ -52,7 +54,12 @@ const dirty: Partial<Record<string, () => boolean>> = {
 const sectionLabel = computed(() => SECTIONS.find((s) => s.id === ui.tab)?.label ?? '');
 
 // Status bar
-const port = computed(() => (wb.baseUrl ? new URL(wb.baseUrl).port : ''));
+const host = computed(() => (wb.baseUrl ? new URL(wb.baseUrl).host : ''));
+const who = ref<{ user: string; machine: string; server: boolean; host: string } | null>(null);
+const conflictTime = computed(() => {
+	const at = lastConflict.value?.changedAt;
+	return at ? new Date(at).toLocaleString() : '';
+});
 const dataPath = ref('');
 const ocr = ref<{ available: boolean; engine: string | null } | null>(null);
 watch(
@@ -61,6 +68,7 @@ watch(
 		if (s !== 'ready') return;
 		try {
 			dataPath.value = (await apiGet<{ path: string }>('/api/mel/storage')).path.replace(/[\\/][^\\/]+$/, '');
+			who.value = await apiGet('/api/whoami');
 			ocr.value = await apiGet('/api/symbols/ocr');
 		} catch {
 			/* shown as unknown */
@@ -111,6 +119,7 @@ onMounted(() => wb.connect());
 				<MelView v-show="ui.tab === 'mel'" />
 				<RefView v-show="ui.tab === 'ref'" />
 				<GenView v-show="ui.tab === 'generators'" />
+				<AuditView v-if="ui.tab === 'history'" />
 			</template>
 			<section v-else-if="ui.tab !== 'engine'" class="card">
 				<template v-if="wb.status === 'connecting'">
@@ -129,12 +138,26 @@ onMounted(() => wb.connect());
 
 		<footer class="statusbar">
 			<span><span class="dot" :style="{ display: 'inline-block', background: wb.status === 'ready' ? 'var(--ok)' : wb.status === 'error' ? 'var(--danger)' : 'var(--warn)' }" />
-				engine {{ wb.status }}<template v-if="port"> · <span class="mono">127.0.0.1:{{ port }}</span></template></span>
+				engine {{ wb.status }}<template v-if="host"> · <span class="mono">{{ host }}</span></template>
+				<template v-if="who?.server"> · shared server</template></span>
+			<span v-if="who" title="Changes you make are recorded under this name">user: <span class="who">{{ who.user }}</span></span>
 			<span v-if="wb.info">{{ wb.info.compiled ? 'compiled' : 'Python ' + wb.info.python.split(' ')[0] }}</span>
 			<span v-if="ocr">OCR: {{ ocr.available ? ocr.engine : 'not available' }}</span>
 			<span v-if="dataPath" :title="dataPath">data: <span class="mono">{{ dataPath }}</span></span>
 			<span class="spacer" />
 			<span>AGPL-3.0-only · <a href="#" @click.prevent="ui.go('engine')">About</a></span>
 		</footer>
+
+		<AppModal :open="!!lastConflict" title="Changed by someone else" @close="lastConflict = null">
+			<p>{{ lastConflict?.message }}</p>
+			<p v-if="lastConflict?.changedBy" class="hint">
+				Last changed by {{ lastConflict.changedBy }}<template v-if="conflictTime"> on {{ conflictTime }}</template>.
+				Your change was not saved. The Change log shows what they changed.
+			</p>
+			<template #footer>
+				<button type="button" class="secondary" @click="lastConflict = null; ui.go('history')">Open change log</button>
+				<button type="button" @click="lastConflict = null">OK</button>
+			</template>
+		</AppModal>
 	</div>
 </template>

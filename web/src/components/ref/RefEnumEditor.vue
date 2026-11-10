@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import HistoryButton from '../audit/HistoryButton.vue';
 import { computed, nextTick, ref } from 'vue';
 import { newId } from '../../lib/refTypes';
 import { useRefData } from '../../stores/refdata';
@@ -55,6 +56,7 @@ function remove() {
 			<span class="spacer" />
 			<span v-if="rd.enumDirty" class="unsaved">● Unsaved changes</span>
 			<span v-else-if="rd.message" class="saved">✓ {{ rd.message }}</span>
+			<HistoryButton entity="ref_enum" :record-id="d.id" :label="d.name" />
 			<button type="button" class="secondary" :disabled="!rd.enumDirty || rd.busy" @click="rd.discard()">Discard</button>
 			<button type="button" :disabled="!rd.enumDirty || rd.busy || Object.keys(problems).length > 0" @click="rd.saveEnum()">Save</button>
 		</div>

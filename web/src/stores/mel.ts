@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Matthew Kelly
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { apiDelete, apiGet, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, runningInTauri } from '../lib/engine';
+import { apiDelete, apiGet, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, exportToPath, runningInTauri } from '../lib/engine';
 import type {
 	CsvInspect, LoadListResult, PipelineResult, Recipe, RecipeDetail, RecipeSummary, RevisionInfo, Stage, TargetList,
 } from '../lib/melTypes';
@@ -152,7 +152,7 @@ export const useMel = defineStore('mel', () => {
 					filters: [format === 'csv' ? { name: 'CSV', extensions: ['csv'] } : { name: 'Excel workbook', extensions: ['xlsx'] }],
 				});
 				if (!path) return;
-				const res = await apiPostJson<{ path: string }>(`${base.value}/export`, { ...body, path });
+				const res = await exportToPath(`${base.value}/export`, body, path);
 				message.value = `Saved ${res.path}`;
 			} else {
 				const blob = await apiPostJsonForBlob(`${base.value}/export`, body);

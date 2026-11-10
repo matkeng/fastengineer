@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import HistoryButton from '../audit/HistoryButton.vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { apiGetBlob } from '../../lib/engine';
 import type { MaskMode } from '../../lib/symbolTypes';
@@ -327,6 +328,7 @@ onBeforeUnmount(() => image.value?.close());
 			<span class="spacer" />
 			<span v-if="sym.templateDirty" class="unsaved">● Unsaved changes</span>
 			<span v-else-if="sym.message" class="saved">✓ {{ sym.message }}</span>
+			<HistoryButton entity="sym_template" :record-id="t.id" :label="t.desc || 'Symbol template'" />
 			<button type="button" class="secondary" :disabled="!sym.templateDirty || sym.busy" @click="sym.discardTemplate()">Discard</button>
 			<button type="button" :disabled="!sym.templateDirty || sym.busy" @click="sym.saveTemplate()">Save</button>
 		</div>
