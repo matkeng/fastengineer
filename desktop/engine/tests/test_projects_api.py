@@ -62,7 +62,10 @@ def test_upgrading_a_server_keeps_its_users_in(tmp_path: Path) -> None:
     storage.configure(old)
     client.post("/api/ref/enums", json={"name": "Voltage"}, headers=who(BOB))
     identity.server_mode, identity.admins = True, {projects.user_key(ANN)}
-    (old / "registry.db").unlink()                         # as if upgrading from before projects
+    (old / "engine.db").unlink()                           # as if upgrading from before projects
+    import sqlite3
+    with sqlite3.connect(old / "workbench.db") as db:
+        db.execute("DELETE FROM settings WHERE key = 'project'")
     storage.configure(old)
     assert lists(BOB, "default") == ["Voltage"]
     assert client.get("/api/ref", headers=who(CAT)).status_code == 403
@@ -70,7 +73,7 @@ def test_upgrading_a_server_keeps_its_users_in(tmp_path: Path) -> None:
 
 def test_each_project_has_its_own_data_and_change_log(server: Path) -> None:
     a, b = new_project("Plant A", members=[BOB]), new_project("Plant B", members=[BOB])
-    assert Path(a["folder"]) == server / "projects" / a["id"]
+    assert Path(a["folder"]) == server / "projects" / "Plant A"   # a folder you can recognise
     client.post("/api/ref/enums", json={"name": "Voltage"}, headers=who(BOB, a["id"]))
     client.post("/api/ref/enums", json={"name": "Voltage"}, headers=who(BOB, b["id"]))   # same name: no clash
     client.post("/api/ref/enums", json={"name": "Pressure"}, headers=who(BOB, b["id"]))
@@ -155,7 +158,8 @@ def test_copying_standards_into_a_new_project(server: Path) -> None:
     assert [(x["name"], x["templates"]) for x in libs_b] == [(x["name"], x["templates"]) for x in libs_a]
     assert len(libs_b) == 1                                                   # the example was not added twice
     assert client.get("/api/mel/recipes", headers=B).json() == []             # the work stayed behind
-    assert client.get("/api/audit", headers=B).json()["entries"][-1]["label"] == "Standards copied from 'Plant A'"
+    first = client.get("/api/audit", headers=B).json()["entries"][-2:]       # the project's own log starts with these
+    assert [x["label"] for x in first] == ["Standards copied from 'Plant A'", "Plant B"]
     # afterwards the two are independent
     client.put(f"/api/ref/enums/{e['id']}", headers=B, json={"name": "Voltage B", "items": []})
     assert lists(BOB, a["id"]) == ["Voltage"] and lists(BOB, b["id"]) == ["Voltage B"]
@@ -166,17 +170,119 @@ def test_a_project_in_a_folder_of_its_own(server: Path, tmp_path: Path) -> None:
     c = new_project("Plant C", path=str(folder), members=[BOB])
     client.post("/api/ref/enums", json={"name": "Voltage"}, headers=who(BOB, c["id"]))
     assert Path(c["folder"]) == folder and (folder / "workbench.db").exists()
-    assert not (server / "projects" / c["id"]).exists()
+    assert not (server / "projects" / "Plant C").exists() and c["external"] is True
     # the same folder can't be used twice; shares and relative paths are refused
     for bad in (str(folder), "\\\\server\\share\\x", "//server/share/x", "relative/folder"):
         r = client.post("/api/projects", json={"name": "Other", "path": bad}, headers=who(ANN))
         assert r.status_code == 422 and "path" in r.json()["fields"], bad
-    # a folder that already holds a project database is opened as it is
-    storage.configure(tmp_path / "second")
-    d = new_project("Plant C again", path=str(folder))
-    assert lists(ANN, d["id"]) == ["Voltage"]
-    r = client.post("/api/projects", json={"name": "Copy", "path": str(folder), "copy_from": d["id"]}, headers=who(ANN))
-    assert r.status_code == 422
+    # after a restart the engine still serves it
+    storage.configure(server)
+    assert lists(BOB, c["id"]) == ["Voltage"]
+
+
+def attach(path: Path) -> dict:
+    r = client.post("/api/projects/attach", json={"path": str(path)}, headers=who(ANN))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_a_project_folder_is_complete_on_its_own(server: Path, tmp_path: Path) -> None:
+    import shutil
+    a = new_project("Plant A", members=[BOB])
+    client.post("/api/ref/enums", json={"name": "Voltage"}, headers=who(BOB, a["id"]))
+    client.put(f"/api/projects/{a['id']}", json={"members": [BOB, CAT]}, headers=who(ANN))
+    storage.configure(server)                                  # everything is saved in the folder
+
+    # Another engine (another server or PC) opens a copy of the folder: the name, the
+    # members, the data and the history all come with it. Nothing else is needed.
+    moved = tmp_path / "usb" / "Plant A"
+    shutil.copytree(a["folder"], moved)
+    storage.configure(tmp_path / "other-server")
+    p = attach(moved)
+    assert (p["id"], p["name"], p["members"], p["external"]) == (a["id"], "Plant A", [BOB, CAT], True)
+    assert lists(CAT, p["id"]) == ["Voltage"]
+    log = client.get("/api/audit", headers=who(CAT, p["id"])).json()["entries"]
+    assert [(e["entity"], e["action"], e["user"]) for e in log] == [
+        ("project", "update", ANN), ("ref_enum", "create", BOB), ("project", "create", ANN)]
+    assert log[0]["changes"] == [{"path": "members", "old": [BOB], "new": [BOB, CAT]}]
+    # there is no project in an empty folder
+    assert client.post("/api/projects/attach", json={"path": str(tmp_path / "usb")}, headers=who(ANN)).status_code == 422
+
+    # Taking it off the list leaves the folder alone, and it can be added again.
+    assert client.delete(f"/api/projects/{p['id']}", headers=who(ANN)).status_code == 200
+    assert client.get("/api/ref", headers=who(CAT, p["id"])).status_code == 404
+    assert (moved / "workbench.db").exists()
+    assert attach(moved)["id"] == a["id"]
+    # the engine's own projects can't be taken off the list, only archived
+    assert client.delete("/api/projects/default", headers=who(ANN)).status_code == 422
+    assert client.delete(f"/api/projects/{p['id']}", headers=who(BOB)).status_code == 403
+
+
+def test_a_copy_beside_the_original_is_a_project_of_its_own(server: Path, tmp_path: Path) -> None:
+    import shutil
+    a = new_project("Plant A", members=[BOB])
+    client.post("/api/ref/enums", json={"name": "Voltage"}, headers=who(BOB, a["id"]))
+    storage.configure(server)
+    shutil.copytree(a["folder"], tmp_path / "Plant A copy")
+    storage.configure(server)
+    b = attach(tmp_path / "Plant A copy")
+    assert b["id"] != a["id"] and b["members"] == [BOB]
+    client.post("/api/ref/enums", json={"name": "Pressure"}, headers=who(BOB, b["id"]))
+    assert lists(BOB, a["id"]) == ["Voltage"] and lists(BOB, b["id"]) == ["Pressure", "Voltage"]
+    storage.configure(server)                                  # and it keeps its new identity
+    assert {p["id"] for p in client.get("/api/projects/all", headers=who(ANN)).json()["projects"]} == {
+        "default", a["id"], b["id"]}
+
+
+def test_folders_dropped_in_or_gone_missing(server: Path, tmp_path: Path) -> None:
+    import shutil
+    outside = new_project("Plant X", path=str(tmp_path / "x"), members=[BOB])
+    inside = new_project("Plant Y")
+    storage.configure(server)
+    # a project folder put into <data dir>/projects is found at the next start, with no other step
+    shutil.copytree(inside["folder"], server / "projects" / "Restored")
+    # a pointed-at folder that has gone (moved, disk not connected) is reported, not an error
+    shutil.move(str(tmp_path / "x"), str(tmp_path / "moved"))
+    storage.configure(server)
+    listing = client.get("/api/projects/all", headers=who(ANN)).json()
+    assert sorted(p["name"] for p in listing["projects"]) == ["Default", "Plant Y", "Plant Y"]
+    assert listing["missing"] == [str(tmp_path / "x")]
+    assert client.get("/api/ref", headers=who(BOB, outside["id"])).status_code == 404
+    # point the engine at where it went, and forget the old place
+    assert attach(tmp_path / "moved")["id"] == outside["id"]
+    after = client.post("/api/projects/forget", json={"path": str(tmp_path / "x")}, headers=who(ANN)).json()
+    assert after["missing"] == [] and client.get("/api/ref", headers=who(BOB, outside["id"])).status_code == 200
+
+
+def test_takes_over_from_the_central_list_of_an_earlier_version(server: Path, tmp_path: Path) -> None:
+    import sqlite3
+    a = new_project("Plant A", members=[BOB])
+    client.post("/api/ref/enums", json={"name": "Voltage"}, headers=who(BOB, a["id"]))
+    storage.configure(server)
+    # Put things back the way the earlier version kept them: details in registry.db, folder named by id.
+    folder = server / "projects" / "0123abcd"
+    Path(a["folder"]).rename(folder)
+    with sqlite3.connect(folder / "workbench.db") as db:
+        db.execute("DELETE FROM settings WHERE key = 'project'")
+    (server / "engine.db").unlink()
+    with sqlite3.connect(server / "registry.db") as db:
+        db.executescript("""
+            CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, name_key TEXT, path TEXT, archived INTEGER,
+                                   created_at TEXT, created_by TEXT);
+            CREATE TABLE members (project_id TEXT, user_key TEXT, user TEXT);
+            CREATE TABLE users (user_key TEXT PRIMARY KEY, user TEXT, last_project_id TEXT, last_seen TEXT);
+            INSERT INTO projects VALUES ('default', 'Default', 'default', '.', 0, '2026-11-01T00:00:00+00:00', 'system');
+            INSERT INTO projects VALUES ('0123abcd', 'Plant A', 'plant a', '', 0, '2026-11-02T00:00:00+00:00', 'ACME\\ann');
+            INSERT INTO members VALUES ('0123abcd', 'acme\\cat', 'ACME\\cat');
+            INSERT INTO users VALUES ('acme\\cat', 'ACME\\cat', '0123abcd', '2026-11-03T00:00:00+00:00');
+        """)
+    storage.configure(server)
+    mine = client.get("/api/projects", headers=who(CAT)).json()
+    assert mine["projects"] == [{"id": "0123abcd", "name": "Plant A", "archived": False}] and mine["current"] == "0123abcd"
+    assert lists(CAT, "0123abcd") == ["Voltage"]
+    assert not (server / "registry.db").exists()               # read once, then set aside
+    storage.configure(server)                                  # now the folder itself knows
+    assert client.get("/api/projects", headers=who(CAT)).json()["projects"][0]["name"] == "Plant A"
 
 
 def test_starts_in_the_project_last_opened(server: Path) -> None:

@@ -106,8 +106,8 @@ record, when, and what changed**.
    workbench-engine.exe --server --host 0.0.0.0 --port 8765 --data-dir D:\WorkbenchData --admin ACME\jsmith
    ```
 
-   `--server` makes every change name its user. `--data-dir` holds the list of
-   projects (`registry.db`) and the projects themselves. `--admin` names a user
+   `--server` makes every change name its user. `--data-dir` holds the
+   projects, one folder each. `--admin` names a user
    who may manage projects; repeat it for more than one (see Projects below).
 3. Keep `--data-dir` on a **local disk of the server**, not a network share: the
    database is not safe on a share. Only the engine opens it; nobody else needs
@@ -132,34 +132,52 @@ data. Changes are still logged, under the local Windows login.
 
 ### Projects
 
-Each project is a folder with **its own database** (`workbench.db`) and its own
-uploaded drawings: its own lists, tables, symbol libraries, imports, generators
-and change log. Nothing is shared between projects.
+Each project is a **folder that is complete on its own**. It holds the project's
+database (`workbench.db`) and uploaded drawings, and that database holds
+everything about the project: its lists, tables, symbol libraries, imports,
+generators and change log, and also its own name, members and archived flag.
+There is no central list of projects, and nothing is shared between projects.
 
+- **A project folder can be copied, moved, backed up or restored by itself.**
+  Open it with another engine (another server, or the app on a single PC) and
+  its name, members, data and history all come with it. Stop the engine, or at
+  least make sure nobody is working in the project, before copying its folder,
+  and copy the whole folder.
+- **Which folders an engine serves:**
+  - its data folder itself: the project "Default", where data lived before
+    projects,
+  - every folder under `<data-dir>\projects\`. Put a project folder there and
+    it is found at the next start, with no other step,
+  - folders elsewhere that an administrator adds on the Projects page, for
+    example `E:\Jobs\Plant A`. These must be on a local disk of the machine the
+    engine runs on, not a network share. If such a folder is not there at
+    start-up (moved, or a disk not connected) the Projects page says so; the
+    other projects are not affected.
 - **Choosing a project.** The title bar has a Project box listing the projects
-  you can open. The app starts in the project you had open last; the server
-  remembers that per user. Switching project reloads the app in the other one.
+  you can open. The app starts in the project you had open last. Switching
+  project reloads the app in the other one.
 - **Administrators** (the `--admin` users; on a single PC without a server, you)
   get a **Projects** page where they:
-  - create a project, either empty or starting with the lists, trees, tables,
-    symbol libraries and card and rack types of an existing project (a copy;
-    the two are independent afterwards),
+  - create a project, in a new folder named after it under
+    `<data-dir>\projects\` or in a folder they choose. It starts empty, or with
+    a copy of the lists, trees, tables, symbol libraries and card and rack
+    types of an existing project (the two are independent afterwards),
+  - open an existing project folder as it is,
   - choose each project's **members**. People only see and open the projects
     they are a member of; administrators can open all of them. Someone in no
     project is told to ask an administrator, and shows up in the list of people
     to add once they have started the app,
   - rename, archive and restore projects. Archiving hides a project from
     everyone and deletes nothing,
-  - see who created or changed projects and their members.
-- **Where projects are kept.** By default in `<data-dir>\projects\<id>\`. When
-  creating a project an administrator can give it a **folder of its own**
-  instead, for example `E:\Jobs\Plant A`. It must be on a local disk of the
-  machine the engine runs on, not a network share. If that folder already
-  holds a `workbench.db`, the project opens that data as it is, which is how to
-  bring in a database from another PC or an older install.
-- **Existing data.** The data from before projects becomes the project
-  "Default" and stays in `<data-dir>` where it was. On a server, everyone who
-  appears in its change log is made a member of it.
+  - take a project kept outside the data folder off the list. Its folder is
+    left as it is.
+
+  Each of these is recorded in that project's own change log.
+- **A copy of a project** opened beside the original becomes a separate
+  project with the same name and members, and can then be renamed.
+- **What the engine itself keeps** (`engine.db` in the data folder) is only the
+  extra folder locations and which project each user had open last. Losing it
+  loses no project data.
 - If the server is started **without any `--admin`**, nobody can manage
   projects and every project is open to everyone.
 

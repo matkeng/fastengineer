@@ -1,21 +1,33 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Matthew Kelly
-"""Projects: each one is a folder with its own database (workbench.db) and drawings.
+"""Projects: each one is a self-contained folder.
 
-``<data dir>/registry.db`` lists the projects, who may open each one, and the
-project each user had open last. A request names its project in the
-``X-Workbench-Project`` header; ``storage.get_store()`` then returns that
-project's store, so people work in different projects on one engine at once.
+A project folder holds ``workbench.db`` (and the drawings beside it), and that
+database holds everything about the project: its data, its change log, and its
+own name, id, members and archived flag. There is no central list of projects,
+so a folder can be copied, moved, backed up or opened by another engine and it
+brings all of that with it.
 
-The data that existed before projects (``<data dir>/workbench.db``) is the
-"Default" project and stays where it is.
+An engine serves every project folder it finds:
+
+- its data folder itself (the "Default" project, where data lived before projects),
+- each folder under ``<data dir>/projects/``,
+- folders elsewhere that an administrator has pointed it at.
+
+``<data dir>/engine.db`` is the engine's own notebook, not project data: those
+extra folder locations, and the project each user had open last.
+
+A request names its project in the ``X-Workbench-Project`` header;
+``storage.get_store()`` then returns that project's store.
 """
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import threading
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,20 +35,9 @@ from . import audit, identity
 from .storage import Store, default_data_dir
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS projects (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    name_key TEXT NOT NULL UNIQUE,
-    path TEXT NOT NULL,          -- '' = <data dir>/projects/<id>, '.' = the data dir itself, else a folder
-    archived INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    created_by TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS members (
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    user_key TEXT NOT NULL,
-    user TEXT NOT NULL,
-    PRIMARY KEY (project_id, user_key)
+-- Project folders outside <data dir>/projects that this engine also serves.
+CREATE TABLE IF NOT EXISTS locations (
+    path TEXT PRIMARY KEY
 );
 -- Everyone who has started the app, and the project they had open last.
 CREATE TABLE IF NOT EXISTS users (
@@ -80,65 +81,125 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+@dataclass
+class Entry:
+    """One project this engine serves. ``meta`` mirrors what is saved in the project's own database."""
+    store: Store
+    folder: Path
+    external: bool      # outside the data folder: the engine only holds a pointer to it
+    meta: dict          # id, name, archived, members, created_at, created_by
+
+
+def _safe_folder_name(name: str) -> str:
+    return re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", name).strip(" .") or "Project"
+
+
 class Registry:
+    """The projects this engine serves. (Not a database of projects: each project's
+    details live in its own folder; this only finds the folders and opens them.)"""
+
     def __init__(self, root: Path):
         root.mkdir(parents=True, exist_ok=True)
         self.root = root
         self._lock = threading.RLock()
-        self._db = sqlite3.connect(root / "registry.db", check_same_thread=False)
-        self._db.execute("PRAGMA foreign_keys = ON")
+        self._db = sqlite3.connect(root / "engine.db", check_same_thread=False)
         self._db.execute("PRAGMA busy_timeout = 5000")
         self._db.executescript(SCHEMA)
-        self._db.executescript(audit.SCHEMA)
-        self._stores: dict[str, Store] = {}
-        if not self._db.execute("SELECT 1 FROM projects").fetchone():
-            self._adopt_existing()
+        self._projects: dict[str, Entry] = {}
+        #: Pointed-at folders that are not there (moved, or a disk that is not connected).
+        self.missing: list[str] = []
+        legacy = self._read_legacy_registry()
+        self._open(root, external=False, legacy=legacy, default=True)
+        for folder in sorted((root / "projects").glob("*/")):
+            if (folder / "workbench.db").exists():
+                self._open(folder, external=False, legacy=legacy)
+        for (path,) in self._db.execute("SELECT path FROM locations ORDER BY path").fetchall():
+            if (Path(path) / "workbench.db").exists():
+                self._open(Path(path), external=True, legacy=legacy)
+            else:
+                self.missing.append(path)
 
     def close(self) -> None:
         with self._lock:
-            for store in self._stores.values():
-                store._db.close()
-            self._stores.clear()
+            for entry in self._projects.values():
+                entry.store._db.close()
+            self._projects.clear()
             self._db.close()
 
-    def _adopt_existing(self) -> None:
-        """First start with projects: the data folder as it is becomes "Default"."""
-        had_data = (self.root / "workbench.db").exists()
-        with self._lock, self._db:
-            self._db.execute("INSERT INTO projects VALUES ('default', 'Default', 'default', '.', 0, ?, 'system')", (_now(),))
-        if had_data and identity.server_mode:
-            # Whoever already worked in it keeps access.
-            store = self.store("default")
-            with self._lock, self._db:
-                for user in store.audit_users():
-                    self._db.execute("INSERT OR IGNORE INTO members VALUES ('default', ?, ?)", (user_key(user), user))
+    # -- finding and opening folders ------------------------------------------------
+
+    def _read_legacy_registry(self) -> dict[str, dict]:
+        """An earlier version kept project names and members centrally in registry.db.
+        Read them once (by folder) so each project's own database can take them over."""
+        old = self.root / "registry.db"
+        if not old.exists():
+            return {}
+        out: dict[str, dict] = {}
+        db = sqlite3.connect(old)
+        try:
+            for pid, name, path, archived, created_at, created_by in db.execute(
+                    "SELECT id, name, path, archived, created_at, created_by FROM projects"):
+                folder = self.root if path == "." else Path(path) if path else self.root / "projects" / pid
+                members = [r[0] for r in db.execute("SELECT user FROM members WHERE project_id = ? ORDER BY user_key", (pid,))]
+                out[str(folder.resolve())] = {"id": pid, "name": name, "archived": bool(archived), "members": members,
+                                              "created_at": created_at, "created_by": created_by}
+                if path not in ("", "."):
+                    with self._db:
+                        self._db.execute("INSERT OR IGNORE INTO locations VALUES (?)", (str(folder),))
+            with self._db:
+                self._db.executemany("INSERT OR IGNORE INTO users VALUES (?, ?, ?, ?)",
+                                     db.execute("SELECT user_key, user, last_project_id, last_seen FROM users").fetchall())
+        except sqlite3.Error:
+            return {}
+        finally:
+            db.close()
+        old.rename(old.with_name("registry.db.migrated"))
+        return out
+
+    def _open(self, folder: Path, *, external: bool, legacy: dict[str, dict] | None = None,
+              default: bool = False) -> Entry:
+        """Serve the project in ``folder``. A database that does not know its own
+        details yet (from before projects, or brand new) is given them here."""
+        had_data = (folder / "workbench.db").exists()
+        store = Store(folder / "workbench.db")
+        meta = store.project_meta()
+        fresh = meta is None
+        if meta is None:
+            meta = (legacy or {}).get(str(folder.resolve())) or {
+                "id": "default" if default else uuid.uuid4().hex,
+                "name": "Default" if default else folder.name,
+                "archived": False,
+                # Whoever already worked in it keeps access.
+                "members": store.audit_users() if had_data and identity.server_mode else [],
+                "created_at": _now(), "created_by": "system"}
+        if meta["id"] in self._projects:
+            # The same project twice: this folder is a copy, so it becomes a project of its own.
+            meta, fresh = {**meta, "id": uuid.uuid4().hex}, True
+        if fresh:
+            store.save_project_meta(meta, log=False)
+        entry = self._projects[meta["id"]] = Entry(store, folder, external, meta)
+        return entry
 
     # -- reading ---------------------------------------------------------------
 
-    def folder(self, path: str, project_id: str) -> Path:
-        if path == ".":
-            return self.root
-        return Path(path) if path else self.root / "projects" / project_id
+    @staticmethod
+    def _view(entry: Entry) -> dict:
+        return {**entry.meta, "folder": str(entry.folder), "external": entry.external}
 
-    def _row(self, row) -> dict:
-        pid, name, path, archived, created_at, created_by = row
-        members = [r[0] for r in self._db.execute("SELECT user FROM members WHERE project_id = ? ORDER BY user_key", (pid,))]
-        return {"id": pid, "name": name, "archived": bool(archived), "folder": str(self.folder(path, pid)),
-                "members": members, "created_at": created_at, "created_by": created_by}
+    def _entry(self, project_id: str) -> Entry:
+        entry = self._projects.get(project_id)
+        if entry is None:
+            raise ProjectError(404, "That project no longer exists.")
+        return entry
 
     def all(self) -> list[dict]:
         with self._lock:
-            rows = self._db.execute("SELECT id, name, path, archived, created_at, created_by FROM projects "
-                                    "ORDER BY archived, name_key").fetchall()
-            return [self._row(r) for r in rows]
+            return sorted((self._view(e) for e in self._projects.values()),
+                          key=lambda p: (p["archived"], p["name"].casefold(), p["folder"]))
 
     def get(self, project_id: str) -> dict:
         with self._lock:
-            row = self._db.execute("SELECT id, name, path, archived, created_at, created_by FROM projects WHERE id = ?",
-                                   (project_id,)).fetchone()
-            if not row:
-                raise ProjectError(404, "That project no longer exists.")
-            return self._row(row)
+            return self._view(self._entry(project_id))
 
     def may_open(self, project: dict, user: str) -> bool:
         if project["archived"]:
@@ -159,12 +220,18 @@ class Registry:
 
     def known_users(self) -> list[str]:
         with self._lock:
-            rows = self._db.execute("SELECT user_key, user FROM users UNION SELECT user_key, user FROM members").fetchall()
-        return sorted(dict(rows).values(), key=str.casefold)
+            names = {user_key(u): u for (u,) in self._db.execute("SELECT user FROM users")}
+            for entry in self._projects.values():
+                names.update({user_key(m): m for m in entry.meta["members"]})
+        return sorted(names.values(), key=str.casefold)
 
-    def log_entries(self, **filters) -> list[dict]:
+    def log_entries(self, limit: int = 100) -> list[dict]:
+        """Who created, renamed or archived projects and changed their members: each
+        project keeps this in its own change log; here they are put together."""
         with self._lock:
-            return audit.entries(self._db, **filters)
+            entries = [e for entry in self._projects.values()
+                       for e in entry.store.audit_entries(entity="project", limit=limit)]
+        return sorted(entries, key=lambda e: e["at"], reverse=True)[:limit]
 
     # -- per user ----------------------------------------------------------------
 
@@ -178,30 +245,17 @@ class Registry:
                              "last_project_id = COALESCE(excluded.last_project_id, last_project_id)",
                              (user_key(user), user, project_id, _now()))
 
-    # -- stores ------------------------------------------------------------------
-
     def store(self, project_id: str) -> Store:
         with self._lock:
-            store = self._stores.get(project_id)
-            if store is None:
-                row = self._db.execute("SELECT path FROM projects WHERE id = ?", (project_id,)).fetchone()
-                if not row:
-                    raise ProjectError(404, "That project no longer exists.")
-                store = self._stores[project_id] = Store(self.folder(row[0], project_id) / "workbench.db")
-            return store
+            return self._entry(project_id).store
 
     # -- changing (administrators) -------------------------------------------------
-
-    @staticmethod
-    def _logged(project: dict) -> dict:
-        return {k: project[k] for k in ("name", "folder", "archived", "members")}
 
     def _check_name(self, name: str, project_id: str | None = None) -> str:
         name = " ".join(name.split())
         if not name:
             raise ProjectError(422, "Give the project a name.", "name")
-        row = self._db.execute("SELECT id FROM projects WHERE name_key = ?", (name.casefold(),)).fetchone()
-        if row and row[0] != project_id:
+        if any(e.meta["name"].casefold() == name.casefold() and pid != project_id for pid, e in self._projects.items()):
             raise ProjectError(422, f"There is already a project called '{name}'.", "name")
         return name
 
@@ -214,48 +268,85 @@ class Registry:
         if not folder.is_absolute():
             raise ProjectError(422, "Give the full path of the folder, e.g. D:\\Projects\\Plant A.", "path")
         folder = folder.resolve()
-        for p in self.all():
-            if Path(p["folder"]).resolve() == folder:
-                raise ProjectError(422, f"The project '{p['name']}' already uses that folder.", "path")
-        try:
-            folder.mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
-            raise ProjectError(422, f"Can't create that folder: {exc.strerror or exc}", "path") from exc
+        for entry in self._projects.values():
+            if entry.folder.resolve() == folder:
+                raise ProjectError(422, f"The project '{entry.meta['name']}' already uses that folder.", "path")
         return folder
 
-    def _set_members(self, project_id: str, members: list[str]) -> None:
-        self._db.execute("DELETE FROM members WHERE project_id = ?", (project_id,))
-        for user in members:
-            if user.strip():
-                self._db.execute("INSERT OR IGNORE INTO members VALUES (?, ?, ?)", (project_id, user_key(user), user.strip()))
+    @staticmethod
+    def _members(members: list[str] | None) -> list[str]:
+        out: dict[str, str] = {}
+        for m in members or []:
+            if m.strip():
+                out.setdefault(user_key(m), m.strip())
+        return sorted(out.values(), key=str.casefold)
 
     def create(self, name: str, path: str | None = None, copy_from: str | None = None,
                members: list[str] | None = None) -> dict:
-        """A new project. With ``path``, in that folder (a database already there is
-        opened as it is); with ``copy_from``, starting with that project's lists, trees,
-        tables, symbol libraries and card and rack types."""
+        """A new project, in its own new folder: ``path`` if given, else one named after
+        it under ``<data dir>/projects``. With ``copy_from`` it starts with that project's
+        lists, trees, tables, symbol libraries and card and rack types."""
         user = identity.current().user
         with self._lock:
             name = self._check_name(name)
-            source = self.get(copy_from) if copy_from else None
-            project_id = uuid.uuid4().hex
-            folder = self._check_folder(path) if path and path.strip() else None
-            existing = bool(folder and (folder / "workbench.db").exists())
-            if existing and source:
-                raise ProjectError(422, "That folder already has a project database, so nothing can be copied "
-                                        "into it. Choose 'start empty' to open it as it is.", "copy_from")
-            with self._db:
-                self._db.execute("INSERT INTO projects VALUES (?, ?, ?, ?, 0, ?, ?)",
-                                 (project_id, name, name.casefold(), str(folder) if folder else "", _now(), user))
-                self._set_members(project_id, members or [])
-                project = self.get(project_id)
-                audit.log(self._db, "project", project_id, None, self._logged(project), label=name,
-                          note="opened the database already in that folder" if existing
-                          else f"standards copied from '{source['name']}'" if source else None)
-            store = self.store(project_id)
+            source = self._entry(copy_from) if copy_from else None
+            if path and path.strip():
+                folder, external = self._check_folder(path), True
+                if (folder / "workbench.db").exists():
+                    raise ProjectError(422, "That folder already holds a project. Use 'Open an existing project "
+                                            "folder' to add it as it is.", "path")
+            else:
+                base = self.root / "projects" / _safe_folder_name(name)
+                folder, n, external = base, 2, False
+                while folder.exists():
+                    folder, n = base.with_name(f"{base.name} ({n})"), n + 1
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                raise ProjectError(422, f"Can't create that folder: {exc.strerror or exc}", "path") from exc
+            store = Store(folder / "workbench.db")
+            meta = {"id": uuid.uuid4().hex, "name": name, "archived": False, "members": self._members(members),
+                    "created_at": _now(), "created_by": user}
+            store.save_project_meta(meta, note=f"standards copied from '{source.meta['name']}'" if source else None)
+            entry = self._projects[meta["id"]] = Entry(store, folder, external, meta)
+            if external:
+                with self._db:
+                    self._db.execute("INSERT OR IGNORE INTO locations VALUES (?)", (str(folder),))
             if source:
-                self._copy_standards(self.store(source["id"]), store, source["name"])
-            return project
+                self._copy_standards(source.store, store, source.meta["name"])
+            return self._view(entry)
+
+    def attach(self, path: str) -> dict:
+        """Serve a project folder that already exists (moved here, restored from a backup,
+        or copied from another PC). It keeps its own name, members and history."""
+        with self._lock:
+            folder = self._check_folder(path)
+            if not (folder / "workbench.db").exists():
+                raise ProjectError(422, "There is no project in that folder (no workbench.db).", "path")
+            inside = folder.parent == (self.root / "projects").resolve()
+            entry = self._open(folder, external=not inside)
+            if not inside:
+                with self._db:
+                    self._db.execute("INSERT OR IGNORE INTO locations VALUES (?)", (str(folder),))
+            self.missing = [m for m in self.missing if Path(m).resolve() != folder]
+            return self._view(entry)
+
+    def detach(self, project_id: str) -> None:
+        """Stop serving a project kept outside the data folder. The folder is left as it is."""
+        with self._lock:
+            entry = self._entry(project_id)
+            if not entry.external:
+                raise ProjectError(422, "This project is kept in the engine's own data folder, so it is always "
+                                        "listed. Archive it to hide it.")
+            entry.store._db.close()
+            del self._projects[project_id]
+            with self._db:
+                self._db.execute("DELETE FROM locations WHERE path = ?", (str(entry.folder),))
+
+    def forget_missing(self, path: str) -> None:
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM locations WHERE path = ?", (path,))
+            self.missing = [m for m in self.missing if m != path]
 
     def _copy_standards(self, source: Store, target: Store, source_name: str) -> None:
         with source._lock:
@@ -282,21 +373,20 @@ class Registry:
     def update(self, project_id: str, name: str | None = None, archived: bool | None = None,
                members: list[str] | None = None) -> dict:
         with self._lock:
-            before = self.get(project_id)
-            with self._db:
-                if name is not None:
-                    name = self._check_name(name, project_id)
-                    self._db.execute("UPDATE projects SET name = ?, name_key = ? WHERE id = ?",
-                                     (name, name.casefold(), project_id))
-                if archived is not None:
-                    if archived and sum(1 for p in self.all() if not p["archived"]) <= 1 and not before["archived"]:
-                        raise ProjectError(422, "This is the only project in use, so it can't be archived.")
-                    self._db.execute("UPDATE projects SET archived = ? WHERE id = ?", (int(archived), project_id))
-                if members is not None:
-                    self._set_members(project_id, members)
-                after = self.get(project_id)
-                audit.log(self._db, "project", project_id, self._logged(before), self._logged(after), label=after["name"])
-            return after
+            entry = self._entry(project_id)
+            meta = dict(entry.meta)
+            if name is not None:
+                meta["name"] = self._check_name(name, project_id)
+            if archived is not None:
+                in_use = sum(1 for e in self._projects.values() if not e.meta["archived"])
+                if archived and not meta["archived"] and in_use <= 1:
+                    raise ProjectError(422, "This is the only project in use, so it can't be archived.")
+                meta["archived"] = archived
+            if members is not None:
+                meta["members"] = self._members(members)
+            entry.store.save_project_meta(meta)
+            entry.meta = meta
+            return self._view(entry)
 
 
 _registry: Registry | None = None

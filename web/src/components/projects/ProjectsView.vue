@@ -12,6 +12,7 @@ const selectedId = ref<string | null>(null);
 const selected = computed(() => pr.all.find((p) => p.id === selectedId.value) ?? null);
 const edit = reactive({ name: '', members: [] as string[] });
 const fresh = reactive({ name: '', copyFrom: '', path: '', members: [] as string[] });
+const existing = ref(''); // folder of a project to add as it is
 const saved = ref<string | null>(null);
 const canBrowse = ref(false); // only when the engine runs on this PC: the folder is on the engine's disks
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -51,10 +52,27 @@ async function archive(archived: boolean) {
 	if (await pr.update(p.id, { archived })) saved.value = archived ? 'Archived' : 'Restored';
 }
 
-async function browse() {
+async function browse(target: 'new' | 'existing') {
 	const { open } = await import('@tauri-apps/plugin-dialog');
-	const folder = await open({ directory: true, title: 'Folder for the project' });
-	if (typeof folder === 'string') fresh.path = folder;
+	const folder = await open({ directory: true, title: target === 'new' ? 'Folder for the new project' : 'Project folder to open' });
+	if (typeof folder !== 'string') return;
+	if (target === 'new') fresh.path = folder;
+	else existing.value = folder;
+}
+
+async function attach() {
+	const p = await pr.attach(existing.value);
+	if (!p) return;
+	existing.value = '';
+	pick(pr.all.find((x) => x.id === p.id) ?? null);
+	saved.value = `Added ${p.name}`;
+}
+
+async function detach() {
+	const p = selected.value;
+	if (!p) return;
+	if (!confirm(`Take "${p.name}" off the list? Nobody will be able to open it from this engine. Its folder is not deleted:\n${p.folder}`)) return;
+	if (await pr.detach(p.id)) pick(null);
 }
 
 function summary(changes: { path: string; old: unknown; new: unknown }[]): string {
@@ -74,11 +92,17 @@ watch(() => pr.all, () => { if (selectedId.value && !selected.value) pick(null);
 		<section class="card">
 			<h2>Projects</h2>
 			<p class="hint">
-				Each project has its own database: its own lists, tables, drawings, imports, generators and change log.
+				Each project is a folder that is complete on its own: its data, drawings and change log, and its own name and members.
+				A project folder can be copied, moved or backed up by itself.
 				<template v-if="pr.enforced">People only see the projects they are a member of.</template>
 				<template v-else>Every project is open to everyone who uses this engine.</template>
 			</p>
 			<p v-if="pr.error" class="error">{{ pr.error }}</p>
+			<div v-for="m in pr.missing" :key="m" class="warn missing">
+				Project folder not found: <span class="mono">{{ m }}</span>
+				<button type="button" class="secondary small" :disabled="pr.busy" title="If it was moved, add it again from its new place below"
+					@click="pr.forget(m)">Stop looking for it</button>
+			</div>
 			<table class="projects-table">
 				<thead><tr><th>Project</th><th>Members</th><th>Folder</th><th /></tr></thead>
 				<tbody>
@@ -109,6 +133,8 @@ watch(() => pr.all, () => { if (selectedId.value && !selected.value) pick(null);
 					<button type="submit" :disabled="!editDirty || pr.busy">Save</button>
 					<button v-if="!selected.archived" type="button" class="secondary" :disabled="pr.busy" @click="archive(true)">Archive</button>
 					<button v-else type="button" class="secondary" :disabled="pr.busy" @click="archive(false)">Restore</button>
+					<button v-if="selected.external && selected.id !== pr.currentId" type="button" class="secondary" :disabled="pr.busy"
+						title="Stop serving this project here. Its folder is left as it is." @click="detach">Remove from list</button>
 					<button v-if="!selected.archived && selected.id !== pr.currentId" type="button" class="secondary"
 						:disabled="pr.busy || editDirty" @click="pr.switchTo(selected.id)">Open this project</button>
 					<span v-if="saved" class="saved">✓ {{ saved }}</span>
@@ -132,20 +158,35 @@ watch(() => pr.all, () => { if (selectedId.value && !selected.value) pick(null);
 				</label>
 				<label>Folder (optional)
 					<span class="row">
-						<input v-model="fresh.path" class="mono wide" :placeholder="`Leave empty to keep it in ${pr.defaultFolder}`"
-							:class="{ invalid: pr.fieldErrors.path }" />
-						<button v-if="canBrowse" type="button" class="secondary" @click="browse">Browse…</button>
+						<input v-model="fresh.path" class="mono wide" :placeholder="`Leave empty to keep it in ${pr.defaultFolder}`" />
+						<button v-if="canBrowse" type="button" class="secondary" @click="browse('new')">Browse…</button>
 					</span>
 				</label>
 				<p class="hint">
-					A folder on a local disk of the machine the engine runs on, not a network share.
-					If it already holds a project database, that project is opened as it is.
+					A new or empty folder on a local disk of the machine the engine runs on, not a network share.
 				</p>
 				<div class="field">
 					<span>Members</span>
 					<MemberList v-model="fresh.members" :known="pr.users" list-id="members-new" />
 				</div>
 				<div class="row"><button type="submit" :disabled="!fresh.name.trim() || pr.busy">Create project</button></div>
+			</form>
+		</section>
+
+		<section class="card">
+			<h2>Open an existing project folder</h2>
+			<p class="hint">
+				For a project folder that was moved, restored from a backup, or copied from another PC or server.
+				It keeps its own name, members, data and history.
+			</p>
+			<form class="project-form" @submit.prevent="attach">
+				<label>Folder
+					<span class="row">
+						<input v-model="existing" class="mono wide" placeholder="The folder that contains workbench.db" />
+						<button v-if="canBrowse" type="button" class="secondary" @click="browse('existing')">Browse…</button>
+					</span>
+				</label>
+				<div class="row"><button type="submit" :disabled="!existing.trim() || pr.busy">Add project</button></div>
 			</form>
 		</section>
 

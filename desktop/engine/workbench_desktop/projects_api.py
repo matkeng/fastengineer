@@ -21,6 +21,7 @@ class Project(BaseModel):
 
 class ProjectDetail(Project):
     folder: str
+    external: bool               # kept outside the engine's data folder (can be removed from the list)
     members: list[str]
     created_at: str
     created_by: str
@@ -37,6 +38,7 @@ class AllProjects(BaseModel):
     projects: list[ProjectDetail]
     users: list[str]             # everyone who has started the app or is a member somewhere
     default_folder: str          # where projects without a folder of their own are kept
+    missing: list[str]           # folders the engine was pointed at that are not there now
     enforced: bool
 
 
@@ -71,6 +73,7 @@ def open_project(project_id: str) -> Project:
 def all_projects() -> AllProjects:
     reg = _admin()
     return AllProjects(projects=reg.all(), users=reg.known_users(), default_folder=str(reg.root / "projects"),
+                       missing=reg.missing,
                        enforced=projects.enforced())
 
 
@@ -82,7 +85,7 @@ def project_log(limit: int = 100) -> list[AuditEntry]:
 
 class NewProject(BaseModel):
     name: str
-    path: str | None = None          # a folder of its own; omit for the standard place
+    path: str | None = None          # a new folder of its own; omit for the standard place
     copy_from: str | None = None     # start with this project's lists, tables, libraries and types
     members: list[str] = []
 
@@ -90,6 +93,30 @@ class NewProject(BaseModel):
 @router.post("", response_model=ProjectDetail)
 def create_project(body: NewProject) -> ProjectDetail:
     return ProjectDetail(**_admin().create(body.name, body.path, body.copy_from, body.members))
+
+
+class Folder(BaseModel):
+    path: str
+
+
+@router.post("/attach", response_model=ProjectDetail)
+def attach_project(body: Folder) -> ProjectDetail:
+    """List a project folder that already exists. It keeps its own name, members and history."""
+    return ProjectDetail(**_admin().attach(body.path))
+
+
+@router.post("/forget", response_model=AllProjects)
+def forget_missing(body: Folder) -> AllProjects:
+    """Stop looking for a project folder that is no longer there."""
+    _admin().forget_missing(body.path)
+    return all_projects()
+
+
+@router.delete("/{project_id}")
+def detach_project(project_id: str) -> dict[str, str]:
+    """Take a project kept outside the data folder off the list. Its folder is not touched."""
+    _admin().detach(project_id)
+    return {"status": "removed from the list"}
 
 
 class ProjectUpdate(BaseModel):

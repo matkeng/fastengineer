@@ -195,6 +195,26 @@ class Store:
         with self._lock:
             return audit.users(self._db)
 
+    # -- the project itself ------------------------------------------------------
+
+    def project_meta(self) -> dict | None:
+        """This project's own details (id, name, archived, members, created_at, created_by).
+        They live in the project's database so the folder is complete on its own: copy or
+        move it and its name, members and history go with it."""
+        with self._lock:
+            data = audit.data_of(self._db, "settings", "key = ?", ("project",))
+        return json.loads(data) if data else None
+
+    def save_project_meta(self, meta: dict, log: bool = True, note: str | None = None) -> None:
+        shown = lambda m: m and {k: m[k] for k in ("name", "archived", "members")}  # noqa: E731
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "settings", "key = ?", ("project",))
+            self._db.execute("INSERT INTO settings VALUES ('project', ?) ON CONFLICT(key) DO UPDATE SET "
+                             "data = excluded.data", (json.dumps(meta),))
+            if log:
+                audit.log(self._db, "project", meta["id"], shown(json.loads(before)) if before else None, shown(meta),
+                          label=meta["name"], note=note)
+
     # -- recipes -------------------------------------------------------------
 
     def list_recipes(self) -> list[dict]:

@@ -876,3 +876,4 @@ main.fill > .gen > .wizard { flex: 1; min-height: 320px; display: flex; flex-dir
 .members ul { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .members li { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; border: 1px solid var(--border); border-radius: 3px; background: var(--card); color: var(--text, inherit); }
 .members .row { display: flex; gap: 8px; }
+.projects .missing { display: flex; gap: 8px; align-items: center; margin: 0 0 8px; }
