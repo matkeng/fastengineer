@@ -493,9 +493,10 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
 - **PLC List**: a four-level tree of **PLC systems** (tag, description,
   manufacturer, model) → **racks** (tag number, unique in the project; plant
   area; rack type; first slot) → **cards** in slots (card type, name, spare,
-  notes) → **IO points**, one per channel of the card type, numbered from 0
-  (tag, unique in the project when filled; description; spare; the signal comes
-  from the card kind). It replaces the PLC hardware register each generator
+  notes) → **IO points**, one per channel of the card type (tag, unique in the
+  project when filled; description; spare; the signal comes from the card
+  kind). Channels are numbered from 0 or from 1, as the card type's **First
+  channel** says; changing it renumbers the points and keeps their tags. It replaces the PLC hardware register each generator
   had: the first time it is opened, the generators' registers are moved into
   it (each panel becomes a system, its racks are tagged `{PANEL}-R{n}`, and a
   rack's plant area is the one whose tag equals the panel's location). The

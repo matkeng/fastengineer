@@ -87,3 +87,23 @@ def test_workbook_round_trip() -> None:
     p = r.cards[1].points[2]
     assert (p.tag, p.description) == ("XS-102", "Pump running")
     assert res.catalogue.card_types[3].part_number == "DI-16X" and res.notes == []
+
+
+def test_cards_numbered_from_one() -> None:
+    cat = CAT.model_copy(deep=True)
+    di16 = next(t for t in cat.card_types if t.id == "di16")
+    di16.first_channel = 1
+    plc, _ = normalise_points(_plc("di16", "ai8"), cat)
+    di, ai = plc.systems[0].racks[0].cards
+    assert [p.channel for p in di.points] == list(range(1, 17)) and ai.points[0].channel == 0
+    # Renumbering the type keeps each point (by position) with its tag.
+    di.points[0].tag, di.points[15].tag = "XS-1", "XS-16"
+    di16.first_channel = 0
+    out, errors = normalise_points(plc, cat)
+    pts = out.systems[0].racks[0].cards[0].points
+    assert errors == {} and (pts[0].channel, pts[0].tag, pts[15].channel, pts[15].tag) == (0, "XS-1", 15, "XS-16")
+    # The card types sheet carries it.
+    di16.first_channel = 1
+    res = read_workbook(write_workbook(out, cat, {}), CAT, {})
+    assert next(t for t in res.catalogue.card_types if t.id == "di16").first_channel == 1
+    assert [p.channel for p in res.plc.systems[0].racks[0].cards[0].points][:2] == [1, 2]

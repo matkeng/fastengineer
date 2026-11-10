@@ -156,3 +156,18 @@ def test_generators_registers_are_moved_once() -> None:
     assert client.put("/api/plc", json={"systems": []}).status_code == 200
     assert client.get("/api/plc").json()["plc"]["systems"] == []
     assert client.get(f"/api/generators/{rid}/hardware").json()["summary"]["cards"] == 0
+
+
+def test_first_channel_per_card_type() -> None:
+    cat = client.get("/api/plc/catalogue").json()
+    assert {t["first_channel"] for t in cat["card_types"]} == {0}
+    for t in cat["card_types"]:
+        if t["id"] == "ai8":
+            t["first_channel"] = 1
+    assert client.put("/api/plc", json=_plc()).status_code == 200
+    assert client.put("/api/plc/catalogue", json=cat).status_code == 200
+    rack = client.get("/api/plc").json()["plc"]["systems"][0]["racks"][0]  # renumbered when the types were saved
+    assert [p["channel"] for p in rack["cards"][3]["points"]] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert rack["cards"][1]["points"][0]["channel"] == 0
+    bad = {**cat, "card_types": [dict(t, first_channel=2) if t["id"] == "ai8" else t for t in cat["card_types"]]}
+    assert client.put("/api/plc/catalogue", json=bad).status_code == 422

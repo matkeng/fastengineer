@@ -47,14 +47,21 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
 
 // -- systems, racks, cards, IO points ------------------------------------------------------
 
-/** One IO point per channel of the card's type (from 0), keeping the points it has by channel. */
+/** One IO point per channel of the card's type, numbered from its first channel (0 or 1),
+ *  keeping the points it has in order (the engine does the same when saving). */
 function syncPoints(card: Card) {
 	const t = typeOf(card.card_type_id);
 	const n = !t || t.kind === 'Network' ? 0 : t.channels;
-	const have = new Map(card.points.map((p) => [p.channel, p]));
-	const kept = card.points.filter((p) => (p.channel >= n || p.channel < 0) && (p.tag.trim() || p.description.trim()));
-	card.points = [...Array.from({ length: n }, (_, ch) => have.get(ch) ?? { channel: ch, tag: '', description: '', spare: false }), ...kept];
+	const first = t?.first_channel ?? 0;
+	const old = [...card.points].sort((a, b) => a.channel - b.channel);
+	const kept = old.slice(n).filter((p) => p.tag.trim() || p.description.trim());
+	card.points = [...Array.from({ length: n }, (_, i) => ({ ...(old[i] ?? { tag: '', description: '', spare: false }), channel: first + i })), ...kept];
 }
+
+// Renumber every card's points when a type's first channel changes.
+watch(() => cardTypes.value.map((t) => `${t.id}:${t.first_channel}:${t.channels}`).join(), () => {
+	for (const p of hw.value?.systems ?? []) for (const r of p.racks) for (const c of r.cards) if (c) syncPoints(c);
+});
 
 function addPanel() {
 	if (!hw.value) return;
@@ -224,8 +231,9 @@ const cardCols: GridColumn[] = [
 	{ label: 'Part number', width: 150 },
 	{ label: 'Description', width: 260 },
 	{ label: 'Wiring', width: 110, options: ['2-wire', '4-wire', '2/3/4-wire'] },
+	{ label: 'First channel', width: 100, options: ['0', '1'], title: 'Channels numbered from 0 or from 1, as on the card' },
 ];
-const cardCells = computed(() => cardTypes.value.map((t) => [t.kind, cellText(t.channels), t.part_number, t.description, t.wiring]));
+const cardCells = computed(() => cardTypes.value.map((t) => [t.kind, cellText(t.channels), t.part_number, t.description, t.wiring, String(t.first_channel ?? 0)]));
 function setCard(edits: CellEdit[]) {
 	for (const e of edits) {
 		const t = cardTypes.value[e.r];
@@ -238,12 +246,13 @@ function setCard(edits: CellEdit[]) {
 			t.channels = typeof n === 'number' && n >= 0 ? Math.round(n) : 0;
 		} else if (e.c === 2) t.part_number = e.value;
 		else if (e.c === 3) t.description = e.value;
-		else t.wiring = e.value;
+		else if (e.c === 4) t.wiring = e.value;
+		else t.first_channel = e.value.trim() === '1' ? 1 : 0;
 	}
 }
 function insertCardTypes(at: number, n: number) {
 	cat.value?.card_types.splice(at, 0, ...Array.from({ length: n }, () => ({
-		id: newId(), kind: 'DI' as CardKind, channels: 16, part_number: '', description: '', wiring: '',
+		id: newId(), kind: 'DI' as CardKind, channels: 16, part_number: '', description: '', wiring: '', first_channel: 0 as const,
 	})));
 }
 const used = computed(() => {

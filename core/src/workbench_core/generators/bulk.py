@@ -446,12 +446,14 @@ def _a_hardware(inp: Inputs, v) -> None:
 
 
 CT_HEAD = ["ID", "Kind", "Channels", "Part number", "Description", "Wiring"]
+CT_FIRST = "First channel"  # an extra column (sheets without it are read as 0)
 RT_HEAD = ["ID", "Part number", "Description", "Max slots"]
 
 
 def _w_card_types(inp: Inputs):
-    rows = [[t.id, t.kind, t.channels, t.part_number, t.description, t.wiring] for t in inp.catalogue.card_types]
-    return [list(CT_HEAD)] + rows, [r[0] for r in rows], 1
+    rows = [[t.id, t.kind, t.channels, t.part_number, t.description, t.wiring, t.first_channel]
+            for t in inp.catalogue.card_types]
+    return [list(CT_HEAD) + [CT_FIRST]] + rows, [r[0] for r in rows], 1
 
 
 def _r_card_types(grid: Grid, inp: Inputs):
@@ -462,14 +464,17 @@ def _r_card_types(grid: Grid, inp: Inputs):
     for n, r in enumerate(grid[1:], start=2):
         if _blank(r):
             continue
-        r = r + [None] * (6 - len(r))
+        r = r + [None] * (7 - len(r))
         kind = kinds.get(_t(r[1]).strip().lower())
         if kind is None:
             raise ValueError(f"row {n}: Kind must be one of Network, DI, DO, AI, AO, RTD")
         ch = _int(r[2], "Channels", n) if _t(r[2]).strip() else 0
         if ch < 0:
             raise ValueError(f"row {n}: Channels can't be negative")
-        kw = dict(kind=kind, channels=ch, part_number=_t(r[3]), description=_t(r[4]), wiring=_t(r[5]))
+        first = _int(r[6], CT_FIRST, n) if _t(r[6]).strip() else 0
+        if first not in (0, 1):
+            raise ValueError(f"row {n}: {CT_FIRST} must be 0 or 1")
+        kw = dict(kind=kind, channels=ch, part_number=_t(r[3]), description=_t(r[4]), wiring=_t(r[5]), first_channel=first)
         tid = _t(r[0]).strip()
         t = CardType(id=tid, **kw) if tid else CardType(**kw)
         if t.id in ids:

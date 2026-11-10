@@ -211,6 +211,7 @@ export const useKeyLists = defineStore('keylists', () => {
 		plcView.value = v;
 		plcSaved.value = clone(v.plc);
 		if (!keepDraft) plcDraft.value = clone(v.plc);
+		else if (plcDraft.value) plcDraft.value.updated_at = v.plc.updated_at; // only real edits count as unsaved
 		catSaved.value = clone(v.catalogue);
 		if (!catDirty.value || !catDraft.value) catDraft.value = clone(v.catalogue);
 	}
@@ -244,6 +245,10 @@ export const useKeyLists = defineStore('keylists', () => {
 			catSaved.value = clone(c);
 			catDraft.value = clone(c);
 			message.value = 'Card and rack types saved';
+			// The engine renumbers the saved list's IO points for the types: take that saved copy
+			// (the draft has been renumbered the same way, so only real edits stay unsaved).
+			const v = await apiGet<PlcView>('/api/plc').catch(() => null);
+			if (v) setPlc(v, true);
 			await checkPlc();
 		}
 	}

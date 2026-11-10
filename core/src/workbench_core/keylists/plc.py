@@ -4,7 +4,9 @@
 
 It replaces the PLC hardware register each generator used to have (panel -> rack -> card);
 the catalogue of card and rack types is the same shared one (generators.hardware). A card
-has exactly as many IO points as its type has channels, numbered from 0.
+has exactly as many IO points as its type has channels, numbered from 0 or from 1 as the
+card type says (`first_channel`). Points belong to a card by position, so renumbering a type
+keeps each point's tag and description.
 """
 
 from __future__ import annotations
@@ -80,21 +82,24 @@ def cards(plc: PlcList):
 # -- IO points follow the card type --------------------------------------------------------------
 
 def normalise_points(plc: PlcList, catalogue: Catalogue) -> tuple[PlcList, dict[str, str]]:
-    """Give every card one IO point per channel of its type (channels 0..n-1), keeping the
-    existing points by channel. A channel that would go but has a tag or description is an
-    error (field `<card id>.card_type_id`) and is kept."""
-    channels = {t.id: (0 if t.kind == "Network" else t.channels) for t in catalogue.card_types}
+    """Give every card one IO point per channel of its type, numbered from the type's first
+    channel (0 or 1), keeping the existing points in order. A point that would go but has a
+    tag or description is an error (field `<card id>.card_type_id`) and is kept."""
+    types = {t.id: t for t in catalogue.card_types}
     errors: dict[str, str] = {}
     plc = plc.model_copy(deep=True)
     for _s, rack, slot, card in cards(plc):
-        n = channels.get(card.card_type_id, len(card.points))
-        have = {p.channel: p for p in card.points}
-        lost = [p for ch, p in sorted(have.items()) if (ch >= n or ch < 0) and (p.tag.strip() or p.description.strip())]
+        t = types.get(card.card_type_id)
+        n = len(card.points) if t is None else 0 if t.kind == "Network" else t.channels
+        first = t.first_channel if t is not None else (card.points[0].channel if card.points else 0)
+        old = sorted(card.points, key=lambda p: p.channel)
+        lost = [p for p in old[n:] if p.tag.strip() or p.description.strip()]
         if lost:
             errors[f"{card.id}.card_type_id"] = (
                 f"{card_name(rack, slot, card)}: channel(s) {', '.join(str(p.channel) for p in lost)} have a tag or "
                 f"description, and the card type has {n} channel(s). Clear them first.")
-        card.points = [have.get(ch) or IoPoint(channel=ch) for ch in range(n)] + lost
+        points = [(old[i] if i < len(old) else IoPoint(channel=0)).model_copy(update={"channel": first + i}) for i in range(n)]
+        card.points = points + lost
     return plc, errors
 
 

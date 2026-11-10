@@ -83,8 +83,8 @@ def _check_catalogue(cat: Catalogue) -> None:
     dup = sorted({i for i in ids if ids.count(i) > 1})
     if dup:
         raise RefValidationError(f"Type ids used twice: {', '.join(dup)}", {"catalogue": "Duplicate ids"})
-    if [t for t in cat.card_types if t.channels < 0] + [t for t in cat.rack_types if t.max_slots is not None and t.max_slots < 1]:
-        raise RefValidationError("Channels can't be negative and a rack needs at least one slot.", {"catalogue": "Not valid"})
+    if [t for t in cat.card_types if t.channels < 0 or t.first_channel not in (0, 1)] + [t for t in cat.rack_types if t.max_slots is not None and t.max_slots < 1]:
+        raise RefValidationError("Channels can't be negative, the first channel is 0 or 1, and a rack needs at least one slot.", {"catalogue": "Not valid"})
     plc = get_keylists().plc()
     racks = {r.rack_type_id for s in plc.systems for r in s.racks}
     used = {c.card_type_id for *_x, c in cards(plc)}
@@ -105,7 +105,14 @@ def save_catalogue(body: Catalogue):
         _check_catalogue(body)
     except RefValidationError as exc:
         return invalid(exc)
-    return get_keylists().save_catalogue(body)
+    lists = get_keylists()
+    cat = lists.save_catalogue(body)
+    # Channel counts and numbering come from the types: bring the saved list's IO points in line.
+    plc = lists.plc()
+    renumbered, errors = normalise_points(plc, cat)
+    if not errors and renumbered.systems != plc.systems:
+        lists.save_plc(renumbered, note="IO points renumbered for the card types")
+    return cat
 
 
 @router.post("/catalogue/defaults", response_model=Catalogue)
