@@ -180,3 +180,63 @@ def test_equipment_types_under_packages(data_dir: Path) -> None:
     log = client.get("/api/audit", params={"entity": "equipment_packages", "record_id": "equipment-packages"}).json()
     entries = log["entries"] if isinstance(log, dict) else log
     assert any("types[Globe valve]" in c["path"] for c in entries[0]["changes"])
+
+
+LOAD_URL = "/api/keylists/load-types"
+LOADS = [
+    {"id": "l2", "code": "VSD", "name": "Variable speed drive", "rating_unit": "kW", "voltage": "690",
+     "phases": "AC-3-phase", "from_value": "2.50", "to_value": "75", "std_drg": "E-STD-012", "bucket_type": "B2",
+     "load_type": "Motor", "field_options": "LCS", "multi_load": True, "load_qty": "2"},
+    {"id": "l1", "code": "DOL", "name": "Direct on line", "rating_unit": "kW", "voltage": 415, "phases": "AC-3-phase"},
+    {"id": "l3", "code": "INST", "name": "Instrument loop", "rating_unit": "Amps", "voltage": 24, "phases": "DC-mA"},
+]
+
+
+def test_load_types_save_rules_and_persistence(data_dir: Path) -> None:
+    assert client.get(LOAD_URL).json() == {"items": [], "updated_at": None}
+    ov = client.get("/api/keylists").json()
+    assert ov["load_types"] == {"items": 0} and ov["rating_units"] == ["kW", "Amps"]
+    assert ov["phases"] == ["AC-3-phase", "AC-3-phase+N", "AC-1-phase-LN", "AC-1-phase-LL", "DC", "DC-mA"]
+
+    saved = client.put(LOAD_URL, json={"items": LOADS})
+    assert saved.status_code == 200, saved.text
+    vsd, dol, _ = saved.json()["items"]
+    assert (vsd["id"], vsd["voltage"], vsd["from_value"], vsd["to_value"], vsd["multi_load"], vsd["load_qty"]) == (
+        "l2", 690, "2.5", "75", True, 2)
+    assert (dol["from_value"], dol["std_drg"], dol["multi_load"], dol["load_qty"]) == (None, "", False, None)
+
+    bad = client.put(LOAD_URL, json={"items": LOADS + [
+        {"id": "x1", "code": "dol", "name": "INSTRUMENT  loop", "rating_unit": "HP", "voltage": "415V", "phases": "AC",
+         "from_value": "ten", "load_qty": 1.5},
+        {"id": "x2", "code": "", "name": " ", "rating_unit": "kW", "voltage": "", "phases": "DC",
+         "from_value": 10, "to_value": 5},
+    ]})
+    assert bad.status_code == 422
+    assert set(bad.json()["fields"]) == {
+        "x1.code", "x1.name", "x1.rating_unit", "x1.voltage", "x1.phases", "x1.from_value", "x1.load_qty",
+        "x2.code", "x2.name", "x2.voltage", "x2.to_value"}
+
+    # Refused saves kept nothing; the list survives a restart and the other lists are untouched.
+    storage.configure(data_dir)
+    assert [i["code"] for i in client.get(LOAD_URL).json()["items"]] == ["VSD", "DOL", "INST"]
+    assert client.get("/api/keylists").json()["load_types"] == {"items": 3}
+    assert client.get("/api/dashboard").json()["counts"]["load_types"] == 3
+    assert client.get(URL).json()["nodes"] == [] and client.get(PKG_URL).json()["items"] == []
+
+
+def test_load_types_change_log_and_conflicts() -> None:
+    ann_tag = client.get(LOAD_URL, headers=ANN).headers["ETag"]
+    bob_tag = client.get(LOAD_URL, headers=BOB).headers["ETag"]
+    assert client.put(LOAD_URL, json={"items": LOADS}, headers={**ANN, "If-Match": ann_tag}).status_code == 200
+    r = client.put(LOAD_URL, json={"items": LOADS[:1]}, headers={**BOB, "If-Match": bob_tag})
+    assert r.status_code == 409 and r.json()["changed_by"] == "ACME\\ann"
+    assert len(client.get(LOAD_URL).json()["items"]) == 3
+    bob_tag = client.get(LOAD_URL, headers=BOB).headers["ETag"]
+    changed = [dict(row, voltage=400) if row["id"] == "l1" else row for row in LOADS]
+    assert client.put(LOAD_URL, json={"items": changed}, headers={**BOB, "If-Match": bob_tag}).status_code == 200
+
+    log = client.get("/api/audit", params={"entity": "load_types", "record_id": "load-types"}).json()
+    entries = log["entries"] if isinstance(log, dict) else log
+    assert [e["user"] for e in entries] == ["ACME\\bob", "ACME\\ann"]
+    assert all(e["label"] == "Load Types" for e in entries)
+    assert any(c["path"].endswith("items[Direct on line].voltage") and c["new"] == 400 for c in entries[0]["changes"])

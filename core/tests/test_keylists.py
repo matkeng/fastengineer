@@ -8,12 +8,15 @@ from pydantic import ValidationError
 from workbench_core.keylists import (
     AREA_TYPES,
     PACKAGE_TYPES,
+    PHASES,
+    RATING_UNITS,
     EquipmentPackage,
     EquipmentPackageList,
     EquipmentType,
     PlantArea,
     PlantAreaList,
     check_equipment_packages,
+    check_load_types,
     check_plant_areas,
     plant_area_depth,
 )
@@ -170,3 +173,64 @@ def test_a_type_needs_a_package_of_the_list() -> None:
     with pytest.raises(RefValidationError) as e:
         check_equipment_packages(_with_types(("t1", "a", "Pump", ""), ("t2", "b", "Valve", ""), packages=_PKGS[:1]))
     assert e.value.fields == {"t2.package": "Its package is not in the list"}
+
+
+# -- load types ---------------------------------------------------------------------
+
+def _load(**fields) -> dict:
+    return {"id": "a", "code": "DOL", "name": "Direct on line", "rating_unit": "kW", "voltage": 415,
+            "phases": "AC-3-phase"} | fields
+
+
+def test_load_type_choices() -> None:
+    assert RATING_UNITS == ["kW", "Amps"]
+    assert PHASES == ["AC-3-phase", "AC-3-phase+N", "AC-1-phase-LN", "AC-1-phase-LL", "DC", "DC-mA"]
+
+
+def test_load_types_are_converted_and_keep_their_order() -> None:
+    out = check_load_types([
+        _load(id="b", code=" VSD ", name=" Variable speed drive ", voltage="690", from_value="2.50", to_value=75,
+              std_drg=" E-STD-012 ", bucket_type="B2", load_type="Motor", field_options="LCS", multi_load="yes",
+              load_qty="2"),
+        _load(),
+    ])
+    assert [r.id for r in out.items] == ["b", "a"]
+    b, a = out.items
+    assert (b.code, b.name, b.voltage, b.from_value, b.to_value, b.std_drg) == (
+        "VSD", "Variable speed drive", 690, "2.5", "75", "E-STD-012")
+    assert (b.multi_load, b.load_qty) == (True, 2)
+    # Only code, name, kW/Amps, voltage and phases are needed.
+    assert (a.from_value, a.to_value, a.std_drg, a.multi_load, a.load_qty) == (None, None, "", False, None)
+    # A range may be one-sided, or a single value.
+    assert check_load_types([_load(from_value="5", to_value=""), _load(id="b", code="X", name="Y", from_value=5, to_value="5.0")])
+
+
+def test_load_type_required_fields_and_uniqueness() -> None:
+    with pytest.raises(RefValidationError) as e:
+        check_load_types([
+            _load(),
+            _load(id="b", code="dol", name="DIRECT  on line"),
+            {"id": "c", "code": " ", "name": "", "voltage": ""},
+        ])
+    assert e.value.fields == {
+        "b.code": "Code 'dol' is used twice", "b.name": "Name 'DIRECT  on line' is used twice",
+        "c.code": "Code is required", "c.name": "Name is required", "c.rating_unit": "Choose kW or Amps",
+        "c.phases": "Choose the phases", "c.voltage": "Voltage is required",
+    }
+    with pytest.raises(RefValidationError):
+        check_load_types([_load(), _load(code="X", name="Y")])  # the same id
+
+
+def test_load_type_numbers() -> None:
+    with pytest.raises(RefValidationError) as e:
+        check_load_types([_load(voltage="415V", from_value="ten", to_value="1e", load_qty="1.5", rating_unit="HP",
+                                phases="AC", multi_load="maybe")])
+    assert e.value.fields == {
+        "a.voltage": "Not a whole number", "a.from_value": "Not a number", "a.to_value": "Not a number",
+        "a.load_qty": "Not a whole number", "a.rating_unit": "Choose kW or Amps", "a.phases": "Choose the phases",
+        "a.multi_load": "Not yes/no",
+    }
+    with pytest.raises(RefValidationError) as e:
+        check_load_types([_load(voltage=-24, load_qty=-1, from_value="10", to_value="9.99")])
+    assert e.value.fields == {"a.voltage": "Can't be negative", "a.load_qty": "Can't be negative",
+                              "a.to_value": "Must not be less than the From value"}

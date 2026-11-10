@@ -34,8 +34,8 @@ The app's tabs:
   list; ships with a P&ID instrument example (see below).
 - **List import**: turn an equipment list into a load list, or a tags list
   into an instrument list, with a saved, re-applicable recipe of rules (see below).
-- **Project lists**: the key lists every project has: Plant Areas and Equipment
-  Packages (see below).
+- **Project lists**: the key lists every project has: Plant Areas, Equipment
+  Packages and Load Types (see below).
 - **Lists & tables**: your own enumerated lists and typed tables (see below).
 - **Engine**: engine status (port, Python version, whether it's
   Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
@@ -450,7 +450,16 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
   **Description**. Each type belongs to one package; its Package drop-down
   moves it to another. A package that has equipment types can't be deleted
   until they are moved or deleted. Types are saved together with the packages.
-- Each list keeps its own unsaved draft when you switch between them.
+- **Load Types**: a flat list shown as a sortable, filterable grid; click a row
+  (or **Add load type**) to edit it in a form, which saves straight away.
+  **Code** and **Name** are required and unique; **kW or Amps**, **Voltage**
+  (a whole number) and **Phases** (AC-3-phase, AC-3-phase+N, AC-1-phase-LN,
+  AC-1-phase-LL, DC or DC-mA) are required. Optional: **From value** and
+  **To value** (decimals, stored exactly; From must not exceed To), **STD Drg**,
+  **Bucket type**, **Load type**, **Field options** (text), **Multi load**
+  (yes/no) and **Load qty** (a whole number).
+- Plant Areas and Equipment Packages each keep their own unsaved draft when you
+  switch between lists.
 - A new project starts with empty lists; copying standards from another
   project does not copy them.
 

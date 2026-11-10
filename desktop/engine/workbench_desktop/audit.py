@@ -43,6 +43,7 @@ ENTITIES = {
     "ref_row": "table row",
     "plant_areas": "plant areas list",
     "equipment_packages": "equipment packages list",
+    "load_types": "load types list",
     "sym_library": "symbol library",
     "sym_drawing": "drawing",
     "sym_template": "symbol template",

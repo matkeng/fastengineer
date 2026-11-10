@@ -721,6 +721,16 @@ main.fill .key-packages { overflow: hidden; }
 .key-packages .type-name .elbow { flex: 0 0 30px; height: 30px; align-self: center; }
 .key-packages .in-package { white-space: nowrap; margin: 0; }
 .key-packages td.actions { white-space: nowrap; text-align: right; }
+/* Load Types: a grid of every row and a two-column form. */
+.key-loads .key-title { margin: 0; font-size: 1rem; }
+.key-loads .result-table td { white-space: nowrap; }
+.key-loads dialog.modal { width: min(720px, calc(100vw - 32px)); }
+.form-grid.two-col { grid-template-columns: 1fr 1fr; column-gap: 16px; align-items: start; }
+.form-grid.two-col .field input:not([type='checkbox']), .form-grid.two-col .field select { flex: 0 0 auto; height: 30px; }
+.form-grid.two-col .field select { width: 100%; }
+.form-grid.two-col .field.check { flex-direction: row; align-items: center; gap: 8px; align-self: center; }
+.form-grid.two-col .field.check input { width: auto; }
+@media (max-width: 620px) { .form-grid.two-col { grid-template-columns: 1fr; } }
 /* Inputs directly in a column layout must not grow vertically. */
 .ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }
 

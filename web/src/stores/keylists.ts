@@ -3,11 +3,12 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { ApiError, apiGet, apiPut } from '../lib/engine';
-import type { EquipmentPackageList, KeyListId, KeyListOverview, PlantAreaList } from '../lib/keyListTypes';
+import type { EquipmentPackageList, KeyListId, KeyListOverview, LoadTypeForm, LoadTypeList, PlantAreaList } from '../lib/keyListTypes';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const PLANT_AREAS = '/api/keylists/plant-areas';
 const PACKAGES = '/api/keylists/equipment-packages';
+const LOAD_TYPES = '/api/keylists/load-types';
 const differ = (a: unknown, b: unknown) => !!a && JSON.stringify(a) !== JSON.stringify(b);
 
 /** The project's built-in lists. Each is a saved copy plus the draft being edited. */
@@ -23,6 +24,8 @@ export const useKeyLists = defineStore('keylists', () => {
 	const areasDraft = ref<PlantAreaList | null>(null);
 	const packagesSaved = ref<EquipmentPackageList | null>(null);
 	const packagesDraft = ref<EquipmentPackageList | null>(null);
+	// Load types have no draft: a row is saved from its form straight away.
+	const loadTypes = ref<LoadTypeList | null>(null);
 	const areasDirty = computed(() => differ(areasDraft.value, areasSaved.value));
 	const packagesDirty = computed(() => differ(packagesDraft.value, packagesSaved.value));
 	const dirty = computed(() => areasDirty.value || packagesDirty.value);
@@ -69,7 +72,31 @@ export const useKeyLists = defineStore('keylists', () => {
 			const p = await run(() => apiGet<EquipmentPackageList>(PACKAGES));
 			if (p) { packagesSaved.value = p; packagesDraft.value = clone(p); }
 		}
+		const l = await run(() => apiGet<LoadTypeList>(LOAD_TYPES));
+		if (l) loadTypes.value = l;
 		await refresh();
+	}
+
+	/** Save the whole list of load types with `items`. False (with error/fieldErrors set) if refused. */
+	async function putLoadTypes(items: unknown[]): Promise<boolean> {
+		const l = await run(() => apiPut<LoadTypeList>(LOAD_TYPES, { items }));
+		if (!l) return false;
+		loadTypes.value = l;
+		await refresh();
+		return true;
+	}
+
+	/** Add the row, or replace the saved row with the same id. */
+	function saveLoadType(row: LoadTypeForm): Promise<boolean> {
+		const items: unknown[] = [...(loadTypes.value?.items ?? [])];
+		const i = items.findIndex((r) => (r as { id: string }).id === row.id);
+		if (i >= 0) items.splice(i, 1, row);
+		else items.push(row);
+		return putLoadTypes(items);
+	}
+
+	function deleteLoadType(id: string): Promise<boolean> {
+		return putLoadTypes((loadTypes.value?.items ?? []).filter((r) => r.id !== id));
 	}
 
 	async function saveAreas() {
@@ -106,6 +133,7 @@ export const useKeyLists = defineStore('keylists', () => {
 
 	return {
 		overview, selected, busy, error, fieldErrors, message, areasSaved, areasDraft, packagesSaved, packagesDraft,
-		areasDirty, packagesDirty, dirty, refresh, select, load, saveAreas, savePackages, discard,
+		loadTypes, areasDirty, packagesDirty, dirty, refresh, select, load, saveAreas, savePackages, discard,
+		saveLoadType, deleteLoadType,
 	};
 });

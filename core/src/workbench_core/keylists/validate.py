@@ -4,14 +4,21 @@
 
 from __future__ import annotations
 
-from ..refdata.models import RefValidationError
-from ..refdata.validate import name_key
-from .models import EquipmentPackageList, PlantArea, PlantAreaList
+from decimal import Decimal
+from types import SimpleNamespace
+
+from ..refdata.models import ColumnDef, RefValidationError, new_id
+from ..refdata.validate import FALSE, TRUE, coerce, name_key
+from .models import PHASES, RATING_UNITS, EquipmentPackageList, LoadType, LoadTypeList, PlantArea, PlantAreaList
 
 #: (field, what it is called, required). Each is unique in its list when filled in.
 _AREA_FIELDS = (("tag", "Tag number", True), ("description", "Description", True), ("wbs", "WBS number", False))
 _PACKAGE_FIELDS = (("number", "Package number", True), ("description", "Description", True))
 _TYPE_FIELDS = (("name", "Name", True),)
+_LOAD_FIELDS = (("code", "Code", True), ("name", "Name", True))
+_LOAD_TEXT = ("code", "name", "std_drg", "bucket_type", "load_type", "field_options")
+_INTEGER = ColumnDef(name="", type="integer")
+_DECIMAL = ColumnDef(name="", type="decimal")
 
 
 def _check_unique(items: list, fields: tuple, errors: dict[str, str]) -> None:
@@ -123,3 +130,58 @@ def check_equipment_packages(packages: EquipmentPackageList) -> EquipmentPackage
     order = {it.id: i for i, it in enumerate(items)}
     types.sort(key=lambda t: order[t.package_id])  # stable: keeps the order within a package
     return packages.model_copy(update={"items": items, "types": types})
+
+
+def check_load_types(rows: list[dict]) -> LoadTypeList:
+    """Check the rows of the Load Types list as they were typed in (numbers may be text).
+
+    Code and name are required and unique (ignoring case and extra spaces); kW or Amps,
+    voltage and phases are required; voltage and load quantity are whole numbers, not
+    negative; the from and to values are numbers and from must not exceed to. Row order
+    is kept."""
+    errors: dict[str, str] = {}
+    out: list[SimpleNamespace] = []
+    ids: set[str] = set()
+    for raw in rows:
+        r = SimpleNamespace(id=str(raw.get("id") or new_id()))
+        if r.id in ids:
+            raise RefValidationError("Two load types have the same id.", {f"{r.id}.code": "Duplicate item"})
+        ids.add(r.id)
+
+        def problem(field: str, message: str) -> None:
+            errors[f"{r.id}.{field}"] = message
+
+        def number(field: str, col: ColumnDef):
+            try:
+                return coerce(raw.get(field), col, None)
+            except ValueError as exc:
+                problem(field, str(exc))
+                return None
+
+        for field in _LOAD_TEXT:
+            setattr(r, field, str(raw.get(field) or "").strip())
+        r.rating_unit, r.phases = raw.get("rating_unit"), raw.get("phases")
+        if r.rating_unit not in RATING_UNITS:
+            problem("rating_unit", "Choose kW or Amps")
+        if r.phases not in PHASES:
+            problem("phases", "Choose the phases")
+        for field, label, required in (("voltage", "Voltage", True), ("load_qty", "Load qty", False)):
+            value = number(field, _INTEGER)
+            setattr(r, field, value)
+            if value is None and required and f"{r.id}.{field}" not in errors:
+                problem(field, f"{label} is required")
+            elif value is not None and value < 0:
+                problem(field, "Can't be negative")
+        r.from_value, r.to_value = number("from_value", _DECIMAL), number("to_value", _DECIMAL)
+        if r.from_value is not None and r.to_value is not None and Decimal(r.from_value) > Decimal(r.to_value):
+            problem("to_value", "Must not be less than the From value")
+        flag = raw.get("multi_load")
+        text = str(flag if flag is not None else "").strip().casefold()
+        if text not in TRUE and text not in FALSE:
+            problem("multi_load", "Not yes/no")
+        r.multi_load = text in TRUE
+        out.append(r)
+    _check_unique(out, _LOAD_FIELDS, errors)
+    if errors:
+        raise RefValidationError(f"{len(errors)} problem(s) in the load types.", errors)
+    return LoadTypeList(items=[LoadType(**vars(r)) for r in out])

@@ -56,3 +56,33 @@ class EquipmentPackageList(BaseModel):
     items: list[EquipmentPackage] = Field(default_factory=list)
     types: list[EquipmentType] = Field(default_factory=list)
     updated_at: datetime | None = None
+
+
+RatingUnit = Literal["kW", "Amps"]
+RATING_UNITS: list[str] = ["kW", "Amps"]
+Phases = Literal["AC-3-phase", "AC-3-phase+N", "AC-1-phase-LN", "AC-1-phase-LL", "DC", "DC-mA"]
+PHASES: list[str] = ["AC-3-phase", "AC-3-phase+N", "AC-1-phase-LN", "AC-1-phase-LL", "DC", "DC-mA"]
+
+
+class LoadType(BaseModel):
+    """A row of the Load Types list. from_value/to_value are a range of the rating (kW or
+    amps), kept as normalised decimal text so they stay exact."""
+    id: str = Field(default_factory=new_id)
+    code: str
+    name: str
+    rating_unit: RatingUnit
+    voltage: int
+    phases: Phases
+    from_value: str | None = None
+    to_value: str | None = None
+    std_drg: str = ""
+    bucket_type: str = ""
+    load_type: str = ""
+    field_options: str = ""
+    multi_load: bool = False
+    load_qty: int | None = None
+
+
+class LoadTypeList(BaseModel):
+    items: list[LoadType] = Field(default_factory=list)
+    updated_at: datetime | None = None
