@@ -59,7 +59,9 @@ export function createFilteredTable<Row>(
 
 	const cells = el.querySelectorAll<HTMLTableCellElement>('thead tr.filters th');
 	api.columns().every(function (idx) {
-		const cell = cells[idx];
+		// The column's own filter cell: a column hidden from the start isn't in the page yet.
+		const cell = (this.header(1) as HTMLTableCellElement | null) ?? cells[idx];
+		if (!cell) return;
 		// Typing or clicking in a filter must not sort the column.
 		for (const ev of ['click', 'keydown', 'mousedown']) cell.addEventListener(ev, (e) => e.stopPropagation());
 		const sel = selects[idx];

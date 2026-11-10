@@ -106,7 +106,16 @@ function build() {
 			},
 		},
 		{ title: 'Source', data: (row: LoadListRow) => `${row.source} (${row.target})`, render: (t: string, type: string) => (type === 'display' ? escapeHtml(t) : t) },
-		{ title: 'Key', data: 'key', className: 'key-col', render: (t: string, type: string) => (type === 'display' ? escapeHtml(t) : t) },
+		// What the row is, next to what is allocated to it. The tag is the import's key when no tag is mapped.
+		{
+			title: 'Tag number', data: (row: LoadListRow) => rowTag(row), className: 'key-col',
+			render: (t: string, type: string, row: LoadListRow) => (type === 'display'
+				? `<span${t !== row.key ? ` title="Key in the import: ${escapeHtml(row.key)}"` : ''}>${escapeHtml(t)}</span>` : t),
+		},
+		{
+			title: 'Description', data: (row: LoadListRow) => (row.values.desc == null ? '' : String(row.values.desc)), className: 'desc-col',
+			render: (t: string, type: string) => (type === 'display' ? `<span title="${escapeHtml(t)}">${escapeHtml(t)}</span>` : t),
+		},
 		allocColumn('plant_area', 'Plant area'),
 		allocColumn('load_type', 'Load type'),
 		{
@@ -131,7 +140,7 @@ function build() {
 				return `<select class="${cls}" data-kind="supplied_from" data-row="${rows.indexOf(row)}" aria-label="Supplied from" title="${row.supplied_from_by === 'auto' ? autoTip : ''}">${html}</select>`;
 			},
 		},
-		...v.fields.map((f): ColumnsConfig => ({
+		...v.fields.filter((f) => f !== 'tag' && f !== 'desc').map((f): ColumnsConfig => ({
 			// The import's own text for what is edited here is marked, so the two can't be mixed up.
 			title: escapeHtml(LOAD_FIELD_LABELS[f] ?? f) + (FROM_IMPORT.has(f) ? ' (import)' : ''),
 			data: (row: LoadListRow) => row.values[f] ?? null,
@@ -143,6 +152,8 @@ function build() {
 				return type === 'display' ? escapeHtml(String(x)) : String(x);
 			},
 		})),
+		// The import's key, for when it differs from the tag (hidden; shown with "Columns").
+		{ title: 'Key (import)', data: 'key', visible: false, render: (t: string, type: string) => (type === 'display' ? escapeHtml(t) : t) },
 	];
 
 	const allocFilter = (kind: Kind): SelectFilter<LoadListRow> => ({
@@ -159,13 +170,13 @@ function build() {
 			options: [{ value: '', label: 'All' }, ...v.sources.filter((s) => s.has_file).map((s) => ({ value: s.id, label: `${s.name} (${s.target})` }))],
 			test: (val, r) => val === '' || r.recipe_id === val,
 		},
-		3: allocFilter('plant_area'),
-		4: allocFilter('load_type'),
-		5: {
+		4: allocFilter('plant_area'),
+		5: allocFilter('load_type'),
+		6: {
 			options: [{ value: '', label: 'All' }, { value: 'y', label: 'Panels' }, { value: 'n', label: 'Not panels' }],
 			test: (val, r) => val === '' || r.is_panel === (val === 'y'),
 		},
-		// 6 (supplied from): a text filter, so it matches a panel's tag, "Primary Supply" or "⚠".
+		// 7 (supplied from): a text filter, so it matches a panel's tag, "Primary Supply" or "⚠".
 	};
 
 	table = createFilteredTable<LoadListRow>(host.value, columns.length, {

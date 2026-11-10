@@ -466,7 +466,9 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
 - **Load List**: the rows of every **MEL and EEL** import in the project,
   combined and always live (each import's latest file through its saved rules
   and mapping), with the mapped fields as read-only, sortable, filterable
-  columns plus Status and Source. Four columns are edited here and saved as soon
+  columns plus Status and Source. Each row's **Tag number** (the import's key
+  when no tag is mapped) and **Description** come first, next to what is
+  edited. Four columns are edited here and saved as soon
   as they are chosen: the row's **Plant area**, **Load type**, **Distribution
   panel** and **Supplied from**. **Set plant
   area… / Set load type…** give every row the filters show the same value.

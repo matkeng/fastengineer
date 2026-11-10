@@ -745,6 +745,7 @@ dialog.modal.pdf-viewer { width: min(1100px, calc(100vw - 32px)); }
 .key-loadlist .key-title { margin: 0; font-size: 1rem; }
 .key-loadlist > .hint { margin: 2px 0 6px; }
 .key-loadlist .result-table td { white-space: nowrap; }
+.key-loadlist .result-table td.desc-col { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .key-loadlist select.alloc { min-width: 170px; max-width: 260px; height: 24px; padding: 0 4px; font-size: 12px; }
 .key-loadlist select.alloc.auto { font-style: italic; color: var(--muted); }
 .key-loadlist select.alloc.broken { border-color: var(--warn); color: var(--warn); }
