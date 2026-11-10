@@ -104,7 +104,8 @@ export function createFilteredTable<Row>(
 	};
 }
 
-/** Copy / CSV / Excel buttons export only the title row of the header, not the filter row. */
+/** Copy / CSV / Excel buttons export only the title row of the header, not the filter row,
+ *  and without the "*" that marks a required column. */
 function titlesOnlyInExports(buttons: Config['buttons']): Config['buttons'] {
 	if (!Array.isArray(buttons)) return buttons;
 	return buttons.map((b) => {
@@ -117,6 +118,9 @@ function titlesOnlyInExports(buttons: Config['buttons']): Config['buttons'] {
 				...opts,
 				customizeData: (d: { headerStructure: unknown[] }) => {
 					d.headerStructure = d.headerStructure.slice(0, 1);
+					for (const cell of (d.headerStructure[0] ?? []) as ({ title: string } | null)[]) {
+						if (cell) cell.title = cell.title.replace(/\s*\*$/, '');
+					}
 					own?.(d);
 				},
 			},

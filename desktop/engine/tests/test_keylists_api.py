@@ -302,3 +302,42 @@ def test_load_type_pdf_attach_view_replace_remove(data_dir: Path) -> None:
     assert client.put(LOAD_URL, json={"items": LOADS[:1]}).status_code == 200
     assert not files[0].exists()
     assert client.delete(url).status_code == 404
+
+
+@pytest.mark.parametrize("list_id, extra, entity", [
+    ("equipment-codes", {"disciplines": ["M", "E"]}, "equipment_codes"),
+    ("instrument-codes", {"plc_code": "AI"}, "instrument_codes"),
+])
+def test_code_lists_save_rules_conflicts_and_log(data_dir: Path, list_id: str, extra: dict, entity: str) -> None:
+    url = f"/api/keylists/{list_id}"
+    assert client.get(url).json() == {"items": [], "updated_at": None}
+    ov = client.get("/api/keylists").json()
+    assert ov[entity] == {"items": 0} and ov["disciplines"][0] == {"code": "E", "name": "Electrical"}
+
+    rows = [{"id": "c1", "code": "A1", "name": "First", **extra}, {"id": "c2", "code": "B2", "name": "Second", "description": "x"}]
+    ann_tag = client.get(url, headers=ANN).headers["ETag"]
+    bob_tag = client.get(url, headers=BOB).headers["ETag"]
+    saved = client.put(url, json={"items": rows}, headers={**ANN, "If-Match": ann_tag})
+    assert saved.status_code == 200, saved.text
+    first = saved.json()["items"][0]
+    assert first == {"id": "c1", "code": "A1", "name": "First", "description": "",
+                     **({"disciplines": ["E", "M"]} if "disciplines" in extra else {"plc_code": "AI"})}
+
+    bad = client.put(url, json={"items": rows + [{"id": "c3", "code": "a1", "name": " second"}, {"id": "c4", "code": "", "name": ""}]})
+    assert bad.status_code == 422 and set(bad.json()["fields"]) == {"c3.code", "c3.name", "c4.code", "c4.name"}
+    stale = client.put(url, json={"items": rows[:1]}, headers={**BOB, "If-Match": bob_tag})
+    assert stale.status_code == 409 and stale.json()["changed_by"] == "ACME\\ann"
+
+    storage.configure(data_dir)
+    assert [i["code"] for i in client.get(url).json()["items"]] == ["A1", "B2"]
+    assert client.get("/api/keylists").json()[entity] == {"items": 2}
+    assert client.get("/api/dashboard").json()["counts"][entity] == 2
+    assert client.get(LOAD_URL).json()["items"] == [] and client.get(URL).json()["nodes"] == []
+    log = client.get("/api/audit", params={"entity": entity, "record_id": list_id}).json()
+    entries = log["entries"] if isinstance(log, dict) else log
+    assert [e["user"] for e in entries] == ["ACME\\ann"]
+
+
+def test_unknown_discipline_is_a_field_error() -> None:
+    r = client.put("/api/keylists/equipment-codes", json={"items": [{"id": "c1", "code": "A", "name": "A", "disciplines": ["Q"]}]})
+    assert r.status_code == 422 and r.json()["fields"] == {"c1.disciplines": "Not a discipline: Q"}

@@ -40,6 +40,8 @@ _RECORD_URLS = [(re.compile(p), entity) for p, entity in (
     (r"^/api/keylists/(plant-areas)$", "plant_areas"),
     (r"^/api/keylists/(equipment-packages)$", "equipment_packages"),
     (r"^/api/keylists/(load-types)$", "load_types"),
+    (r"^/api/keylists/(equipment-codes)$", "equipment_codes"),
+    (r"^/api/keylists/(instrument-codes)$", "instrument_codes"),
     (r"^/api/mel/recipes/([^/]+)$", "mel_recipe"),
     (r"^/api/symbols/libraries/([^/]+)$", "sym_library"),
     (r"^/api/symbols/templates/([^/]+)$", "sym_template"),

@@ -280,3 +280,33 @@ def test_panels_and_supply() -> None:
     d = row("D").model_copy(update={"supplied_from": "r/A"})
     assert supply_loop({r.ref(): r for r in (a, b, c, d)}) == ["r/A", "r/B", "r/C"]
     assert supply_loop({r.ref(): r for r in (a, b, d)}) == []
+
+
+# -- equipment codes and instrument codes -------------------------------------------------
+
+def test_code_lists() -> None:
+    from workbench_core.keylists import DISCIPLINES, EquipmentCode, InstrumentCode, check_code_list
+
+    assert list(DISCIPLINES) == ["E", "I", "M", "P", "C", "S", "H"]
+    out = check_code_list([
+        {"id": "b", "code": " PMP ", "name": " Pump ", "description": " Centrifugal ", "disciplines": ["P", "M", "M", "E"]},
+        {"id": "a", "code": "VLV", "name": "Valve", "description": None},
+    ], EquipmentCode, "equipment codes")
+    assert [(i.id, i.code, i.name, i.description, i.disciplines) for i in out] == [
+        ("b", "PMP", "Pump", "Centrifugal", ["E", "M", "P"]), ("a", "VLV", "Valve", "", [])]
+
+    with pytest.raises(RefValidationError) as e:
+        check_code_list([
+            {"id": "a", "code": "PMP", "name": "Pump"},
+            {"id": "b", "code": "pmp", "name": "PUMP ", "disciplines": ["E", "X"]},
+            {"id": "c", "code": " ", "name": ""},
+        ], EquipmentCode, "equipment codes")
+    assert e.value.fields == {"b.code": "Code 'pmp' is used twice", "b.name": "Name 'PUMP' is used twice",
+                              "b.disciplines": "Not a discipline: X", "c.code": "Code is required", "c.name": "Name is required"}
+    with pytest.raises(RefValidationError):
+        check_code_list([{"id": "a", "code": "A", "name": "A"}, {"id": "a", "code": "B", "name": "B"}], EquipmentCode, "x")
+
+    inst = check_code_list([{"id": "a", "code": "FT", "name": "Flow transmitter", "plc_code": " AI "},
+                            {"id": "b", "code": "PT", "name": "Pressure transmitter", "plc_code": "AI"}],
+                           InstrumentCode, "instrument codes")
+    assert [i.plc_code for i in inst] == ["AI", "AI"]  # a PLC code may repeat

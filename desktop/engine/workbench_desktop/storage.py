@@ -20,7 +20,9 @@ from pathlib import Path
 from workbench_core.keylists import (
     PRIMARY_SUPPLY,
     AttachedFile,
+    EquipmentCodeList,
     EquipmentPackageList,
+    InstrumentCodeList,
     LoadListRow,
     LoadTypeList,
     PlantAreaList,
@@ -512,6 +514,9 @@ class KeyListStore:
     PLANT_AREAS = "plant-areas"
     EQUIPMENT_PACKAGES = "equipment-packages"
     LOAD_TYPES = "load-types"
+    #: Code lists: id -> (model, change-log entity, label).
+    CODE_LISTS = {"equipment-codes": (EquipmentCodeList, "equipment_codes", "Equipment Codes"),
+                  "instrument-codes": (InstrumentCodeList, "instrument_codes", "Instrument Codes")}
 
     def __init__(self, store: Store):
         self._db = store._db
@@ -549,6 +554,22 @@ class KeyListStore:
                       before or EquipmentPackageList().model_dump_json(), packages.model_dump_json(),
                       label="Equipment Packages")
         return packages
+
+    def code_list(self, list_id: str):
+        model = self.CODE_LISTS[list_id][0]
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (list_id,)).fetchone()
+        return model.model_validate_json(row[0]) if row else model()
+
+    def save_code_list(self, list_id: str, items: list):
+        model, entity, label = self.CODE_LISTS[list_id]
+        codes = model(items=items, updated_at=_now())
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (list_id,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (list_id, codes.model_dump_json()))
+            audit.log(self._db, entity, list_id, before or model().model_dump_json(), codes.model_dump_json(), label=label)
+        return codes
 
     def load_types(self) -> LoadTypeList:
         with self._lock:

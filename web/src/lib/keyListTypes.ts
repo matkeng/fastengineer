@@ -37,7 +37,28 @@ export interface LoadTypeForm {
 }
 export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id'>;
 
-export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list';
+export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | CodeListId;
+
+/** Equipment Codes and Instrument Codes: code, name, description and one more field. */
+export type CodeListId = 'equipment-codes' | 'instrument-codes';
+export const DISCIPLINES = [
+	{ code: 'E', name: 'Electrical' }, { code: 'I', name: 'Instrumentation' }, { code: 'M', name: 'Mechanical' },
+	{ code: 'P', name: 'Piping' }, { code: 'C', name: 'Civil' }, { code: 'S', name: 'Structural' }, { code: 'H', name: 'HVAC' },
+] as const;
+export type Discipline = (typeof DISCIPLINES)[number]['code'];
+export interface CodeRow { id: string; code: string; name: string; description: string; disciplines?: Discipline[]; plc_code?: string }
+export interface CodeList { items: CodeRow[]; updated_at: string | null }
+
+/** The same rules as the engine's check_code_list, for the form. */
+export function codeRowProblems(row: CodeRow, others: CodeRow[]): Partial<Record<'code' | 'name', string>> {
+	const key = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+	const out: Partial<Record<'code' | 'name', string>> = {};
+	for (const [f, label] of [['code', 'Code'], ['name', 'Name']] as const) {
+		if (!key(row[f])) out[f] = `${label} is required`;
+		else if (others.some((o) => key(o[f]) === key(row[f]))) out[f] = `${label} is used by another row`;
+	}
+	return out;
+}
 
 /** A Load List row: an import's row, remembered by (import, key), with its two allocations.
  *  "auto" allocations come from the row's area / load type text; "user" ones a person chose. */
@@ -71,6 +92,8 @@ export interface KeyListOverview {
 	package_types: string[];
 	load_types: { items: number };
 	load_list: { rows: number; unallocated: number };
+	equipment_codes: { items: number };
+	instrument_codes: { items: number };
 	rating_units: string[];
 	phases: string[];
 }

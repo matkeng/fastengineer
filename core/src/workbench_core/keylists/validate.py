@@ -9,7 +9,18 @@ from types import SimpleNamespace
 
 from ..refdata.models import ColumnDef, RefValidationError, new_id
 from ..refdata.validate import FALSE, TRUE, coerce, name_key
-from .models import PHASES, RATING_UNITS, EquipmentPackageList, LoadType, LoadTypeList, PlantArea, PlantAreaList
+from pydantic import BaseModel, ValidationError
+
+from .models import (
+    DISCIPLINES,
+    PHASES,
+    RATING_UNITS,
+    EquipmentPackageList,
+    LoadType,
+    LoadTypeList,
+    PlantArea,
+    PlantAreaList,
+)
 
 #: (field, what it is called, required). Each is unique in its list when filled in.
 _AREA_FIELDS = (("tag", "Tag number", True), ("description", "Description", True), ("wbs", "WBS number", False))
@@ -185,3 +196,45 @@ def check_load_types(rows: list[dict]) -> LoadTypeList:
     if errors:
         raise RefValidationError(f"{len(errors)} problem(s) in the load types.", errors)
     return LoadTypeList(items=[LoadType(**vars(r)) for r in out])
+
+
+# -- equipment codes and instrument codes -------------------------------------------------
+
+_CODE_FIELDS = (("code", "Code", True), ("name", "Name", True))
+
+
+def check_code_list(rows: list[dict], model: type[BaseModel], what: str) -> list:
+    """Check the rows of a code list (Equipment Codes, Instrument Codes) as sent by a client.
+
+    Code and name are required and unique (ignoring case and extra spaces); text is trimmed;
+    disciplines (when the list has them) must be known codes and are kept once each, in the
+    usual order. Returns `model` items in the order given."""
+    errors: dict[str, str] = {}
+    items: list = []
+    ids: set[str] = set()
+    for raw in rows:
+        rid = str(raw.get("id") or new_id())
+        if rid in ids:
+            raise RefValidationError(f"Two {what} have the same id.", {f"{rid}.code": "Duplicate item"})
+        ids.add(rid)
+        data: dict[str, object] = {"id": rid}
+        for field, info in model.model_fields.items():
+            if field == "id" or info.annotation is not str:
+                continue
+            value = raw.get(field)
+            data[field] = "" if value is None else str(value).strip()
+        if "disciplines" in model.model_fields:
+            chosen = raw.get("disciplines") or []
+            chosen = chosen if isinstance(chosen, list) else [chosen]
+            unknown = [str(d) for d in chosen if d not in DISCIPLINES]
+            if unknown:
+                errors[f"{rid}.disciplines"] = f"Not a discipline: {', '.join(unknown)}"
+            data["disciplines"] = [d for d in DISCIPLINES if d in chosen]
+        try:
+            items.append(model.model_validate(data))
+        except ValidationError as exc:
+            errors[f"{rid}.{exc.errors()[0]['loc'][0]}"] = "Not valid"
+    _check_unique(items, _CODE_FIELDS, errors)
+    if errors:
+        raise RefValidationError(f"{len(errors)} problem(s) in the {what}.", errors)
+    return items

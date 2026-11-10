@@ -96,3 +96,35 @@ class LoadType(BaseModel):
 class LoadTypeList(BaseModel):
     items: list[LoadType] = Field(default_factory=list)
     updated_at: datetime | None = None
+
+
+Discipline = Literal["E", "I", "M", "P", "C", "S", "H"]
+#: Discipline code -> name, in the order they are shown and kept.
+DISCIPLINES: dict[str, str] = {"E": "Electrical", "I": "Instrumentation", "M": "Mechanical", "P": "Piping",
+                               "C": "Civil", "S": "Structural", "H": "HVAC"}
+
+
+class EquipmentCode(BaseModel):
+    id: str = Field(default_factory=new_id)
+    code: str
+    name: str
+    description: str = ""
+    disciplines: list[Discipline] = Field(default_factory=list)
+
+
+class EquipmentCodeList(BaseModel):
+    items: list[EquipmentCode] = Field(default_factory=list)
+    updated_at: datetime | None = None
+
+
+class InstrumentCode(BaseModel):
+    id: str = Field(default_factory=new_id)
+    code: str
+    name: str
+    description: str = ""
+    plc_code: str = ""
+
+
+class InstrumentCodeList(BaseModel):
+    items: list[InstrumentCode] = Field(default_factory=list)
+    updated_at: datetime | None = None

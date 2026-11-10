@@ -58,6 +58,8 @@ class Counts(BaseModel):
     equipment_types: int = 0
     load_types: int = 0
     load_list_rows: int = 0
+    equipment_codes: int = 0
+    instrument_codes: int = 0
     generators: int = 0
     gen_builds: int = 0
     plc_panels: int = 0
@@ -147,6 +149,8 @@ def dashboard() -> Dashboard:
     packages = get_keylists().equipment_packages()
     c.equipment_packages, c.equipment_types = len(packages.items), len(packages.types)
     c.load_types = len(get_keylists().load_types().items)
+    c.equipment_codes = len(get_keylists().code_list("equipment-codes").items)
+    c.instrument_codes = len(get_keylists().code_list("instrument-codes").items)
     c.load_list_rows = sum(r.status == "active" for r in get_loadlist().rows())
 
     # Symbol detection

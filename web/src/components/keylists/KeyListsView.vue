@@ -6,14 +6,17 @@ import { useKeyLists } from '../../stores/keylists';
 import { useUi } from '../../stores/ui';
 import EquipmentPackagesEditor from './EquipmentPackagesEditor.vue';
 import LoadListEditor from './LoadListEditor.vue';
+import CodeListEditor from './CodeListEditor.vue';
 import LoadTypesEditor from './LoadTypesEditor.vue';
 import PlantAreasEditor from './PlantAreasEditor.vue';
 
 // The project's built-in lists; more are added to the sidebar.
 const kl = useKeyLists();
 const ui = useUi();
-const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Load List' };
-const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true }[kl.selected]);
+const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Load List',
+	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes' };
+const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true,
+	'equipment-codes': kl.codeLists['equipment-codes'], 'instrument-codes': kl.codeLists['instrument-codes'] }[kl.selected]);
 
 onMounted(() => kl.load());
 // Coming back to the section shows what is saved now (a draft with unsaved changes is kept).
@@ -40,6 +43,14 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 							<span class="name">Load Types</span>
 							<span class="count" title="load type(s)">{{ kl.overview?.load_types.items ?? 0 }}</span>
 						</li>
+						<li :class="{ current: kl.selected === 'equipment-codes' }" @click="kl.select('equipment-codes')">
+							<span class="name">Equipment Codes</span>
+							<span class="count" title="equipment code(s)">{{ kl.overview?.equipment_codes.items ?? 0 }}</span>
+						</li>
+						<li :class="{ current: kl.selected === 'instrument-codes' }" @click="kl.select('instrument-codes')">
+							<span class="name">Instrument Codes</span>
+							<span class="count" title="instrument code(s)">{{ kl.overview?.instrument_codes.items ?? 0 }}</span>
+						</li>
 					</ul>
 				</section>
 				<section>
@@ -58,6 +69,8 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 			<PlantAreasEditor v-if="kl.areasDraft" v-show="kl.selected === 'plant-areas'" />
 			<EquipmentPackagesEditor v-if="kl.packagesDraft" v-show="kl.selected === 'equipment-packages'" />
 			<LoadTypesEditor v-if="kl.loadTypes" v-show="kl.selected === 'load-types'" />
+			<CodeListEditor v-if="kl.codeLists['equipment-codes']" v-show="kl.selected === 'equipment-codes'" list-id="equipment-codes" />
+			<CodeListEditor v-if="kl.codeLists['instrument-codes']" v-show="kl.selected === 'instrument-codes'" list-id="instrument-codes" />
 			<LoadListEditor v-if="kl.selected === 'load-list'" />
 			<section v-if="!loaded" class="card wizard ref-empty">
 				<h2>{{ TITLES[kl.selected] }}</h2>

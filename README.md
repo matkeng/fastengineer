@@ -35,7 +35,8 @@ The app's tabs:
 - **List import**: turn an equipment list into a load list, or a tags list
   into an instrument list, with a saved, re-applicable recipe of rules (see below).
 - **Project lists**: the key lists every project has: Plant Areas, Equipment
-  Packages, Load Types and the Load List (see below).
+  Packages, Load Types, Equipment Codes, Instrument Codes and the Load List
+  (see below).
 - **Lists & tables**: your own enumerated lists and typed tables (see below).
 - **Engine**: engine status (port, Python version, whether it's
   Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
@@ -463,6 +464,14 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
   the grid's PDF column (it is shown in the app), or save a copy. The file is
   kept in the project folder (`keylists/load-types/`) and goes when its load
   type is deleted; attaching and removing are recorded in the change log.
+- **Equipment Codes** and **Instrument Codes**: flat lists shown as a sortable,
+  filterable grid; click a row (or **Add …**) to edit it in a form, which saves
+  straight away. Both have a **Code** and **Name** (required and unique,
+  ignoring case and extra spaces) and an optional **Description**. Equipment
+  codes can have any number of **Disciplines** (E Electrical, I
+  Instrumentation, M Mechanical, P Piping, C Civil, S Structural, H HVAC; the
+  grid filters by one); instrument codes have an optional **PLC code** (free
+  text, several codes may share one).
 - **Load List**: the rows of every **MEL and EEL** import in the project,
   combined and always live (each import's latest file through its saved rules
   and mapping), with the mapped fields as read-only, sortable, filterable

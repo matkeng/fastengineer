@@ -68,7 +68,7 @@ const kpis = computed<Kpi[]>(() => {
 		{ label: 'List imports', icon: 'recipe', value: k.recipes, go: 'mel',
 			sub: `${k.revisions} file revision(s)${k.latest_revision_at ? `, last ${ago(k.latest_revision_at)}` : ''}` },
 		{ label: 'Project lists', icon: 'tree', value: k.plant_areas + k.equipment_packages + k.load_types, go: 'keylists',
-			sub: `${k.plant_areas} plant areas · ${k.equipment_packages} packages · ${k.equipment_types} equipment types · ${k.load_types} load types · ${k.load_list_rows} load list rows` },
+			sub: `${k.plant_areas} plant areas · ${k.equipment_packages} packages · ${k.equipment_types} equipment types · ${k.load_types} load types · ${k.load_list_rows} load list rows · ${k.equipment_codes} equipment codes · ${k.instrument_codes} instrument codes` },
 		{ label: 'Lists, trees & tables', icon: 'database', value: k.enums + k.trees + k.tables, go: 'ref',
 			sub: `${k.enums} lists · ${k.trees} trees · ${k.tables} tables · ${k.rows} rows` },
 		{ label: 'Generators', icon: 'generator', value: k.generators, go: 'generators',

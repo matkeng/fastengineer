@@ -11,6 +11,11 @@ from pydantic import BaseModel
 
 from workbench_core.keylists import (
     AREA_TYPES,
+    DISCIPLINES,
+    EquipmentCode,
+    EquipmentCodeList,
+    InstrumentCode,
+    InstrumentCodeList,
     PACKAGE_TYPES,
     PHASES,
     RATING_UNITS,
@@ -20,6 +25,7 @@ from workbench_core.keylists import (
     LoadTypeList,
     PlantArea,
     PlantAreaList,
+    check_code_list,
     check_equipment_packages,
     check_load_types,
     check_plant_areas,
@@ -47,7 +53,10 @@ def overview() -> dict:
             "equipment_packages": {"items": len(packages.items), "types": len(packages.types)},
             "package_types": PACKAGE_TYPES,
             "load_types": {"items": len(lists.load_types().items)}, "rating_units": RATING_UNITS, "phases": PHASES,
-            "load_list": _load_list_counts()}
+            "load_list": _load_list_counts(),
+            "equipment_codes": {"items": len(lists.code_list("equipment-codes").items)},
+            "instrument_codes": {"items": len(lists.code_list("instrument-codes").items)},
+            "disciplines": [{"code": c, "name": n} for c, n in DISCIPLINES.items()]}
 
 
 def _load_list_counts() -> dict[str, int]:
@@ -175,3 +184,26 @@ def remove_load_type_pdf(load_id: str) -> LoadTypeList:
         return get_keylists().remove_load_type_pdf(load_id)
     except NotFound as exc:
         raise _no_load_type() from exc
+
+
+# -- equipment codes and instrument codes ---------------------------------------------------
+
+class CodeListUpdate(BaseModel):
+    items: list[dict]  # as sent: check_code_list names each problem
+
+
+def _code_list_routes(list_id: str, model, list_model, what: str) -> None:
+    @router.get(f"/{list_id}", response_model=list_model, name=f"get_{list_id}")
+    def get_codes():
+        return get_keylists().code_list(list_id)
+
+    @router.put(f"/{list_id}", response_model=list_model, name=f"update_{list_id}")
+    def update_codes(body: CodeListUpdate):
+        try:
+            return get_keylists().save_code_list(list_id, check_code_list(body.items, model, what))
+        except RefValidationError as exc:
+            return invalid(exc)
+
+
+_code_list_routes("equipment-codes", EquipmentCode, EquipmentCodeList, "equipment codes")
+_code_list_routes("instrument-codes", InstrumentCode, InstrumentCodeList, "instrument codes")

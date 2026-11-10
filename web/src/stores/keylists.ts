@@ -4,7 +4,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { ApiError, apiDelete, apiGet, apiGetBlob, apiPut, apiPutBytes, apiPutWith } from '../lib/engine';
 import type {
-	Allocation, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList,
+	Allocation, CodeList, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList,
 } from '../lib/keyListTypes';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -30,6 +30,8 @@ export const useKeyLists = defineStore('keylists', () => {
 	const loadTypes = ref<LoadTypeList | null>(null);
 	// The Load List is built from the imports each time it is opened (it can take a moment).
 	const loadList = ref<LoadListView | null>(null);
+	// Equipment Codes and Instrument Codes: no draft either; a row is saved from its form.
+	const codeLists = ref<Record<CodeListId, CodeList | null>>({ 'equipment-codes': null, 'instrument-codes': null });
 	const areasDirty = computed(() => differ(areasDraft.value, areasSaved.value));
 	const packagesDirty = computed(() => differ(packagesDraft.value, packagesSaved.value));
 	const dirty = computed(() => areasDirty.value || packagesDirty.value);
@@ -95,6 +97,10 @@ export const useKeyLists = defineStore('keylists', () => {
 		}
 		const l = await run(() => apiGet<LoadTypeList>(LOAD_TYPES));
 		if (l) loadTypes.value = l;
+		for (const id of ['equipment-codes', 'instrument-codes'] as const) {
+			const c = await run(() => apiGet<CodeList>(`/api/keylists/${id}`));
+			if (c) codeLists.value[id] = c;
+		}
 		if (selected.value === 'load-list') await loadLoadList();
 		else await refresh();
 	}
@@ -140,6 +146,27 @@ export const useKeyLists = defineStore('keylists', () => {
 		return b && new Blob([b], { type: 'application/pdf' });
 	}
 
+	/** Add the row to a code list, or replace the saved row with the same id. False (errors set) if refused. */
+	async function saveCodeRow(id: CodeListId, row: CodeRow): Promise<boolean> {
+		const items = [...(codeLists.value[id]?.items ?? [])];
+		const i = items.findIndex((r) => r.id === row.id);
+		if (i >= 0) items.splice(i, 1, row);
+		else items.push(row);
+		return putCodeList(id, items);
+	}
+
+	function deleteCodeRow(id: CodeListId, rowId: string): Promise<boolean> {
+		return putCodeList(id, (codeLists.value[id]?.items ?? []).filter((r) => r.id !== rowId));
+	}
+
+	async function putCodeList(id: CodeListId, items: CodeRow[]): Promise<boolean> {
+		const c = await run(() => apiPut<CodeList>(`/api/keylists/${id}`, { items }));
+		if (!c) return false;
+		codeLists.value[id] = c;
+		await refresh();
+		return true;
+	}
+
 	async function saveAreas() {
 		const d = areasDraft.value;
 		if (!d) return;
@@ -175,6 +202,6 @@ export const useKeyLists = defineStore('keylists', () => {
 	return {
 		overview, selected, busy, error, fieldErrors, message, areasSaved, areasDraft, packagesSaved, packagesDraft,
 		loadTypes, areasDirty, packagesDirty, dirty, refresh, select, load, saveAreas, savePackages, discard,
-		saveLoadType, deleteLoadType, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate,
+		saveLoadType, deleteLoadType, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow,
 	};
 });

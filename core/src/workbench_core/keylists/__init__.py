@@ -6,14 +6,20 @@ Plant Areas is a tree (WBS, area, building, room, panel) whose items have a WBS
 number, a tag number, a description and an area type.
 Equipment Packages is a flat list of package number, description, vendor name
 and package type; each package has equipment types under it.
-Load Types is a flat list of electrical load definitions.
+Load Types is a flat list of electrical load definitions. Equipment Codes and
+Instrument Codes are flat lists of codes (with disciplines / a PLC code).
 The Load List combines the MEL and EEL imports, with a plant area and a load type
 allocated to each row.
 """
 
 from .models import (
     AREA_TYPES,
+    DISCIPLINES,
     AttachedFile,
+    EquipmentCode,
+    EquipmentCodeList,
+    InstrumentCode,
+    InstrumentCodeList,
     PACKAGE_TYPES,
     PHASES,
     RATING_UNITS,
@@ -38,9 +44,10 @@ from .loadlist import (
     panel_index,
     supply_loop,
 )
-from .validate import check_equipment_packages, check_load_types, check_plant_areas, plant_area_depth
+from .validate import check_code_list, check_equipment_packages, check_load_types, check_plant_areas, plant_area_depth
 
 __all__ = [
+    "DISCIPLINES", "EquipmentCode", "EquipmentCodeList", "InstrumentCode", "InstrumentCodeList", "check_code_list",
     "LOAD_LIST_TARGETS", "PRIMARY_SUPPLY", "LoadListRow", "apply_auto", "apply_auto_supply", "auto_match", "match_index",
     "panel_index", "supply_loop",
     "AREA_TYPES", "AttachedFile", "PACKAGE_TYPES", "AreaType", "EquipmentPackage", "EquipmentPackageList", "EquipmentType", "PackageType",

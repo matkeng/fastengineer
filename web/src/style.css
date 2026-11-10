@@ -756,6 +756,17 @@ dialog.modal.pdf-viewer { width: min(1100px, calc(100vw - 32px)); }
 .deleted-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--danger); border: 1px solid currentColor; border-radius: 2px; padding: 0 4px; text-decoration: none; display: inline-block; }
 .key-loadlist .result-table thead tr:first-child th.alloc-col { background: color-mix(in srgb, var(--accent) 14%, var(--card)); }
 .ref-nav .count.warn { border-color: var(--warn); color: var(--warn); }
+/* Equipment Codes / Instrument Codes */
+.key-codes .key-title { margin: 0; font-size: 1rem; }
+.key-codes .result-table td.plc-col { font-family: var(--font-mono); }
+.key-codes .result-table td.desc-col { max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+.disc { display: inline-block; min-width: 16px; margin-right: 3px; padding: 0 4px; border: 1px solid var(--border-strong); border-radius: 2px;
+	font-family: var(--font-mono); font-size: 11px; text-align: center; color: var(--text); background: var(--chrome); }
+.form-grid.two-col .field.wide { grid-column: 1 / -1; }
+fieldset.disciplines { border: 1px solid var(--border); border-radius: 3px; padding: 6px 10px 8px; display: flex; flex-flow: row wrap; gap: 6px 16px; }
+fieldset.disciplines.invalid { border-color: var(--danger); }
+fieldset.disciplines legend { padding: 0 4px; }
+.disc-pick { display: inline-flex; align-items: center; gap: 4px; color: var(--text); cursor: pointer; }
 /* Inputs directly in a column layout must not grow vertically. */
 .ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }
 
