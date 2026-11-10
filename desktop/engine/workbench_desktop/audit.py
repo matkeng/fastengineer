@@ -47,6 +47,7 @@ ENTITIES = {
     "load_list": "load list",
     "eel": "electrical equipment list",
     "plc": "PLC list",
+    "cable_types": "cable types list",
     "equipment_codes": "equipment codes list",
     "instrument_codes": "instrument codes list",
     "load_list_row": "load list row",
@@ -211,14 +212,14 @@ def log(db: sqlite3.Connection, entity: str, record_id: str, before=None, after=
         changes = [{"path": "", "old": None, "new": new}]
     else:
         changes = [{"path": "", "old": old, "new": None}]
-    if note:
-        changes.append({"path": "(note)", "old": None, "new": note})
-    if not changes:
+    if not changes and not note:
         return
     extra = len(changes) - MAX_CHANGES
     changes = [{"path": c["path"], "old": _clip(c["old"]), "new": _clip(c["new"])} for c in changes[:MAX_CHANGES]]
     if extra > 0:
         changes.append({"path": "(more)", "old": None, "new": f"{extra} more changes not listed"})
+    if note:  # after the cut-off, so a long change keeps its note
+        changes.append({"path": "(note)", "old": None, "new": note})
     ctx = identity.current()
     db.execute("INSERT INTO audit_log (at, user, machine, entity, record_id, parent_id, action, label, changes) "
                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

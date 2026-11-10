@@ -38,7 +38,16 @@ export interface LoadTypeForm {
 }
 export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id'>;
 
-export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | CodeListId;
+export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | 'cable-types' | CodeListId;
+
+/** A cable type; every project starts with a default set. `sort` orders the list. */
+export interface CableType {
+	id: string; code: string; application: string; type: string; cores: string; diameter: string; voltage: string;
+	description: string; sort: number | null;
+}
+export interface CableTypeList { items: CableType[]; updated_at: string | null }
+/** As typed into the form (sort is text until the engine converts it). */
+export type CableTypeForm = Omit<CableType, 'sort'> & { sort: string };
 
 /** The PLC List: systems -> racks -> cards (by slot) -> IO points (one per channel, from 0). */
 export interface IoPoint { channel: number; tag: string; description: string; spare: boolean }
@@ -151,6 +160,7 @@ export interface KeyListOverview {
 	load_list: { rows: number; unallocated: number };
 	equipment_codes: { items: number };
 	eel: { items: number };
+	cable_types: { items: number };
 	plc: { systems: number; racks: number; cards: number };
 	instrument_codes: { items: number };
 	rating_units: string[];

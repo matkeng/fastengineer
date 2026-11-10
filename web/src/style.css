@@ -787,6 +787,10 @@ main.fill .key-plc { overflow: auto; }
 .key-plc .tpl-list li.bad strong { color: var(--danger); }
 .key-plc .hw-findings li.error { color: var(--danger); }
 .key-plc input.invalid, .key-plc select.invalid { border-color: var(--danger); }
+/* Cable Types */
+.key-cables .result-table td { white-space: nowrap; }
+.key-cables .row.tight { display: flex; gap: 6px; align-items: center; }
+.key-cables .row.tight input { flex: 1; }
 /* Inputs directly in a column layout must not grow vertically. */
 .ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }
 

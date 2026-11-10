@@ -493,6 +493,14 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
     by a person's or this list's choice, and supplies can't loop. Plant areas,
     load types, equipment codes and packages it uses can't be deleted.
   - A tag that an import gains later is marked ⚠ on the item.
+- **Cable Types**: a flat list every project starts with a default set of (218
+  types: power, flex, pilot, VSD, control, instrument pairs and triples, earth,
+  fibre and Ethernet). Columns: **Code** (required, unique), **Application**
+  (e.g. AC_415V), **Type** (e.g. Power), **Cores** (e.g. 3C+E), **Diameter**,
+  **Voltage**, **Desc** and **Sort** (the list's order). A grid with a form, like
+  Load Types; the form can make the code from the other fields. **Add missing
+  defaults** puts back any default type that was deleted, without touching the
+  rest.
 - **PLC List**: a four-level tree of **PLC systems** (tag, description,
   manufacturer, model) → **racks** (tag number, unique in the project; plant
   area; rack type; first slot) → **cards** in slots (card type, name, spare,

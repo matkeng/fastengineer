@@ -33,7 +33,8 @@ from workbench_core.keylists import (
 )
 from pathlib import Path
 
-from workbench_core.refdata import RefValidationError
+from workbench_core.keylists.cable_types import CableTypeList, check_cable_types, default_cable_types
+from workbench_core.refdata import RefValidationError, name_key
 from workbench_core.symbols.render import PdfError, page_count
 
 from .refdata_api import invalid
@@ -58,7 +59,8 @@ def overview() -> dict:
             "instrument_codes": {"items": len(lists.code_list("instrument-codes").items)},
             "disciplines": [{"code": c, "name": n} for c, n in DISCIPLINES.items()],
             "eel": {"items": len(lists.eel().items)},
-            "plc": _plc_counts(lists.plc())}
+            "plc": _plc_counts(lists.plc()),
+            "cable_types": {"items": len(lists.cable_types().items)}}
 
 
 def _plc_counts(plc) -> dict[str, int]:
@@ -247,3 +249,32 @@ def _code_list_routes(list_id: str, model, list_model, what: str) -> None:
 
 _code_list_routes("equipment-codes", EquipmentCode, EquipmentCodeList, "equipment codes")
 _code_list_routes("instrument-codes", InstrumentCode, InstrumentCodeList, "instrument codes")
+
+
+# -- cable types -------------------------------------------------------------------------------
+
+@router.get("/cable-types", response_model=CableTypeList)
+def get_cable_types() -> CableTypeList:
+    return get_keylists().cable_types()
+
+
+@router.put("/cable-types", response_model=CableTypeList)
+def update_cable_types(body: CodeListUpdate):
+    try:
+        return get_keylists().save_cable_types(check_cable_types(body.items))
+    except RefValidationError as exc:
+        return invalid(exc)
+
+
+@router.post("/cable-types/defaults", response_model=CableTypeList)
+def cable_type_defaults() -> CableTypeList:
+    """Add the default cable types that are missing (by code); the rest is kept as it is."""
+    lists = get_keylists()
+    items = lists.cable_types().items
+    have = {name_key(c.code) for c in items}
+    ids = {c.id for c in items}
+    missing = [c if c.id not in ids else c.model_copy(update={"id": f"{c.id}x"})
+               for c in default_cable_types() if name_key(c.code) not in have]
+    if not missing:
+        return lists.cable_types()
+    return lists.save_cable_types(items + missing, note=f"{len(missing)} default cable type(s) added")

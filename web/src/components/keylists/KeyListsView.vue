@@ -6,6 +6,7 @@ import { useKeyLists } from '../../stores/keylists';
 import { useUi } from '../../stores/ui';
 import EquipmentPackagesEditor from './EquipmentPackagesEditor.vue';
 import LoadListEditor from './LoadListEditor.vue';
+import CableTypesEditor from './CableTypesEditor.vue';
 import CodeListEditor from './CodeListEditor.vue';
 import EelEditor from './EelEditor.vue';
 import PlcEditor from './PlcEditor.vue';
@@ -16,9 +17,11 @@ import PlantAreasEditor from './PlantAreasEditor.vue';
 const kl = useKeyLists();
 const ui = useUi();
 const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Load List',
-	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes', eel: 'Electrical Equipment List', plc: 'PLC List' };
+	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes', eel: 'Electrical Equipment List', plc: 'PLC List',
+	'cable-types': 'Cable Types' };
 const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true,
-	'equipment-codes': kl.codeLists['equipment-codes'], 'instrument-codes': kl.codeLists['instrument-codes'], eel: kl.eel, plc: kl.plcDraft }[kl.selected]);
+	'equipment-codes': kl.codeLists['equipment-codes'], 'instrument-codes': kl.codeLists['instrument-codes'], eel: kl.eel, plc: kl.plcDraft,
+	'cable-types': kl.cableTypes }[kl.selected]);
 
 onMounted(() => kl.load());
 // Coming back to the section shows what is saved now (a draft with unsaved changes is kept).
@@ -53,6 +56,10 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 							<span class="name">Instrument Codes</span>
 							<span class="count" title="instrument code(s)">{{ kl.overview?.instrument_codes.items ?? 0 }}</span>
 						</li>
+						<li :class="{ current: kl.selected === 'cable-types' }" @click="kl.select('cable-types')">
+							<span class="name">Cable Types</span>
+							<span class="count" title="cable type(s)">{{ kl.overview?.cable_types.items ?? 0 }}</span>
+						</li>
 						<li :class="{ current: kl.selected === 'plc' }" @click="kl.select('plc')">
 							<span class="name">PLC List</span><span v-if="kl.plcDirty || kl.catDirty" class="dirty-dot" title="Unsaved changes">●</span>
 							<span class="count" :title="`${kl.overview?.plc.systems ?? 0} system(s), ${kl.overview?.plc.racks ?? 0} rack(s)`">{{ kl.overview?.plc.cards ?? 0 }}</span>
@@ -81,6 +88,7 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 			<LoadTypesEditor v-if="kl.loadTypes" v-show="kl.selected === 'load-types'" />
 			<CodeListEditor v-if="kl.codeLists['equipment-codes']" v-show="kl.selected === 'equipment-codes'" list-id="equipment-codes" />
 			<CodeListEditor v-if="kl.codeLists['instrument-codes']" v-show="kl.selected === 'instrument-codes'" list-id="instrument-codes" />
+			<CableTypesEditor v-if="kl.cableTypes" v-show="kl.selected === 'cable-types'" />
 			<EelEditor v-if="kl.eel" v-show="kl.selected === 'eel'" />
 			<PlcEditor v-if="kl.plcDraft" v-show="kl.selected === 'plc'" />
 			<LoadListEditor v-if="kl.selected === 'load-list'" />

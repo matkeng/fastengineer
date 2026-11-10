@@ -17,6 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from workbench_core.keylists.cable_types import CableType, CableTypeList, default_cable_types
 from workbench_core.keylists.plc import PlcList, from_registers
 from workbench_core.keylists import (
     EEL_SOURCE,
@@ -560,6 +561,25 @@ class KeyListStore:
         return packages
 
     PLC = "plc"
+    CABLE_TYPES = "cable-types"
+
+    def cable_types(self) -> CableTypeList:
+        """The cable types; a project that never saved them has the default set."""
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.CABLE_TYPES,)).fetchone()
+        return CableTypeList.model_validate_json(row[0]) if row else CableTypeList(items=default_cable_types())
+
+    def save_cable_types(self, items: list[CableType], note: str | None = None) -> CableTypeList:
+        cables = CableTypeList(items=items, updated_at=_now())
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.CABLE_TYPES,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.CABLE_TYPES, cables.model_dump_json()))
+            # Before the first save the defaults are in effect, so that is what changed.
+            audit.log(self._db, "cable_types", self.CABLE_TYPES,
+                      before or CableTypeList(items=default_cable_types()).model_dump_json(), cables.model_dump_json(),
+                      label="Cable Types", note=note)
+        return cables
 
     # -- the catalogue of card and rack types (shared; kept where the generators kept it) --
 

@@ -8,7 +8,7 @@ import {
 } from '../lib/engine';
 import type { Catalogue } from '../lib/genTypes';
 import type {
-	Allocation, CodeList, EelForm, EelView, PlcImportPreview, PlcList, PlcView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList,
+	Allocation, CableTypeForm, CableTypeList, CodeList, EelForm, EelView, PlcImportPreview, PlcList, PlcView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList,
 } from '../lib/keyListTypes';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -37,6 +37,8 @@ export const useKeyLists = defineStore('keylists', () => {
 	// Equipment Codes and Instrument Codes: no draft either; a row is saved from its form.
 	// The Electrical Equipment List, with the choices for its references.
 	const eel = ref<EelView | null>(null);
+	// Cable types: no draft; a row is saved from its form.
+	const cableTypes = ref<CableTypeList | null>(null);
 	const codeLists = ref<Record<CodeListId, CodeList | null>>({ 'equipment-codes': null, 'instrument-codes': null });
 	const areasDirty = computed(() => differ(areasDraft.value, areasSaved.value));
 	const packagesDirty = computed(() => differ(packagesDraft.value, packagesSaved.value));
@@ -112,6 +114,8 @@ export const useKeyLists = defineStore('keylists', () => {
 		const l = await run(() => apiGet<LoadTypeList>(LOAD_TYPES));
 		if (l) loadTypes.value = l;
 		if (!plcDirty.value) await loadPlc();
+		const ct = await run(() => apiGet<CableTypeList>('/api/keylists/cable-types'));
+		if (ct) cableTypes.value = ct;
 		const e = await run(() => apiGet<EelView>('/api/eel'));
 		if (e) eel.value = e;
 		for (const id of ['equipment-codes', 'instrument-codes'] as const) {
@@ -292,6 +296,37 @@ export const useKeyLists = defineStore('keylists', () => {
 		return pv;
 	}
 
+	/** Add the cable type, or replace the saved one with the same id. False (errors set) if refused. */
+	function saveCableType(row: CableTypeForm): Promise<boolean> {
+		const items: unknown[] = [...(cableTypes.value?.items ?? [])];
+		const i = items.findIndex((r) => (r as { id: string }).id === row.id);
+		if (i >= 0) items.splice(i, 1, row);
+		else items.push(row);
+		return putCableTypes(items);
+	}
+
+	function deleteCableType(id: string): Promise<boolean> {
+		return putCableTypes((cableTypes.value?.items ?? []).filter((r) => r.id !== id));
+	}
+
+	async function putCableTypes(items: unknown[]): Promise<boolean> {
+		const c = await run(() => apiPut<CableTypeList>('/api/keylists/cable-types', { items }));
+		if (!c) return false;
+		cableTypes.value = c;
+		await refresh();
+		return true;
+	}
+
+	/** Add back the default cable types that are missing (the rest is kept). Returns how many. */
+	async function addDefaultCableTypes(): Promise<number | undefined> {
+		const before = cableTypes.value?.items.length ?? 0;
+		const c = await run(() => apiPostJson<CableTypeList>('/api/keylists/cable-types/defaults', {}));
+		if (!c) return undefined;
+		cableTypes.value = c;
+		await refresh();
+		return c.items.length - before;
+	}
+
 	async function saveAreas() {
 		const d = areasDraft.value;
 		if (!d) return;
@@ -328,7 +363,7 @@ export const useKeyLists = defineStore('keylists', () => {
 	return {
 		overview, selected, busy, error, fieldErrors, message, areasSaved, areasDraft, packagesSaved, packagesDraft,
 		loadTypes, areasDirty, packagesDirty, dirty, refresh, select, load, saveAreas, savePackages, discard,
-		saveLoadType, deleteLoadType, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem,
+		saveLoadType, deleteLoadType, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem, cableTypes, saveCableType, deleteCableType, addDefaultCableTypes,
 		plcSaved, plcDraft, plcView, catSaved, catDraft, plcDirty, catDirty, loadPlc, savePlc, checkPlc, saveCatalogue,
 		addDefaultTypes, exportPlc, importPlc,
 		discardCatalogue: () => { if (catSaved.value) catDraft.value = clone(catSaved.value); },
