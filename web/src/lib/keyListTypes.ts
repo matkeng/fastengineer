@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Matthew Kelly
 // Mirrors workbench_core.keylists.
+import type { Catalogue, Finding, HardwareSummary } from './genTypes';
 export const AREA_TYPES = ['WBS', 'Area', 'Building', 'Room', 'Panel'] as const;
 export type AreaType = (typeof AREA_TYPES)[number];
 
@@ -37,7 +38,25 @@ export interface LoadTypeForm {
 }
 export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id'>;
 
-export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | CodeListId;
+export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | CodeListId;
+
+/** The PLC List: systems -> racks -> cards (by slot) -> IO points (one per channel, from 0). */
+export interface IoPoint { channel: number; tag: string; description: string; spare: boolean }
+export interface PlcCard { id: string; card_type_id: string; tag: string; spare: boolean; notes: string; points: IoPoint[] }
+export interface PlcRack {
+	id: string; tag: string; plant_area_id: string | null; rack_type_id: string; description: string; first_slot: number;
+	cards: (PlcCard | null)[];
+}
+export interface PlcSystem { id: string; tag: string; description: string; manufacturer: string; model: string; racks: PlcRack[] }
+export interface PlcList { systems: PlcSystem[]; updated_at: string | null }
+export interface PlcView {
+	plc: PlcList; catalogue: Catalogue; errors: Record<string, string>; findings: Finding[]; summary: HardwareSummary;
+	plant_areas: { id: string; label: string; depth: number }[];
+}
+export interface PlcImportPreview {
+	systems: number; racks: number; cards: number; tagged_points: number; card_types: number; rack_types: number;
+	notes: string[]; applied: boolean;
+}
 
 /** An item of the Electrical Equipment List (references are ids in the other lists). */
 export interface EelItem {
@@ -132,6 +151,7 @@ export interface KeyListOverview {
 	load_list: { rows: number; unallocated: number };
 	equipment_codes: { items: number };
 	eel: { items: number };
+	plc: { systems: number; racks: number; cards: number };
 	instrument_codes: { items: number };
 	rating_units: string[];
 	phases: string[];

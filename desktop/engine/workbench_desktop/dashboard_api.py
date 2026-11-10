@@ -202,7 +202,9 @@ def dashboard() -> Dashboard:
         if g.updated_at:
             events.append(Event(kind="generator", section="generators", id=g.id, title=g.name,
                                 detail=f"generator · {g.runs} runs · {g.templates} templates", at=g.updated_at))
-    c.plc_panels, c.plc_cards = gens.hardware_counts()
+    plc = get_keylists().plc()
+    c.plc_panels = len(plc.systems)
+    c.plc_cards = sum(1 for s in plc.systems for r in s.racks for x in r.cards if x is not None)
     for b in gens.all_builds():
         c.gen_builds += 1
         if c.latest_build_at is None or b.created_at > c.latest_build_at:

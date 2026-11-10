@@ -545,9 +545,6 @@ def table_defs(inp: Inputs) -> list[TableDef]:
         TableDef("derived", "Derived tags", _w_derived, _r_derived, _a_derived),
         TableDef("routes", "Routes", _w_routes, _r_routes, _a_routes),
         TableDef("prefixes", "Cable prefixes", _w_prefixes, _r_prefixes, _a_prefixes),
-        TableDef("hardware", "PLC cards", _w_hardware, _r_hardware, _a_hardware),
-        TableDef("card_types", "Card types", _w_card_types, _r_card_types, _a_card_types),
-        TableDef("rack_types", "Rack types", _w_rack_types, _r_rack_types, _a_rack_types),
     ]
     defs += [_lookup_def(n) for n in sorted(inp.generator.tables)]
     return defs
@@ -567,9 +564,8 @@ ABOUT = [
     "Templates: one row per template row; rows with the same ID next to each other form a template.",
     "  Text with <<TAGS>> is expanded; F= starts a late formula; cells starting with " + CALC + " are calculated",
     "  by the generator (leave them as they are, or clear them).",
-    "PLC cards: one row per card (or per empty rack / panel). Card type: the type ID, its part number, or",
-    "  e.g. DI16. Kind, Channels and Part number are shown for reference and ignored on import.",
-    "Card types / Rack types: shared by every generator; types used by a rack can't be removed.",
+    "PLC cards and the card / rack types are not in this workbook: they are in the project's PLC List",
+    "  (Project lists > PLC List, which has its own Excel export and import).",
     "T <name>: the generator's lookup tables, cell for cell (row 1 is the sheet's first row).",
 ]
 

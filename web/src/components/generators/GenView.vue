@@ -28,8 +28,6 @@ function pickBulk(files: FileList | null | undefined) {
 	if (!f) return;
 	if (g.anyDirty && !confirm('Save or discard your unsaved edits first: importing replaces whole tables. Continue anyway (the edits will be lost)?')) return;
 	g.discard();
-	g.discardHardware();
-	g.discardCatalogue();
 	bulkFile.value = f;
 }
 

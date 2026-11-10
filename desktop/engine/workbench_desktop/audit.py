@@ -46,6 +46,7 @@ ENTITIES = {
     "load_types": "load types list",
     "load_list": "load list",
     "eel": "electrical equipment list",
+    "plc": "PLC list",
     "equipment_codes": "equipment codes list",
     "instrument_codes": "instrument codes list",
     "load_list_row": "load list row",

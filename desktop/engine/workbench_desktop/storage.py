@@ -17,6 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from workbench_core.keylists.plc import PlcList, from_registers
 from workbench_core.keylists import (
     EEL_SOURCE,
     KEPT,
@@ -158,7 +159,7 @@ CREATE TABLE IF NOT EXISTS gen_builds (
     data TEXT NOT NULL,
     UNIQUE (generator_id, seq)
 );
--- PLC hardware register per generator (panels -> racks -> cards); the type catalogue is in settings.
+-- PLC hardware registers of generators before the PLC List (moved into it once; kept, no longer used).
 CREATE TABLE IF NOT EXISTS gen_hardware (
     generator_id TEXT PRIMARY KEY REFERENCES gen_generators(id) ON DELETE CASCADE,
     data TEXT NOT NULL,
@@ -557,6 +558,52 @@ class KeyListStore:
                       before or EquipmentPackageList().model_dump_json(), packages.model_dump_json(),
                       label="Equipment Packages")
         return packages
+
+    PLC = "plc"
+
+    # -- the catalogue of card and rack types (shared; kept where the generators kept it) --
+
+    def catalogue(self) -> Catalogue:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM settings WHERE key = 'gen_hw_catalogue'").fetchone()
+        return Catalogue.model_validate_json(row[0]) if row else default_catalogue()
+
+    def save_catalogue(self, cat: Catalogue) -> Catalogue:
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "settings", "key = ?", ("gen_hw_catalogue",))
+            self._db.execute("INSERT INTO settings VALUES ('gen_hw_catalogue', ?) "
+                             "ON CONFLICT(key) DO UPDATE SET data = excluded.data", (cat.model_dump_json(),))
+            # Before the first save the built-in defaults are in effect, so that is what changed.
+            audit.log(self._db, "gen_catalogue", "catalogue", before or default_catalogue().model_dump_json(),
+                      cat.model_dump_json(), label="Card and rack types")
+        return cat
+
+    # -- the PLC List ----------------------------------------------------------------------
+
+    def plc(self) -> PlcList:
+        """The PLC List. The first time, the generators' PLC hardware registers (as they were
+        before the PLC List) are moved into it; their old records are left as they are."""
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.PLC,)).fetchone()
+            if row:
+                return PlcList.model_validate_json(row[0])
+            registers = [Hardware.model_validate_json(d) for (d,) in self._db.execute("SELECT data FROM gen_hardware")]
+        if not any(hw.panels for hw in registers):
+            return PlcList()
+        from workbench_core.refdata import name_key  # noqa: PLC0415
+        areas = {name_key(n.tag): n.id for n in self.plant_areas().nodes}
+        moved = from_registers(registers, areas, self.catalogue())
+        return self.save_plc(moved, note="Moved from the generators' PLC hardware registers")
+
+    def save_plc(self, plc: PlcList, note: str | None = None) -> PlcList:
+        plc = plc.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.PLC,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.PLC, plc.model_dump_json()))
+            audit.log(self._db, "plc", "plc", before or PlcList().model_dump_json(), plc.model_dump_json(),
+                      label="PLC List", note=note)
+        return plc
 
     EEL = "electrical-equipment"
 
@@ -1269,8 +1316,7 @@ class GeneratorStore:
                   label=f"{name}: lookup tables",
                   note=("contents changed in: " + ", ".join(changed)) if changed else None)
 
-    def apply_import(self, rid: str, name: str, gen: Generator, tables: dict[str, GenTable] | None = None,
-                     hardware: Hardware | None = None, catalogue: Catalogue | None = None) -> None:
+    def apply_import(self, rid: str, name: str, gen: Generator, tables: dict[str, GenTable] | None = None) -> None:
         """Save everything an inputs-workbook import changes in one transaction, so a
         failure (or a conflict) leaves nothing half-applied."""
         gen = gen.model_copy(update={"tables": {}})
@@ -1278,10 +1324,6 @@ class GeneratorStore:
             self._save(rid, name, gen)
             if tables is not None:
                 self._replace_tables(rid, tables)
-            if hardware is not None:
-                self._save_hardware(rid, hardware)
-            if catalogue is not None:
-                self._save_catalogue(catalogue)
 
     # -- builds ------------------------------------------------------------------
 
@@ -1328,60 +1370,6 @@ class GeneratorStore:
             (g,) = self._db.execute("SELECT COUNT(*) FROM gen_generators").fetchone()
             (b,) = self._db.execute("SELECT COUNT(*) FROM gen_builds").fetchone()
         return g, b
-
-    # -- PLC hardware ----------------------------------------------------------------
-
-    def catalogue(self) -> Catalogue:
-        with self._lock:
-            row = self._db.execute("SELECT data FROM settings WHERE key = 'gen_hw_catalogue'").fetchone()
-        return Catalogue.model_validate_json(row[0]) if row else default_catalogue()
-
-    def save_catalogue(self, cat: Catalogue) -> Catalogue:
-        with self._lock, self._db:
-            self._save_catalogue(cat)
-        return cat
-
-    def _save_catalogue(self, cat: Catalogue) -> None:
-        """Caller holds the lock and the transaction."""
-        before = audit.data_of(self._db, "settings", "key = ?", ("gen_hw_catalogue",))
-        self._db.execute("INSERT INTO settings VALUES ('gen_hw_catalogue', ?) "
-                         "ON CONFLICT(key) DO UPDATE SET data = excluded.data", (cat.model_dump_json(),))
-        # Before the first save the built-in defaults are in effect, so that is what changed.
-        audit.log(self._db, "gen_catalogue", "catalogue", before or default_catalogue().model_dump_json(),
-                  cat.model_dump_json(), label="Card and rack types")
-
-    def hardware(self, rid: str) -> Hardware:
-        self.get(rid)
-        with self._lock:
-            row = self._db.execute("SELECT data FROM gen_hardware WHERE generator_id = ?", (rid,)).fetchone()
-        return Hardware.model_validate_json(row[0]) if row else Hardware()
-
-    def save_hardware(self, rid: str, hw: Hardware) -> Hardware:
-        self.get(rid)
-        with self._lock, self._db:
-            self._save_hardware(rid, hw)
-        return hw
-
-    def _save_hardware(self, rid: str, hw: Hardware) -> None:
-        """Caller holds the lock and the transaction."""
-        before = audit.data_of(self._db, "gen_hardware", "generator_id = ?", (rid,))
-        self._db.execute("INSERT INTO gen_hardware VALUES (?, ?, ?) ON CONFLICT(generator_id) DO UPDATE SET "
-                         "data = excluded.data, updated_at = excluded.updated_at",
-                         (rid, hw.model_dump_json(), _now().isoformat()))
-        (name,) = self._db.execute("SELECT name FROM gen_generators WHERE id = ?", (rid,)).fetchone()
-        audit.log(self._db, "gen_hardware", rid, before or Hardware().model_dump_json(), hw.model_dump_json(),
-                  parent_id=rid, label=f"{name}: PLC hardware")
-
-    def hardware_counts(self) -> tuple[int, int]:
-        """(panels, cards) across all generators."""
-        with self._lock:
-            rows = self._db.execute("SELECT data FROM gen_hardware").fetchall()
-        panels = cards = 0
-        for (d,) in rows:
-            hw = Hardware.model_validate_json(d)
-            panels += len(hw.panels)
-            cards += sum(1 for p in hw.panels for r in p.racks for c in r.cards if c is not None)
-        return panels, cards
 
     def all_builds(self) -> list[BuildInfo]:
         with self._lock:

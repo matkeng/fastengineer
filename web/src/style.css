@@ -778,6 +778,15 @@ dialog.modal.eel-form { width: min(820px, calc(100vw - 32px)); }
 .eel-form fieldset.electrical .wide { grid-column: 1 / -1; }
 .eel-form fieldset.electrical .field.check { flex-direction: row; align-items: center; gap: 8px; align-self: center; }
 .key-loadlist .from-eel { color: var(--muted); padding: 0 6px; }
+/* PLC List */
+.key-plc .key-title { margin: 0; font-size: 1rem; }
+main.fill .key-plc { overflow: auto; }
+.key-plc .hw-layout { min-height: 420px; }
+.key-plc .io-points { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; margin-top: 6px; width: 100%; }
+.key-plc .card-edit { flex-wrap: wrap; }
+.key-plc .tpl-list li.bad strong { color: var(--danger); }
+.key-plc .hw-findings li.error { color: var(--danger); }
+.key-plc input.invalid, .key-plc select.invalid { border-color: var(--danger); }
 /* Inputs directly in a column layout must not grow vertically. */
 .ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }
 

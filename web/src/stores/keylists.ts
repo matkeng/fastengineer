@@ -2,9 +2,13 @@
 // Copyright (C) 2026 Matthew Kelly
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { ApiError, apiDelete, apiGet, apiGetBlob, apiPut, apiPutBytes, apiPutWith } from '../lib/engine';
+import {
+	ApiError, apiDelete, apiGet, apiGetBlob, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, apiPutBytes, apiPutWith, exportToPath,
+	runningInTauri,
+} from '../lib/engine';
+import type { Catalogue } from '../lib/genTypes';
 import type {
-	Allocation, CodeList, EelForm, EelView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList,
+	Allocation, CodeList, EelForm, EelView, PlcImportPreview, PlcList, PlcView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList,
 } from '../lib/keyListTypes';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -36,7 +40,15 @@ export const useKeyLists = defineStore('keylists', () => {
 	const codeLists = ref<Record<CodeListId, CodeList | null>>({ 'equipment-codes': null, 'instrument-codes': null });
 	const areasDirty = computed(() => differ(areasDraft.value, areasSaved.value));
 	const packagesDirty = computed(() => differ(packagesDraft.value, packagesSaved.value));
-	const dirty = computed(() => areasDirty.value || packagesDirty.value);
+	// The PLC List and the card / rack types: saved copies and drafts, Save / Discard.
+	const plcSaved = ref<PlcList | null>(null);
+	const plcDraft = ref<PlcList | null>(null);
+	const plcView = ref<PlcView | null>(null);
+	const catSaved = ref<Catalogue | null>(null);
+	const catDraft = ref<Catalogue | null>(null);
+	const plcDirty = computed(() => differ(plcDraft.value, plcSaved.value));
+	const catDirty = computed(() => differ(catDraft.value, catSaved.value));
+	const dirty = computed(() => areasDirty.value || packagesDirty.value || plcDirty.value || catDirty.value);
 
 	async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
 		busy.value = true;
@@ -99,6 +111,7 @@ export const useKeyLists = defineStore('keylists', () => {
 		}
 		const l = await run(() => apiGet<LoadTypeList>(LOAD_TYPES));
 		if (l) loadTypes.value = l;
+		if (!plcDirty.value) await loadPlc();
 		const e = await run(() => apiGet<EelView>('/api/eel'));
 		if (e) eel.value = e;
 		for (const id of ['equipment-codes', 'instrument-codes'] as const) {
@@ -192,6 +205,88 @@ export const useKeyLists = defineStore('keylists', () => {
 		return true;
 	}
 
+	// -- PLC List ------------------------------------------------------------------------
+
+	function setPlc(v: PlcView, keepDraft = false) {
+		plcView.value = v;
+		plcSaved.value = clone(v.plc);
+		if (!keepDraft) plcDraft.value = clone(v.plc);
+		catSaved.value = clone(v.catalogue);
+		if (!catDirty.value || !catDraft.value) catDraft.value = clone(v.catalogue);
+	}
+
+	async function loadPlc() {
+		const v = await run(() => apiGet<PlcView>('/api/plc'));
+		if (v) setPlc(v);
+	}
+
+	async function savePlc() {
+		if (!plcDraft.value) return;
+		const v = await run(() => apiPut<PlcView>('/api/plc', plcDraft.value));
+		if (v) {
+			setPlc(v);
+			await refresh();
+			message.value = 'Saved';
+		}
+	}
+
+	/** Errors, findings and totals for unsaved edits (the draft is kept). */
+	async function checkPlc() {
+		if (!plcDraft.value) return;
+		const v = await apiPostJson<PlcView>('/api/plc/check', plcDraft.value).catch(() => null);
+		if (v) plcView.value = { ...v, plc: plcDraft.value };
+	}
+
+	async function saveCatalogue() {
+		if (!catDraft.value) return;
+		const c = await run(() => apiPut<Catalogue>('/api/plc/catalogue', catDraft.value));
+		if (c) {
+			catSaved.value = clone(c);
+			catDraft.value = clone(c);
+			message.value = 'Card and rack types saved';
+			await checkPlc();
+		}
+	}
+
+	async function addDefaultTypes() {
+		const c = await run(() => apiPostJson<Catalogue>('/api/plc/catalogue/defaults', {}));
+		if (c) {
+			catSaved.value = clone(c);
+			catDraft.value = clone(c);
+		}
+	}
+
+	async function exportPlc() {
+		message.value = null;
+		await run(async () => {
+			if (runningInTauri) {
+				const { save: saveDialog } = await import('@tauri-apps/plugin-dialog');
+				const path = await saveDialog({ defaultPath: 'PLC List.xlsx', filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }] });
+				if (!path) return;
+				const res = await exportToPath('/api/plc/export', {}, path);
+				message.value = `Saved ${res.path}`;
+			} else {
+				const blob = await apiPostJsonForBlob('/api/plc/export', {});
+				const href = URL.createObjectURL(blob);
+				Object.assign(document.createElement('a'), { href, download: 'PLC List.xlsx' }).click();
+				setTimeout(() => URL.revokeObjectURL(href), 10_000);
+				message.value = 'Downloaded PLC List.xlsx';
+			}
+		});
+	}
+
+	/** Read a PLC List workbook: without `apply` a preview; with it the file replaces the list. */
+	async function importPlc(file: File, apply: boolean): Promise<PlcImportPreview | undefined> {
+		const q = new URLSearchParams({ filename: file.name, apply: String(apply) });
+		const pv = await run(() => apiPostBytes<PlcImportPreview>(`/api/plc/import?${q}`, file));
+		if (pv?.applied) {
+			await loadPlc();
+			await refresh();
+			message.value = `Imported ${file.name}`;
+		}
+		return pv;
+	}
+
 	async function saveAreas() {
 		const d = areasDraft.value;
 		if (!d) return;
@@ -218,6 +313,7 @@ export const useKeyLists = defineStore('keylists', () => {
 
 	/** Drop the unsaved changes of the list that is showing. */
 	function discard() {
+		if (selected.value === 'plc' && plcSaved.value) plcDraft.value = clone(plcSaved.value);
 		if (selected.value === 'plant-areas' && areasSaved.value) areasDraft.value = clone(areasSaved.value);
 		if (selected.value === 'equipment-packages' && packagesSaved.value) packagesDraft.value = clone(packagesSaved.value);
 		fieldErrors.value = {};
@@ -228,5 +324,8 @@ export const useKeyLists = defineStore('keylists', () => {
 		overview, selected, busy, error, fieldErrors, message, areasSaved, areasDraft, packagesSaved, packagesDraft,
 		loadTypes, areasDirty, packagesDirty, dirty, refresh, select, load, saveAreas, savePackages, discard,
 		saveLoadType, deleteLoadType, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem,
+		plcSaved, plcDraft, plcView, catSaved, catDraft, plcDirty, catDirty, loadPlc, savePlc, checkPlc, saveCatalogue,
+		addDefaultTypes, exportPlc, importPlc,
+		discardCatalogue: () => { if (catSaved.value) catDraft.value = clone(catSaved.value); },
 	};
 });

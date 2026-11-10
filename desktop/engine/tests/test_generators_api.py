@@ -178,102 +178,61 @@ def test_persistence_delete_and_dashboard(data_dir: Path):
     assert client.get("/api/generators").json() == []
 
 
-# -- PLC hardware register ---------------------------------------------------------------
+# -- PLC hardware: read-only, from the project's PLC List ---------------------------------------
 
-def _hw(*cards, tag="PNL1"):
-    return {"panels": [{"tag": tag, "description": "Test panel", "racks": [
-        {"number": 1, "rack_type_id": "rack", "cards": [None if c is None else {"card_type_id": c} for c in cards]}]}]}
-
-
-def test_catalogue_defaults_edit_and_in_use_guard():
-    cat = client.get("/api/generators/hardware/catalogue").json()
-    assert len(cat["card_types"]) == 21 and cat["rack_types"][0]["id"] == "rack"
-    cat["card_types"][1]["part_number"] = "DI-8X"
-    cat["rack_types"].append({"id": "r10", "part_number": "RK-10", "description": "10 slot", "max_slots": 10})
-    res = client.put("/api/generators/hardware/catalogue", json=cat)
-    assert res.status_code == 200 and client.get("/api/generators/hardware/catalogue").json()["card_types"][1]["part_number"] == "DI-8X"
-    dup = {**cat, "card_types": cat["card_types"] + [cat["card_types"][0]]}
-    assert client.put("/api/generators/hardware/catalogue", json=dup).status_code == 422
-    # a type used by a rack can't be removed
-    rid = _import()["record"]["id"]
-    assert client.put(f"/api/generators/{rid}/hardware", json=_hw("net", "di8")).status_code == 200
-    less = {**cat, "card_types": [t for t in cat["card_types"] if t["id"] != "di8"]}
-    res = client.put("/api/generators/hardware/catalogue", json=less)
-    assert res.status_code == 422 and "can't be removed" in res.json()["detail"]
-    # removing an unused type works; defaults restore it
-    unused = {**cat, "card_types": [t for t in cat["card_types"] if t["id"] != "rtd32"]}
-    assert client.put("/api/generators/hardware/catalogue", json=unused).status_code == 200
-    restored = client.post("/api/generators/hardware/catalogue/defaults").json()
-    assert "rtd32" in {t["id"] for t in restored["card_types"]}
-    assert next(t for t in restored["card_types"] if t["id"] == "di8")["part_number"] == "DI-8X"  # kept
-
-
-def test_hardware_register_check_summary_and_export(tmp_path: Path):
+def test_hardware_view_reads_the_plc_list():
     rid = _import()["record"]["id"]
     v = client.get(f"/api/generators/{rid}/hardware").json()
     assert v["hardware"] == {"panels": []} and v["summary"]["cards"] == 0
-    v = client.put(f"/api/generators/{rid}/hardware", json=_hw("net", "di16", None, "ai8")).json()
-    assert [r["card"] for r in v["schedule"]] == ["PNL1-R1-S1", "PNL1-R1-S2", "PNL1-R1-S4"]
+    card = lambda t: {"card_type_id": t}  # noqa: E731
+    plc = {"systems": [{"tag": "PLC1", "racks": [{"tag": "PLC1-RK1", "rack_type_id": "rack",
+                                                  "cards": [card("net"), card("di16"), None, card("ai8")]}]}]}
+    assert client.put("/api/plc", json=plc).status_code == 200
+    v = client.get(f"/api/generators/{rid}/hardware").json()
+    assert [r["card"] for r in v["schedule"]] == ["PLC1-RK1-S1", "PLC1-RK1-S2", "PLC1-RK1-S4"]
     assert {k["kind"]: k["channels"] for k in v["summary"]["by_kind"]} == {"Network": 0, "DI": 16, "AI": 8}
-    assert v["findings"] == []
-    # the draft check reports problems without saving
-    bad = _hw("di16")
-    chk = client.post(f"/api/generators/{rid}/hardware/check", json=bad).json()
-    assert [f["code"] for f in chk["findings"]] == ["H6"]
-    assert client.get(f"/api/generators/{rid}/hardware").json()["summary"]["cards"] == 3
     # capacity against the latest IO list build (the sample has no CARD TYPE column)
     _build(rid)
     assert client.get(f"/api/generators/{rid}/hardware").json()["summary"]["demand_column"] is None
-    res = client.post(f"/api/generators/{rid}/hardware/export", json={"format": "xlsx"})
-    ws = load_workbook(io.BytesIO(res.content))["Schedule"]
-    assert [c.value for c in ws[1]][:4] == ["Panel", "Rack", "Slot", "Card"] and ws["D4"].value == "PNL1-R1-S4"
-    out = client.post(f"/api/generators/{rid}/hardware/export", json={"format": "csv", "path": str(tmp_path / "cards")}).json()
-    assert (tmp_path / "cards.csv").read_text(encoding="utf-8-sig").startswith("Panel,Rack,Slot,Card")
-    assert out["path"].endswith("cards.csv")
+    # editing here has moved to the PLC List
+    assert client.put(f"/api/generators/{rid}/hardware", json={"panels": []}).status_code == 405
+    assert client.get("/api/generators/hardware/catalogue").status_code == 404
     assert client.get("/api/dashboard").json()["counts"]["plc_cards"] == 3
     assert client.get("/api/generators/nope/hardware").status_code == 404
-    client.delete(f"/api/generators/{rid}")  # cascade
-    assert client.get("/api/dashboard").json()["counts"]["plc_panels"] == 0
 
 
 # -- bulk editing workbook -------------------------------------------------------------------------
 
 def test_inputs_export_preview_and_apply(tmp_path: Path):
     rid = _import()["record"]["id"]
-    client.put(f"/api/generators/{rid}/hardware", json=_hw("net", "di16"))
     res = client.post(f"/api/generators/{rid}/inputs/export", json={})
     assert res.status_code == 200 and 'inputs.xlsx' in res.headers["content-disposition"]
     wb = load_workbook(io.BytesIO(res.content))
-    assert "PLC cards" in wb.sheetnames and "T Codes" in wb.sheetnames
+    assert "PLC cards" not in wb.sheetnames and "T Codes" in wb.sheetnames
     wb["RunSheet"]["G3"] = "BULK EDITED"
-    wb["PLC cards"].append(["PNL1", None, None, 1, "rack", None, 1, 3, "AI8"])
     wb["T Codes"].append(["R230 - Power - 2C+E - 25"])
     buf = io.BytesIO()
     wb.save(buf)
     q = {"filename": "inputs.xlsx"}
     pv = client.post(f"/api/generators/{rid}/inputs/import", params=q, content=buf.getvalue()).json()
     changed = {s["table"]: (s["added"], s["removed"], s["changed"]) for s in pv["preview"]["sheets"]}
-    assert changed["runsheet"] == (0, 0, 1) and changed["hardware"] == (1, 0, 0) and changed["table:Codes"] == (1, 0, 0)
+    assert changed["runsheet"] == (0, 0, 1) and changed["table:Codes"] == (1, 0, 0) and "hardware" not in changed
     assert pv["applied"] == [] and pv["record"] is None
     assert client.get(f"/api/generators/{rid}").json()["generator"]["runsheet"]["rows"][0]["values"][5] != "BULK EDITED"
-    out = client.post(f"/api/generators/{rid}/inputs/import", params={**q, "apply": "runsheet,hardware,table:Codes"},
+    out = client.post(f"/api/generators/{rid}/inputs/import", params={**q, "apply": "runsheet,table:Codes"},
                       content=buf.getvalue()).json()
-    assert out["applied"] == ["runsheet", "hardware", "table:Codes"]
+    assert out["applied"] == ["runsheet", "table:Codes"]
     assert out["record"]["generator"]["runsheet"]["rows"][0]["values"][5] == "BULK EDITED"
-    assert client.get(f"/api/generators/{rid}/hardware").json()["summary"]["cards"] == 3
     assert len(client.get(f"/api/generators/{rid}/tables/Codes").json()["rows"]) == 6
     # nothing left to change after applying
     pv = client.post(f"/api/generators/{rid}/inputs/import", params=q, content=buf.getvalue()).json()
     assert {s["table"]: s["changed"] + s["added"] + s["removed"] for s in pv["preview"]["sheets"]}["runsheet"] == 0
-    # errors: a sheet with errors can't be applied; a removed type in use is refused
+    # errors: a sheet with errors can't be applied
     wb["RunSheet"]["A1"] = "x"
-    wb["Card types"].delete_rows(2)  # the network adapter type, used by rack 1
     buf = io.BytesIO()
     wb.save(buf)
     res = client.post(f"/api/generators/{rid}/inputs/import", params={**q, "apply": "runsheet"}, content=buf.getvalue())
     assert res.status_code == 422
-    res = client.post(f"/api/generators/{rid}/inputs/import", params={**q, "apply": "card_types"}, content=buf.getvalue())
-    assert res.status_code == 422 and "missing from the types" in res.json()["detail"]
     assert client.post(f"/api/generators/{rid}/inputs/import", params=q, content=b"nope").status_code == 400
     out = client.post(f"/api/generators/{rid}/inputs/export", json={"path": str(tmp_path / "in")}).json()
     assert out["path"].endswith("in.xlsx") and (tmp_path / "in.xlsx").stat().st_size > 2000

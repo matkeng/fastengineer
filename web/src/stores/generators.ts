@@ -4,7 +4,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { apiDelete, apiGet, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, exportToPath, runningInTauri } from '../lib/engine';
 import type {
-	BuildInfo, BuildRecord, Catalogue, InputsImport, CheckResult, GenRecord, GenSummary, Hardware, HardwareView, ImportReport, PreviewResult,
+	BuildInfo, BuildRecord, InputsImport, CheckResult, GenRecord, GenSummary, HardwareView, ImportReport, PreviewResult,
 } from '../lib/genTypes';
 
 export type GenTab = 'runsheet' | 'templates' | 'check' | 'build' | 'hardware' | 'settings';
@@ -29,14 +29,8 @@ export const useGenerators = defineStore('generators', () => {
 
 	const dirty = computed(() => !!draft.value && JSON.stringify(draft.value) !== JSON.stringify(saved.value));
 	// PLC hardware register of the open generator, and the shared type catalogue (saved separately)
-	const hwSaved = ref<Hardware | null>(null);
-	const hwDraft = ref<Hardware | null>(null);
 	const hwView = ref<HardwareView | null>(null);
-	const catSaved = ref<Catalogue | null>(null);
-	const catDraft = ref<Catalogue | null>(null);
-	const hwDirty = computed(() => !!hwDraft.value && JSON.stringify(hwDraft.value) !== JSON.stringify(hwSaved.value));
-	const catDirty = computed(() => !!catDraft.value && JSON.stringify(catDraft.value) !== JSON.stringify(catSaved.value));
-	const anyDirty = computed(() => dirty.value || hwDirty.value || catDirty.value);
+	const anyDirty = computed(() => dirty.value);
 	const base = computed(() => `/api/generators/${draft.value?.id}`);
 
 	async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -79,7 +73,7 @@ export const useGenerators = defineStore('generators', () => {
 		tab.value = 'runsheet';
 		selectedTemplate.value = r.generator.templates[0]?.id ?? null;
 		await loadBuilds(true);
-		hwSaved.value = hwDraft.value = hwView.value = null;
+		hwView.value = null;
 		void loadHardware();
 		void check();
 	}
@@ -87,7 +81,7 @@ export const useGenerators = defineStore('generators', () => {
 	function close() {
 		saved.value = null;
 		draft.value = null;
-		hwSaved.value = hwDraft.value = hwView.value = null;
+		hwView.value = null;
 		builds.value = [];
 		build.value = null;
 		checkResult.value = null;
@@ -187,87 +181,11 @@ export const useGenerators = defineStore('generators', () => {
 		});
 	}
 
-	// -- PLC hardware --------------------------------------------------------------
-
-	function setView(v: HardwareView, keepDraft = false) {
-		hwView.value = v;
-		hwSaved.value = clone(v.hardware);
-		if (!keepDraft) hwDraft.value = clone(v.hardware);
-		catSaved.value = clone(v.catalogue);
-		if (!catDirty.value || !catDraft.value) catDraft.value = clone(v.catalogue);
-	}
+	// -- PLC hardware: read-only here (the register is the project's PLC List) -----------
 
 	async function loadHardware() {
 		const v = await run(() => apiGet<HardwareView>(`${base.value}/hardware`));
-		if (v) setView(v);
-	}
-
-	async function saveHardware() {
-		if (!hwDraft.value) return;
-		const v = await run(() => apiPut<HardwareView>(`${base.value}/hardware`, hwDraft.value));
-		if (v) {
-			setView(v);
-			message.value = 'PLC hardware saved';
-		}
-	}
-
-	function discardHardware() {
-		if (hwSaved.value) hwDraft.value = clone(hwSaved.value);
-	}
-
-	/** Findings and totals for unsaved edits (the draft is kept). */
-	async function checkHardware() {
-		if (!hwDraft.value || !draft.value) return;
-		const v = await apiPostJson<HardwareView>(`${base.value}/hardware/check`, hwDraft.value).catch(() => null);
-		if (v) hwView.value = { ...v, hardware: hwDraft.value };
-	}
-
-	async function saveCatalogue() {
-		if (!catDraft.value) return;
-		const c = await run(() => apiPut<Catalogue>('/api/generators/hardware/catalogue', catDraft.value));
-		if (c) {
-			catSaved.value = clone(c);
-			catDraft.value = clone(c);
-			message.value = 'Card and rack types saved';
-			await checkHardware();
-		}
-	}
-
-	function discardCatalogue() {
-		if (catSaved.value) catDraft.value = clone(catSaved.value);
-	}
-
-	async function addDefaultTypes() {
-		const c = await run(() => apiPostJson<Catalogue>('/api/generators/hardware/catalogue/defaults', {}));
-		if (c) {
-			catSaved.value = clone(c);
-			catDraft.value = clone(c);
-		}
-	}
-
-	async function exportHardware(format: 'xlsx' | 'csv') {
-		if (!draft.value) return;
-		const url = `${base.value}/hardware/export`;
-		const name = `${draft.value.name} PLC cards.${format}`.replace(/[\\/:*?"<>|]+/g, '_');
-		message.value = null;
-		await run(async () => {
-			if (runningInTauri) {
-				const { save: saveDialog } = await import('@tauri-apps/plugin-dialog');
-				const path = await saveDialog({
-					defaultPath: name,
-					filters: [format === 'csv' ? { name: 'CSV', extensions: ['csv'] } : { name: 'Excel workbook', extensions: ['xlsx'] }],
-				});
-				if (!path) return;
-				const res = await exportToPath(url, { format }, path);
-				message.value = `Saved ${res.path}`;
-			} else {
-				const blob = await apiPostJsonForBlob(url, { format });
-				const href = URL.createObjectURL(blob);
-				Object.assign(document.createElement('a'), { href, download: name }).click();
-				setTimeout(() => URL.revokeObjectURL(href), 10_000);
-				message.value = `Downloaded ${name}`;
-			}
-		});
+		if (v) hwView.value = v;
 	}
 
 	// -- bulk editing in Excel ---------------------------------------------------------
@@ -301,10 +219,6 @@ export const useGenerators = defineStore('generators', () => {
 		if (res?.record) {
 			saved.value = res.record;
 			draft.value = clone(res.record);
-			if (tables.includes('hardware') || tables.includes('card_types') || tables.includes('rack_types')) {
-				catDraft.value = null;
-				await loadHardware();
-			}
 			message.value = `Imported ${tables.length} sheet${tables.length === 1 ? '' : 's'}`;
 			void check();
 		}
@@ -313,9 +227,7 @@ export const useGenerators = defineStore('generators', () => {
 
 	return {
 		exportInputs, importInputs,
-		hwSaved, hwDraft, hwView, catSaved, catDraft, hwDirty, catDirty, anyDirty,
-		loadHardware, saveHardware, discardHardware, checkHardware, saveCatalogue, discardCatalogue, addDefaultTypes,
-		exportHardware,
+		hwView, anyDirty, loadHardware,
 		list, saved, draft, builds, build, checkResult, lastImport, busy, error, fieldErrors, message, tab, dirty,
 		selectedTemplate, jumpToRow,
 		refreshList, importWorkbook, open, close, save, discard, remove, check, preview, loadBuilds, loadBuild,

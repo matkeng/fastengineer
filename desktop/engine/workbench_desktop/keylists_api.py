@@ -57,7 +57,13 @@ def overview() -> dict:
             "equipment_codes": {"items": len(lists.code_list("equipment-codes").items)},
             "instrument_codes": {"items": len(lists.code_list("instrument-codes").items)},
             "disciplines": [{"code": c, "name": n} for c, n in DISCIPLINES.items()],
-            "eel": {"items": len(lists.eel().items)}}
+            "eel": {"items": len(lists.eel().items)},
+            "plc": _plc_counts(lists.plc())}
+
+
+def _plc_counts(plc) -> dict[str, int]:
+    from workbench_core.keylists.plc import cards
+    return {"systems": len(plc.systems), "racks": sum(len(s.racks) for s in plc.systems), "cards": sum(1 for _ in cards(plc))}
 
 
 def _load_list_counts() -> dict[str, int]:
@@ -73,6 +79,18 @@ def _refuse_eel(fields: tuple[str, ...], removed: dict[str, str], what: str) -> 
     if in_use:
         raise RefValidationError(f"These {what} are used in the Electrical Equipment List and can't be deleted: "
                                  f"{', '.join(in_use)}. Change those items first.")
+
+
+def _refuse_plc(removed: dict[str, str]) -> None:
+    """Refuse to delete plant areas that PLC racks are located in. `removed`: id -> tag."""
+    counts: dict[str, int] = {}
+    for s in get_keylists().plc().systems:
+        for r in s.racks:
+            if r.plant_area_id in removed:
+                counts[r.plant_area_id] = counts.get(r.plant_area_id, 0) + 1
+    if counts:
+        raise RefValidationError("These plant areas have PLC racks in them and can't be deleted: " + ", ".join(
+            f"{removed[i]} ({n} rack{'s' if n > 1 else ''})" for i, n in counts.items()) + ". Move those racks first.")
 
 
 def _refuse_in_use(kind: str, removed: dict[str, str], what: str) -> None:
@@ -102,6 +120,7 @@ def update_plant_areas(body: PlantAreasUpdate):
         kept = {n.id for n in areas.nodes}
         _refuse_in_use("plant_area", {n.id: n.tag for n in get_keylists().plant_areas().nodes if n.id not in kept},
                        "plant areas")
+        _refuse_plc({n.id: n.tag for n in get_keylists().plant_areas().nodes if n.id not in kept})
         return get_keylists().save_plant_areas(areas)
     except RefValidationError as exc:
         return invalid(exc)

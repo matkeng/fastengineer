@@ -26,6 +26,7 @@ from .generators_api import router as generators_router
 from .keylists_api import router as keylists_router
 from .loadlist_api import router as loadlist_router
 from .eel_api import router as eel_router
+from .plc_api import router as plc_router
 from .projects_api import router as projects_router
 from .storage import get_store
 
@@ -48,8 +49,8 @@ _RECORD_URLS = [(re.compile(p), entity) for p, entity in (
     (r"^/api/symbols/libraries/([^/]+)$", "sym_library"),
     (r"^/api/symbols/templates/([^/]+)$", "sym_template"),
     (r"^/api/symbols/drawings/([^/]+)$", "sym_drawing"),
-    (r"^/api/generators/hardware/(catalogue)$", "gen_catalogue"),
-    (r"^/api/generators/([^/]+)/hardware$", "gen_hardware"),
+    (r"^/api/plc/(catalogue)$", "gen_catalogue"),
+    (r"^/api/(plc)$", "plc"),
     (r"^/api/generators/([^/]+)$", "generator"),
 )]
 
@@ -96,6 +97,7 @@ app.include_router(refdata_router)
 app.include_router(keylists_router)
 app.include_router(loadlist_router)
 app.include_router(eel_router)
+app.include_router(plc_router)
 app.include_router(symbols_router)
 app.include_router(generators_router)
 app.include_router(dashboard_router)

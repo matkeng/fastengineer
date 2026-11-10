@@ -490,6 +490,21 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
     by a person's or this list's choice, and supplies can't loop. Plant areas,
     load types, equipment codes and packages it uses can't be deleted.
   - A tag that an import gains later is marked ⚠ on the item.
+- **PLC List**: a four-level tree of **PLC systems** (tag, description,
+  manufacturer, model) → **racks** (tag number, unique in the project; plant
+  area; rack type; first slot) → **cards** in slots (card type, name, spare,
+  notes) → **IO points**, one per channel of the card type, numbered from 0
+  (tag, unique in the project when filled; description; spare; the signal comes
+  from the card kind). It replaces the PLC hardware register each generator
+  had: the first time it is opened, the generators' registers are moved into
+  it (each panel becomes a system, its racks are tagged `{PANEL}-R{n}`, and a
+  rack's plant area is the one whose tag equals the panel's location). The
+  card and rack types are edited here too. A card's type can't change to fewer
+  channels while a channel it would lose has a tag or description. Export and
+  import .xlsx (PLC cards, IO points, card types, rack types; an older
+  generator workbook's PLC sheets can be imported too). A plant area with racks
+  can't be deleted. A generator's **PLC hardware** tab now shows the PLC List's
+  channels against its IO list build, read-only, with a link here.
 - **Load List**: the rows of every **MEL and EEL** import in the project,
   combined and always live (each import's latest file through its saved rules
   and mapping), with the mapped fields as read-only, sortable, filterable
