@@ -4,7 +4,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { IconName } from '../lib/icons';
 
-export type Section = 'dashboard' | 'excel' | 'compare' | 'symbols' | 'mel' | 'ref' | 'generators' | 'history' | 'engine';
+export type Section = 'dashboard' | 'excel' | 'compare' | 'symbols' | 'mel' | 'ref' | 'generators' | 'history' | 'projects' | 'engine';
 
 export const SECTIONS: { id: Section; label: string; icon: IconName }[] = [
 	{ id: 'dashboard', label: 'Dashboard', icon: 'home' },
@@ -15,6 +15,7 @@ export const SECTIONS: { id: Section; label: string; icon: IconName }[] = [
 	{ id: 'ref', label: 'Lists & tables', icon: 'database' },
 	{ id: 'generators', label: 'Generators', icon: 'generator' },
 	{ id: 'history', label: 'Change log', icon: 'history' },
+	{ id: 'projects', label: 'Projects', icon: 'layers' }, // administrators only (see App.vue)
 	{ id: 'engine', label: 'Engine', icon: 'cpu' },
 ];
 

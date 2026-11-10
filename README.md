@@ -103,16 +103,17 @@ record, when, and what changed**.
    Scheduler task that runs at start-up):
 
    ```
-   workbench-engine.exe --server --host 0.0.0.0 --port 8765 --data-dir D:\WorkbenchData
+   workbench-engine.exe --server --host 0.0.0.0 --port 8765 --data-dir D:\WorkbenchData --admin ACME\jsmith
    ```
 
-   `--server` makes every change name its user. `--data-dir` holds the database
-   (`workbench.db`) and uploaded drawings (`symbols\`).
+   `--server` makes every change name its user. `--data-dir` holds the list of
+   projects (`registry.db`) and the projects themselves. `--admin` names a user
+   who may manage projects; repeat it for more than one (see Projects below).
 3. Keep `--data-dir` on a **local disk of the server**, not a network share: the
    database is not safe on a share. Only the engine opens it; nobody else needs
    file access to that folder.
 4. Allow inbound TCP 8765 in Windows Firewall, for your office network only.
-5. Back up the `--data-dir` folder.
+5. Back up the `--data-dir` folder, and any project folders kept elsewhere.
 
 ### On each PC
 
@@ -128,6 +129,39 @@ record, when, and what changed**.
 
 Without either setting the app works as before, with its own private engine and
 data. Changes are still logged, under the local Windows login.
+
+### Projects
+
+Each project is a folder with **its own database** (`workbench.db`) and its own
+uploaded drawings: its own lists, tables, symbol libraries, imports, generators
+and change log. Nothing is shared between projects.
+
+- **Choosing a project.** The title bar has a Project box listing the projects
+  you can open. The app starts in the project you had open last; the server
+  remembers that per user. Switching project reloads the app in the other one.
+- **Administrators** (the `--admin` users; on a single PC without a server, you)
+  get a **Projects** page where they:
+  - create a project, either empty or starting with the lists, trees, tables,
+    symbol libraries and card and rack types of an existing project (a copy;
+    the two are independent afterwards),
+  - choose each project's **members**. People only see and open the projects
+    they are a member of; administrators can open all of them. Someone in no
+    project is told to ask an administrator, and shows up in the list of people
+    to add once they have started the app,
+  - rename, archive and restore projects. Archiving hides a project from
+    everyone and deletes nothing,
+  - see who created or changed projects and their members.
+- **Where projects are kept.** By default in `<data-dir>\projects\<id>\`. When
+  creating a project an administrator can give it a **folder of its own**
+  instead, for example `E:\Jobs\Plant A`. It must be on a local disk of the
+  machine the engine runs on, not a network share. If that folder already
+  holds a `workbench.db`, the project opens that data as it is, which is how to
+  bring in a database from another PC or an older install.
+- **Existing data.** The data from before projects becomes the project
+  "Default" and stays in `<data-dir>` where it was. On a server, everyone who
+  appears in its change log is made a member of it.
+- If the server is started **without any `--admin`**, nobody can manage
+  projects and every project is open to everyone.
 
 ### What users see
 
@@ -148,8 +182,9 @@ data. Changes are still logged, under the local Windows login.
 - The user name is **reported by the desktop app, not verified** by the server.
   It reliably tells colleagues apart on a trusted office network; it is not a
   security control, and someone with network access and technical skill could
-  send another name. There are no passwords, roles or per-user permissions:
-  everyone who can reach the server can read and change everything.
+  send another name. There are no passwords. Project membership rests on the
+  same reported name, so it keeps people in the right project but does not
+  protect a project from someone determined to get in.
 - Traffic is plain HTTP. Keep the port closed to anything outside the office
   network, or put the engine behind a reverse proxy with HTTPS.
 - Large computed data is logged by its details, not its contents: uploaded files

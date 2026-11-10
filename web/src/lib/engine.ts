@@ -46,6 +46,14 @@ export function clientIdentity(): Promise<ClientIdentity> {
 	return identity;
 }
 
+// The project every request works in (each project has its own database); see stores/projects.
+let project: string | null = null;
+
+export function setProject(id: string | null) {
+	if (id !== project) versions.clear(); // record versions belong to the project they were read in
+	project = id;
+}
+
 // The version (ETag) of each record as last read or saved, by URL path. Sent back as
 // If-Match so the engine can refuse a save made over a colleague's newer version.
 const versions = new Map<string, string>();
@@ -56,6 +64,7 @@ async function withIdentity(path: string, init?: RequestInit): Promise<RequestIn
 	const headers = new Headers(init?.headers);
 	if (who.user) headers.set('X-Workbench-User', who.user);
 	if (who.machine) headers.set('X-Workbench-Machine', who.machine);
+	if (project) headers.set('X-Workbench-Project', project);
 	const method = init?.method ?? 'GET';
 	const seen = versions.get(pathOnly(path));
 	if (seen && (method === 'PUT' || method === 'DELETE') && !headers.has('If-Match')) headers.set('If-Match', seen);

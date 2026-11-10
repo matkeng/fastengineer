@@ -5,6 +5,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import sampleC from '../../samples/cable-schedule-sample.xlsx?url';
 import EnginePanel from './components/EnginePanel.vue';
 import AuditView from './components/audit/AuditView.vue';
+import ProjectsView from './components/projects/ProjectsView.vue';
 import AppModal from './components/common/AppModal.vue';
 import Icon from './components/common/Icon.vue';
 import CompareView from './components/compare/CompareView.vue';
@@ -19,6 +20,7 @@ import { useCompare } from './stores/compare';
 import { useExcelWizard } from './stores/excelWizard';
 import { useGenerators } from './stores/generators';
 import { useMel } from './stores/mel';
+import { useProjects } from './stores/projects';
 import { useRefData } from './stores/refdata';
 import { useSymbols } from './stores/symbols';
 import { SECTIONS, useUi } from './stores/ui';
@@ -31,6 +33,7 @@ const cmp = useCompare();
 const mel = useMel();
 const rd = useRefData();
 const sym = useSymbols();
+const projects = useProjects();
 const gens = useGenerators();
 const SAMPLES = [{ label: 'Use the sample cable schedule', url: sampleC, filename: 'cable-schedule-sample.xlsx' }];
 
@@ -51,6 +54,20 @@ const dirty: Partial<Record<string, () => boolean>> = {
 	ref: () => rd.dirty,
 	generators: () => gens.anyDirty,
 };
+const sections = computed(() => SECTIONS.filter((s) => s.id !== 'projects' || projects.isAdmin));
+// Sections that work without a project: the engine's own page and project administration.
+const noProjectNeeded = computed(() => ui.tab === 'engine' || ui.tab === 'projects');
+
+async function switchProject(event: Event) {
+	const select = event.target as HTMLSelectElement;
+	const unsaved = Object.values(dirty).some((isDirty) => isDirty?.());
+	if (unsaved && !confirm('Discard unsaved changes and open the other project?')) {
+		select.value = projects.currentId ?? '';
+		return;
+	}
+	await projects.switchTo(select.value);
+}
+
 const sectionLabel = computed(() => SECTIONS.find((s) => s.id === ui.tab)?.label ?? '');
 
 // Status bar
@@ -67,8 +84,8 @@ watch(
 	async (s) => {
 		if (s !== 'ready') return;
 		try {
+			who.value = await apiGet('/api/whoami'); // first: it works even without a project
 			dataPath.value = (await apiGet<{ path: string }>('/api/mel/storage')).path.replace(/[\\/][^\\/]+$/, '');
-			who.value = await apiGet('/api/whoami');
 			ocr.value = await apiGet('/api/symbols/ocr');
 		} catch {
 			/* shown as unknown */
@@ -94,6 +111,12 @@ onMounted(() => wb.connect());
 			<Icon name="logo" class="logo" />
 			<h1>Drawing Workbench</h1>
 			<span class="section">{{ sectionLabel }}</span>
+			<label v-if="projects.mine.length" class="project-pick" title="Each project has its own database">
+				Project
+				<select :value="projects.currentId ?? ''" aria-label="Project" @change="switchProject">
+					<option v-for="p in projects.mine" :key="p.id" :value="p.id">{{ p.name }}</option>
+				</select>
+			</label>
 			<span class="spacer" />
 			<span class="pill" :class="wb.status" :title="wb.error ?? ''">
 				<span class="dot" />
@@ -103,7 +126,7 @@ onMounted(() => wb.connect());
 		</header>
 
 		<nav class="menubar" aria-label="Sections">
-			<button v-for="s in SECTIONS" :key="s.id" type="button" :class="{ active: ui.tab === s.id }" @click="ui.go(s.id)">
+			<button v-for="s in sections" :key="s.id" type="button" :class="{ active: ui.tab === s.id }" @click="ui.go(s.id)">
 				<Icon :name="s.icon" />{{ s.label }}<span v-if="dirty[s.id]?.()" class="dirty-dot" title="Unsaved changes">●</span>
 			</button>
 		</nav>
@@ -111,7 +134,8 @@ onMounted(() => wb.connect());
 		<main :class="{ fill }">
 			<EnginePanel v-show="ui.tab === 'engine'" />
 			<!-- v-show keeps each section's progress when switching between them -->
-			<template v-if="wb.status === 'ready'">
+			<ProjectsView v-if="wb.status === 'ready' && ui.tab === 'projects' && projects.isAdmin" />
+			<template v-if="wb.status === 'ready' && projects.current">
 				<DashboardView v-if="ui.tab === 'dashboard'" />
 				<ExcelWizard v-show="ui.tab === 'excel'" :wiz="wiz" :samples="SAMPLES" />
 				<CompareView v-show="ui.tab === 'compare'" />
@@ -121,7 +145,13 @@ onMounted(() => wb.connect());
 				<GenView v-show="ui.tab === 'generators'" />
 				<AuditView v-if="ui.tab === 'history'" />
 			</template>
-			<section v-else-if="ui.tab !== 'engine'" class="card">
+			<section v-else-if="wb.status === 'ready' && !noProjectNeeded" class="card">
+				<h2>No project</h2>
+				<p>You have not been added to a project yet. Ask an administrator to add you, then start the app again.</p>
+				<p v-if="who" class="hint">You are signed in as <span class="mono">{{ who.user }}</span>.</p>
+				<button v-if="projects.isAdmin" type="button" @click="ui.go('projects')">Manage projects</button>
+			</section>
+			<section v-else-if="!noProjectNeeded" class="card">
 				<template v-if="wb.status === 'connecting'">
 					<p>Waiting for the Python engine to start…</p>
 					<p v-if="wb.slowStart" class="hint">
@@ -140,6 +170,7 @@ onMounted(() => wb.connect());
 			<span><span class="dot" :style="{ display: 'inline-block', background: wb.status === 'ready' ? 'var(--ok)' : wb.status === 'error' ? 'var(--danger)' : 'var(--warn)' }" />
 				engine {{ wb.status }}<template v-if="host"> · <span class="mono">{{ host }}</span></template>
 				<template v-if="who?.server"> · shared server</template></span>
+			<span v-if="projects.current">project: <span class="who">{{ projects.current.name }}</span></span>
 			<span v-if="who" title="Changes you make are recorded under this name">user: <span class="who">{{ who.user }}</span></span>
 			<span v-if="wb.info">{{ wb.info.compiled ? 'compiled' : 'Python ' + wb.info.python.split(' ')[0] }}</span>
 			<span v-if="ocr">OCR: {{ ocr.available ? ocr.engine : 'not available' }}</span>
