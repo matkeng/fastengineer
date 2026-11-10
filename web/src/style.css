@@ -713,6 +713,14 @@ main.fill .key-packages { overflow: hidden; }
 .key-packages table.grid tbody tr { cursor: default; }
 .key-packages table.grid td { overflow: visible; }
 .ref-nav .dirty-dot { color: var(--warn); font-size: 10px; }
+/* Equipment types: child rows under their package. */
+.key-packages .with-chev { display: flex; align-items: center; gap: 4px; }
+.key-packages .with-chev input, .key-packages .with-chev select { flex: 1; }
+.key-packages .under-chev { margin-left: 22px; }
+.key-packages .type-row td { background: color-mix(in srgb, var(--chrome) 55%, var(--card)); }
+.key-packages .type-name .elbow { flex: 0 0 30px; height: 30px; align-self: center; }
+.key-packages .in-package { white-space: nowrap; margin: 0; }
+.key-packages td.actions { white-space: nowrap; text-align: right; }
 /* Inputs directly in a column layout must not grow vertically. */
 .ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }
 

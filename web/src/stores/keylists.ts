@@ -87,7 +87,7 @@ export const useKeyLists = defineStore('keylists', () => {
 	async function savePackages() {
 		const d = packagesDraft.value;
 		if (!d) return;
-		const p = await run(() => apiPut<EquipmentPackageList>(PACKAGES, { items: d.items }));
+		const p = await run(() => apiPut<EquipmentPackageList>(PACKAGES, { items: d.items, types: d.types }));
 		if (p) {
 			packagesSaved.value = p;
 			packagesDraft.value = clone(p);

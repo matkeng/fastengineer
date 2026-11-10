@@ -43,6 +43,16 @@ class EquipmentPackage(BaseModel):
     package_type: PackageType
 
 
+class EquipmentType(BaseModel):
+    """A kind of equipment supplied in a package. package_id refers to an EquipmentPackage of
+    the same list; types of a package are ordered as they appear in the list."""
+    id: str = Field(default_factory=new_id)
+    package_id: str
+    name: str
+    description: str = ""
+
+
 class EquipmentPackageList(BaseModel):
     items: list[EquipmentPackage] = Field(default_factory=list)
+    types: list[EquipmentType] = Field(default_factory=list)
     updated_at: datetime | None = None

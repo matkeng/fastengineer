@@ -10,6 +10,7 @@ from workbench_core.keylists import (
     PACKAGE_TYPES,
     EquipmentPackage,
     EquipmentPackageList,
+    EquipmentType,
     PlantArea,
     PlantAreaList,
     check_equipment_packages,
@@ -124,3 +125,48 @@ def test_package_number_and_description_are_required_and_unique() -> None:
     }
     with pytest.raises(RefValidationError):
         check_equipment_packages(_packages(("a", "P-1", "One", "", "Other"), ("a", "P-2", "Two", "", "Other")))
+
+
+# -- equipment types (under a package) ----------------------------------------------
+
+_PKGS = (("a", "PKG-010", "Feed pumps", "", "Large Mech"), ("b", "PKG-020", "Control valves", "", "Valves"))
+
+
+def _with_types(*types: tuple, packages: tuple = _PKGS) -> EquipmentPackageList:
+    """(id, package, name, description)"""
+    return _packages(*packages).model_copy(update={"types": [
+        EquipmentType(id=i, package_id=p, name=n, description=d) for i, p, n, d in types]})
+
+
+def test_types_are_trimmed_and_grouped_by_package_in_order() -> None:
+    out = check_equipment_packages(_with_types(
+        ("t3", "b", " Globe valve ", " Throttling "), ("t1", "a", "Centrifugal pump", ""),
+        ("t4", "b", "Ball valve", ""), ("t2", "a", "Dosing pump", ""),
+    ))
+    assert [(t.id, t.package_id) for t in out.types] == [("t1", "a"), ("t2", "a"), ("t3", "b"), ("t4", "b")]
+    assert (out.types[2].name, out.types[2].description) == ("Globe valve", "Throttling")
+    # A list saved before there were types is still valid.
+    assert EquipmentPackageList.model_validate({"items": []}).types == []
+
+
+def test_type_name_is_required_and_unique_across_packages() -> None:
+    with pytest.raises(RefValidationError) as e:
+        check_equipment_packages(_with_types(
+            ("t1", "a", "Pump", ""), ("t2", "a", "pump", ""),     # same package
+            ("t3", "b", " PUMP ", ""),                            # another package
+            ("t4", "b", " ", "no name"),
+        ))
+    assert e.value.fields == {"t2.name": "Name 'pump' is used twice", "t3.name": "Name 'PUMP' is used twice",
+                              "t4.name": "Name is required"}
+    with pytest.raises(RefValidationError):
+        check_equipment_packages(_with_types(("t1", "a", "Pump", ""), ("t1", "b", "Valve", "")))
+
+
+def test_a_type_needs_a_package_of_the_list() -> None:
+    with pytest.raises(RefValidationError) as e:
+        check_equipment_packages(_with_types(("t1", "zz", "Pump", ""), ("t2", "", "Valve", "")))
+    assert e.value.fields == {"t1.package": "Its package is not in the list", "t2.package": "Its package is not in the list"}
+    # So a package can't be removed while it still has types.
+    with pytest.raises(RefValidationError) as e:
+        check_equipment_packages(_with_types(("t1", "a", "Pump", ""), ("t2", "b", "Valve", ""), packages=_PKGS[:1]))
+    assert e.value.fields == {"t2.package": "Its package is not in the list"}

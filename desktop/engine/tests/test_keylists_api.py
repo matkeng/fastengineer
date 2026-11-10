@@ -88,9 +88,9 @@ PACKAGES = [
 
 
 def test_equipment_packages_save_rules_and_persistence(data_dir: Path) -> None:
-    assert client.get(PKG_URL).json() == {"items": [], "updated_at": None}
+    assert client.get(PKG_URL).json() == {"items": [], "types": [], "updated_at": None}
     ov = client.get("/api/keylists").json()
-    assert ov["equipment_packages"] == {"items": 0}
+    assert ov["equipment_packages"] == {"items": 0, "types": 0}
     assert ov["package_types"] == ["Vendor", "Client", "SWR Supplier", "Valves", "Instrumentation", "Large Mech",
                                    "Installer", "Other"]
 
@@ -112,7 +112,7 @@ def test_equipment_packages_save_rules_and_persistence(data_dir: Path) -> None:
     # Refused saves kept nothing; the list survives a restart and is separate from Plant Areas.
     storage.configure(data_dir)
     assert [i["number"] for i in client.get(PKG_URL).json()["items"]] == ["PKG-020", "PKG-010", "PKG-030"]
-    assert client.get("/api/keylists").json()["equipment_packages"] == {"items": 3}
+    assert client.get("/api/keylists").json()["equipment_packages"] == {"items": 3, "types": 0}
     assert client.get("/api/dashboard").json()["counts"]["equipment_packages"] == 3
     assert client.get(URL).json()["nodes"] == []
 
@@ -133,3 +133,50 @@ def test_equipment_packages_change_log_and_conflicts() -> None:
     assert [e["user"] for e in entries] == ["ACME\\bob", "ACME\\ann"]
     assert all(e["label"] == "Equipment Packages" for e in entries)
     assert any(c["new"] == "Globex" for c in entries[0]["changes"])
+
+
+TYPES = [
+    {"id": "t3", "package_id": "k2", "name": "Globe valve", "description": "Throttling"},
+    {"id": "t1", "package_id": "k1", "name": "Centrifugal pump"},
+    {"id": "t2", "package_id": "k1", "name": "Dosing pump"},
+]
+
+
+def test_equipment_types_under_packages(data_dir: Path) -> None:
+    saved = client.put(PKG_URL, json={"items": PACKAGES, "types": TYPES})
+    assert saved.status_code == 200, saved.text
+    # Grouped by package, in package order (k2, k1, k3).
+    assert [(t["id"], t["package_id"]) for t in saved.json()["types"]] == [("t3", "k2"), ("t1", "k1"), ("t2", "k1")]
+    assert saved.json()["types"][1]["description"] == ""
+
+    bad = client.put(PKG_URL, json={"items": PACKAGES, "types": TYPES + [
+        {"id": "x1", "package_id": "k3", "name": "globe  VALVE"},     # used in another package
+        {"id": "x2", "package_id": "k3", "name": " "},
+        {"id": "x3", "package_id": "nope", "name": "Motor"},
+    ]})
+    assert bad.status_code == 422
+    assert set(bad.json()["fields"]) == {"x1.name", "x2.name", "x3.package"}
+    assert client.put(PKG_URL, json={"items": PACKAGES, "types": [{"name": "No package"}]}).status_code == 422
+
+    # A package with types can't be deleted ...
+    gone = client.put(PKG_URL, json={"items": PACKAGES[1:], "types": TYPES})
+    assert gone.status_code == 422 and gone.json()["fields"] == {"t3.package": "Its package is not in the list"}
+    # ... also not by a save that doesn't mention the types (they stay as they are).
+    assert client.put(PKG_URL, json={"items": PACKAGES[1:]}).status_code == 422
+    renamed = [dict(p, vendor="Globex") for p in PACKAGES]
+    kept = client.put(PKG_URL, json={"items": renamed})
+    assert kept.status_code == 200 and len(kept.json()["types"]) == 3
+    # ... until its types are moved to another package (or deleted).
+    moved = [dict(t, package_id="k3") if t["id"] == "t3" else t for t in TYPES]
+    ok = client.put(PKG_URL, json={"items": renamed[1:], "types": moved})
+    assert ok.status_code == 200, ok.text
+    assert [(t["id"], t["package_id"]) for t in ok.json()["types"]] == [("t1", "k1"), ("t2", "k1"), ("t3", "k3")]
+
+    storage.configure(data_dir)
+    assert [t["name"] for t in client.get(PKG_URL).json()["types"]] == ["Centrifugal pump", "Dosing pump", "Globe valve"]
+    assert client.get("/api/keylists").json()["equipment_packages"] == {"items": 2, "types": 3}
+    counts = client.get("/api/dashboard").json()["counts"]
+    assert (counts["equipment_packages"], counts["equipment_types"]) == (2, 3)
+    log = client.get("/api/audit", params={"entity": "equipment_packages", "record_id": "equipment-packages"}).json()
+    entries = log["entries"] if isinstance(log, dict) else log
+    assert any("types[Globe valve]" in c["path"] for c in entries[0]["changes"])

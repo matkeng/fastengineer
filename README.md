@@ -444,7 +444,13 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
   list), a **Vendor name** (optional; several packages can share a vendor) and a
   **Package type**: Vendor, Client, SWR Supplier, Valves, Instrumentation,
   Large Mech, Installer or Other. Rows keep the order you put them in and can be
-  filtered. Each list keeps its own unsaved draft when you switch between them.
+  filtered.
+- **Equipment Types** are the child rows of a package (**+ Type** on its row):
+  a **Name** (required, unique across all packages) and an optional
+  **Description**. Each type belongs to one package; its Package drop-down
+  moves it to another. A package that has equipment types can't be deleted
+  until they are moved or deleted. Types are saved together with the packages.
+- Each list keeps its own unsaved draft when you switch between them.
 - A new project starts with empty lists; copying standards from another
   project does not copy them.
 

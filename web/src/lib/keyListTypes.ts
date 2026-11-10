@@ -10,13 +10,15 @@ export const PACKAGE_TYPES = ['Vendor', 'Client', 'SWR Supplier', 'Valves', 'Ins
 export type PackageType = (typeof PACKAGE_TYPES)[number];
 
 export interface EquipmentPackage { id: string; number: string; description: string; vendor: string; package_type: PackageType }
-export interface EquipmentPackageList { items: EquipmentPackage[]; updated_at: string | null }
+/** A kind of equipment supplied in a package; package_id is the id of its EquipmentPackage. */
+export interface EquipmentType { id: string; package_id: string; name: string; description: string }
+export interface EquipmentPackageList { items: EquipmentPackage[]; types: EquipmentType[]; updated_at: string | null }
 
 export type KeyListId = 'plant-areas' | 'equipment-packages';
 export interface KeyListOverview {
 	plant_areas: { items: number; depth: number };
 	area_types: string[];
-	equipment_packages: { items: number };
+	equipment_packages: { items: number; types: number };
 	package_types: string[];
 }
 
@@ -56,11 +58,19 @@ export function plantAreaProblems(nodes: PlantArea[]): Record<string, string> {
 }
 
 /** The same rules as the engine's check_equipment_packages, for live feedback. */
-export function equipmentPackageProblems(items: EquipmentPackage[]): Record<string, string> {
-	return uniqueProblems(items, [['number', 'Package number', true], ['description', 'Description', true]]);
+export function equipmentPackageProblems(items: EquipmentPackage[], types: EquipmentType[] = []): Record<string, string> {
+	const out = {
+		...uniqueProblems(items, [['number', 'Package number', true], ['description', 'Description', true]]),
+		...uniqueProblems(types, [['name', 'Name', true]]),
+	};
+	const ids = new Set(items.map((p) => p.id));
+	for (const t of types) if (!ids.has(t.package_id)) out[`${t.id}.package`] = 'Its package is not in the list';
+	return out;
 }
 
-export function equipmentPackageMatches(p: EquipmentPackage, filter: string): boolean {
+const includes = (texts: string[], filter: string) => {
 	const f = filter.trim().toLowerCase();
-	return !f || [p.number, p.description, p.vendor, p.package_type].some((s) => s.toLowerCase().includes(f));
-}
+	return !f || texts.some((s) => s.toLowerCase().includes(f));
+};
+export const equipmentPackageMatches = (p: EquipmentPackage, filter: string) => includes([p.number, p.description, p.vendor, p.package_type], filter);
+export const equipmentTypeMatches = (t: EquipmentType, filter: string) => includes([t.name, t.description], filter);

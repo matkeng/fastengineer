@@ -55,6 +55,7 @@ class Counts(BaseModel):
     rows: int = 0
     plant_areas: int = 0
     equipment_packages: int = 0
+    equipment_types: int = 0
     generators: int = 0
     gen_builds: int = 0
     plc_panels: int = 0
@@ -141,7 +142,8 @@ def dashboard() -> Dashboard:
                                 detail=f"table · {counts.get(t.id, 0)} rows", at=t.updated_at))
 
     c.plant_areas = len(get_keylists().plant_areas().nodes)
-    c.equipment_packages = len(get_keylists().equipment_packages().items)
+    packages = get_keylists().equipment_packages()
+    c.equipment_packages, c.equipment_types = len(packages.items), len(packages.types)
 
     # Symbol detection
     sym = symbols_api.store()

@@ -11,6 +11,7 @@ from .models import EquipmentPackageList, PlantArea, PlantAreaList
 #: (field, what it is called, required). Each is unique in its list when filled in.
 _AREA_FIELDS = (("tag", "Tag number", True), ("description", "Description", True), ("wbs", "WBS number", False))
 _PACKAGE_FIELDS = (("number", "Package number", True), ("description", "Description", True))
+_TYPE_FIELDS = (("name", "Name", True),)
 
 
 def _check_unique(items: list, fields: tuple, errors: dict[str, str]) -> None:
@@ -89,7 +90,11 @@ def plant_area_depth(areas: PlantAreaList) -> int:
 
 def check_equipment_packages(packages: EquipmentPackageList) -> EquipmentPackageList:
     """Package numbers and descriptions are required and unique in the list (ignoring case
-    and extra spaces). The vendor name is optional and may repeat. Row order is kept."""
+    and extra spaces). The vendor name is optional and may repeat. Row order is kept.
+
+    Equipment types: the name is required and unique across all types; each belongs to a
+    package of the list, so a package can't be removed while it has types. Returns the
+    types grouped by package, in package order, keeping their order within a package."""
     errors: dict[str, str] = {}
     items = []
     ids: set[str] = set()
@@ -101,6 +106,20 @@ def check_equipment_packages(packages: EquipmentPackageList) -> EquipmentPackage
         ids.add(it.id)
         items.append(it)
     _check_unique(items, _PACKAGE_FIELDS, errors)
+
+    types = []
+    type_ids: set[str] = set()
+    for t in packages.types:
+        t = t.model_copy(update={"name": t.name.strip(), "description": t.description.strip()})
+        if t.id in type_ids:
+            raise RefValidationError("Two equipment types have the same id.", {f"{t.id}.name": "Duplicate item"})
+        type_ids.add(t.id)
+        types.append(t)
+        if t.package_id not in ids:
+            errors[f"{t.id}.package"] = "Its package is not in the list"
+    _check_unique(types, _TYPE_FIELDS, errors)
     if errors:
         raise RefValidationError(f"{len(errors)} problem(s) in the equipment packages.", errors)
-    return packages.model_copy(update={"items": items})
+    order = {it.id: i for i, it in enumerate(items)}
+    types.sort(key=lambda t: order[t.package_id])  # stable: keeps the order within a package
+    return packages.model_copy(update={"items": items, "types": types})

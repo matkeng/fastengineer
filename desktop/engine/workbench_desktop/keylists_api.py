@@ -12,6 +12,7 @@ from workbench_core.keylists import (
     PACKAGE_TYPES,
     EquipmentPackage,
     EquipmentPackageList,
+    EquipmentType,
     PlantArea,
     PlantAreaList,
     check_equipment_packages,
@@ -30,8 +31,10 @@ router = APIRouter(prefix="/api/keylists", tags=["key lists"])
 def overview() -> dict:
     lists = get_keylists()
     areas = lists.plant_areas()
+    packages = lists.equipment_packages()
     return {"plant_areas": {"items": len(areas.nodes), "depth": plant_area_depth(areas)}, "area_types": AREA_TYPES,
-            "equipment_packages": {"items": len(lists.equipment_packages().items)}, "package_types": PACKAGE_TYPES}
+            "equipment_packages": {"items": len(packages.items), "types": len(packages.types)},
+            "package_types": PACKAGE_TYPES}
 
 
 @router.get("/plant-areas", response_model=PlantAreaList)
@@ -58,12 +61,14 @@ def get_equipment_packages() -> EquipmentPackageList:
 
 class EquipmentPackagesUpdate(BaseModel):
     items: list[EquipmentPackage]
+    types: list[EquipmentType] | None = None  # left out: the equipment types stay as they are
 
 
 @router.put("/equipment-packages", response_model=EquipmentPackageList)
 def update_equipment_packages(body: EquipmentPackagesUpdate):
+    lists = get_keylists()
+    types = lists.equipment_packages().types if body.types is None else body.types
     try:
-        return get_keylists().save_equipment_packages(
-            check_equipment_packages(EquipmentPackageList(items=body.items)))
+        return lists.save_equipment_packages(check_equipment_packages(EquipmentPackageList(items=body.items, types=types)))
     except RefValidationError as exc:
         return invalid(exc)

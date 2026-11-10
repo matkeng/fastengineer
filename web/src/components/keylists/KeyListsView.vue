@@ -30,7 +30,7 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 						</li>
 						<li :class="{ current: kl.selected === 'equipment-packages' }" @click="kl.select('equipment-packages')">
 							<span class="name">Equipment Packages</span><span v-if="kl.packagesDirty" class="dirty-dot" title="Unsaved changes">●</span>
-							<span class="count" title="package(s)">{{ kl.overview?.equipment_packages.items ?? 0 }}</span>
+							<span class="count" :title="`package(s), with ${kl.overview?.equipment_packages.types ?? 0} equipment type(s)`">{{ kl.overview?.equipment_packages.items ?? 0 }}</span>
 						</li>
 					</ul>
 				</section>
