@@ -94,6 +94,9 @@ The first Nuitka build takes several minutes; later builds are cached.
 
 ## Multi-user: one shared server for a team
 
+Options for connecting the app to Microsoft SharePoint (not built yet) are in
+[`docs/SHAREPOINT_INTEGRATION.md`](docs/SHAREPOINT_INTEGRATION.md).
+
 Out of the box each person has their own data on their own PC. For a team, run
 **one engine on a server** and point everyone's desktop app at it. Everyone then
 works on the same data at the same time, and the app records **who changed which
