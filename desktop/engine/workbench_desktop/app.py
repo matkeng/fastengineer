@@ -14,7 +14,7 @@ import workbench_core
 from workbench_core.hello import EngineInfo, Greeting
 from workbench_core.model import Equipment
 
-from . import identity
+from . import identity, projects
 from .audit import Conflict
 from .audit_api import router as audit_router
 from .dashboard_api import router as dashboard_router
@@ -23,6 +23,7 @@ from .mel_api import router as mel_router
 from .symbols_api import router as symbols_router
 from .refdata_api import router as refdata_router
 from .generators_api import router as generators_router
+from .projects_api import router as projects_router
 from .storage import get_store
 
 app = FastAPI(title="Drawing Workbench engine", version=workbench_core.__version__)
@@ -53,7 +54,7 @@ def record_of(path: str) -> tuple[str, str] | None:
 
 
 # Added first so it sits inside CORS: its 401 then still carries the CORS headers.
-app.add_middleware(identity.IdentityMiddleware, record_of=record_of,
+app.add_middleware(identity.IdentityMiddleware, record_of=record_of, resolve_project=projects.resolve,
                    version_of=lambda entity, record_id: get_store().version_of(entity, record_id))
 
 # The Tauri WebView origin differs by OS (http://tauri.localhost on Windows,
@@ -65,6 +66,12 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["ETag"],
 )
+
+
+@app.exception_handler(projects.ProjectError)
+def project_error(_: Request, exc: projects.ProjectError) -> JSONResponse:
+    return JSONResponse(status_code=exc.status, content={
+        "detail": exc.message, "fields": {exc.field: exc.message} if exc.field else {}})
 
 
 @app.exception_handler(Conflict)
@@ -81,14 +88,17 @@ app.include_router(symbols_router)
 app.include_router(generators_router)
 app.include_router(dashboard_router)
 app.include_router(audit_router)
+app.include_router(projects_router)
 
 
 @app.get("/api/whoami")
 def whoami() -> dict[str, object]:
     """Who the engine thinks is calling, and whether it is a shared server."""
     ctx = identity.current()
+    name = projects.registry().get(ctx.project)["name"] if ctx.project else None
     return {"user": ctx.user, "machine": ctx.machine, "server": identity.server_mode,
-            "host": identity.local_machine()}
+            "host": identity.local_machine(), "is_admin": projects.is_admin(ctx.user),
+            "project": {"id": ctx.project, "name": name} if ctx.project else None}
 
 
 @app.get("/api/health")

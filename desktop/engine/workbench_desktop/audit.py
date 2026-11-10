@@ -52,6 +52,7 @@ ENTITIES = {
     "gen_build": "build",
     "gen_hardware": "PLC hardware register",
     "gen_catalogue": "card and rack types",
+    "project": "project",
 }
 
 MAX_CHANGES = 200   # per log entry; the rest is counted, not stored

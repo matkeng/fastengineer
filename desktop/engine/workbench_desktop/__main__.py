@@ -79,6 +79,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--server", action="store_true",
                         help="shared server for several users: every change must name its user "
                              "(use with --host 0.0.0.0 and a --data-dir on a local disk)")
+    parser.add_argument("--admin", action="append", default=[], metavar="USER",
+                        help="with --server: a user who may create projects and choose their members, "
+                             "e.g. --admin ACME\\jsmith (repeat for more)")
     args = parser.parse_args(argv)
 
     _ensure_std_streams()
@@ -95,11 +98,22 @@ def main(argv: list[str] | None = None) -> None:
 
     from workbench_desktop import identity
 
+    from workbench_desktop import projects
+
     identity.server_mode = args.server
+    identity.admins = {projects.user_key(a) for a in args.admin if a.strip()}
     if args.server:
         print("[engine] server mode: changes are logged under the user each desktop app reports", flush=True)
-    store = configure(Path(args.data_dir) if args.data_dir else None)
-    print(f"[engine] data: {store.path}", flush=True)
+        if identity.admins:
+            print(f"[engine] administrators: {', '.join(sorted(identity.admins))}", flush=True)
+        else:
+            print("[engine] no --admin given: nobody can create projects or set members, "
+                  "and every project is open to everyone", flush=True)
+    configure(Path(args.data_dir) if args.data_dir else None)
+    reg = projects.registry()
+    print(f"[engine] data: {reg.root}", flush=True)
+    for p in reg.all():
+        print(f"[engine] project '{p['name']}'{' (archived)' if p['archived'] else ''}: {p['folder']}", flush=True)
 
     print(f"[engine] listening on http://{args.host}:{args.port}", flush=True)
     # Pass the app object (not an import string) and pin loop/http so the

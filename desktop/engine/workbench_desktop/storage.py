@@ -1037,19 +1037,18 @@ class GeneratorStore:
         return [BuildInfo.model_validate_json(r[0]) for r in rows]
 
 
-_store: Store | None = None
+def configure(data_dir: Path | None) -> None:
+    """(Re)open the data folder: its project list and, on demand, each project's database."""
+    from . import projects  # imported late: projects builds on this module
 
-
-def configure(data_dir: Path | None) -> Store:
-    global _store
-    if _store is not None:
-        _store._db.close()
-    _store = Store((data_dir or default_data_dir()) / "workbench.db")
-    return _store
+    projects.configure(data_dir)
 
 
 def get_store() -> Store:
-    return _store or configure(None)
+    """The store of the project the current request works in (see ``projects``)."""
+    from . import projects
+
+    return projects.current_store()
 
 
 def get_ref() -> RefStore:

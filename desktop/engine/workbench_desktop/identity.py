@@ -23,15 +23,20 @@ from dataclasses import dataclass
 USER_HEADER = "x-workbench-user"
 MACHINE_HEADER = "x-workbench-machine"
 BASE_TIME_HEADER = "x-workbench-base-time"
+PROJECT_HEADER = "x-workbench-project"
 
 #: Set by ``--server``: writes must name their user (no falling back to the engine's own login).
 server_mode = False
+#: Set by ``--admin`` (lower-cased): who may create projects and choose their members.
+admins: set[str] = set()
 
 
 @dataclass
 class RequestContext:
     user: str
     machine: str
+    #: The project this request works in (see ``projects.resolve``).
+    project: str | None = None
     #: (entity, record id, version) the client last saw, from ``If-Match``.
     expect: tuple[str, str, int] | None = None
     #: ``updated_at`` of the row the client last saw (rows have no URL of their own to GET).
@@ -67,7 +72,7 @@ def carry(fn):
     ctx = current()
 
     def run(*args, **kwargs):
-        token = _current.set(RequestContext(ctx.user, ctx.machine))
+        token = _current.set(RequestContext(ctx.user, ctx.machine, ctx.project))
         try:
             return fn(*args, **kwargs)
         finally:
@@ -100,8 +105,11 @@ class IdentityMiddleware:
     the storage layer see, including from the sync-route thread pool.)
     """
 
-    def __init__(self, app, record_of=None, version_of=None):
+    def __init__(self, app, record_of=None, version_of=None, resolve_project=None):
         self.app = app
+        #: (context, path, requested project id) -> sets context.project, or raises
+        #: an exception with ``status`` and ``message`` when the user may not use it.
+        self.resolve_project = resolve_project
         #: (method, path) -> (entity, record id) for URLs that address one record.
         self.record_of = record_of
         self.version_of = version_of
@@ -114,13 +122,17 @@ class IdentityMiddleware:
         user = headers.get(USER_HEADER, "").strip()[:200]
         machine = headers.get(MACHINE_HEADER, "").strip()[:200]
         method = scope.get("method", "GET")
-        if server_mode and not user and method not in ("GET", "HEAD", "OPTIONS"):
-            body = json.dumps({"detail": "This server needs to know who you are. Update the desktop app, "
-                                         f"or send the {USER_HEADER} header."}).encode()
-            await send({"type": "http.response.start", "status": 401,
+
+        async def refuse(status: int, detail: str) -> None:
+            body = json.dumps({"detail": detail}).encode()
+            await send({"type": "http.response.start", "status": status,
                         "headers": [(b"content-type", b"application/json"),
                                     (b"content-length", str(len(body)).encode())]})
             await send({"type": "http.response.body", "body": body})
+
+        if server_mode and not user and method not in ("GET", "HEAD", "OPTIONS"):
+            await refuse(401, "This server needs to know who you are. Update the desktop app, "
+                              f"or send the {USER_HEADER} header.")
             return
         ctx = RequestContext(
             user=user or (local_user() if not server_mode else "unknown"),
@@ -128,6 +140,14 @@ class IdentityMiddleware:
             expect=parse_etag(headers.get("if-match")),
             base_time=headers.get(BASE_TIME_HEADER) or None,
         )
+        if self.resolve_project and method != "OPTIONS":
+            try:
+                self.resolve_project(ctx, scope.get("path", ""), headers.get(PROJECT_HEADER, "").strip() or None)
+            except Exception as exc:
+                if not hasattr(exc, "status"):
+                    raise
+                await refuse(exc.status, exc.message)
+                return
         token = _current.set(ctx)
 
         async def send_with_etag(message):
