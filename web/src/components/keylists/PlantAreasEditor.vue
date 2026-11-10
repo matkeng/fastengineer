@@ -184,11 +184,11 @@ onMounted(expandAll);
 			<h2 class="key-title">Plant Areas</h2>
 			<span class="spacer" />
 			<span v-if="problemCount" class="warn small">{{ problemCount }} problem(s)</span>
-			<span v-if="kl.dirty" class="unsaved">● Unsaved changes</span>
+			<span v-if="kl.areasDirty" class="unsaved">● Unsaved changes</span>
 			<span v-else-if="kl.message" class="saved">✓ {{ kl.message }}</span>
 			<HistoryButton entity="plant_areas" record-id="plant-areas" label="Plant Areas" />
-			<button type="button" class="secondary" :disabled="!kl.dirty || kl.busy" @click="kl.discard()">Discard</button>
-			<button type="button" :disabled="!kl.dirty || kl.busy || problemCount > 0" @click="kl.saveAreas()">Save</button>
+			<button type="button" class="secondary" :disabled="!kl.areasDirty || kl.busy" @click="kl.discard()">Discard</button>
+			<button type="button" :disabled="!kl.areasDirty || kl.busy || problemCount > 0" @click="kl.saveAreas()">Save</button>
 		</div>
 		<p v-if="kl.error" class="error">{{ kl.error }}</p>
 

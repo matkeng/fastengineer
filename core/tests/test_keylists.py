@@ -5,7 +5,17 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from workbench_core.keylists import AREA_TYPES, PlantArea, PlantAreaList, check_plant_areas, plant_area_depth
+from workbench_core.keylists import (
+    AREA_TYPES,
+    PACKAGE_TYPES,
+    EquipmentPackage,
+    EquipmentPackageList,
+    PlantArea,
+    PlantAreaList,
+    check_equipment_packages,
+    check_plant_areas,
+    plant_area_depth,
+)
 from workbench_core.refdata import RefValidationError
 
 
@@ -71,3 +81,46 @@ def test_parents_must_exist_and_not_loop() -> None:
     assert set(e.value.fields) == {"a.parent", "b.parent"}
     with pytest.raises(RefValidationError):
         check_plant_areas(_areas(("a", None, "", "A", "One", "Area"), ("a", None, "", "B", "Two", "Area")))
+
+
+# -- equipment packages ---------------------------------------------------------
+
+def _packages(*items: tuple) -> EquipmentPackageList:
+    """(id, number, description, vendor, type)"""
+    return EquipmentPackageList(items=[EquipmentPackage(id=i, number=n, description=d, vendor=v, package_type=t)
+                                       for i, n, d, v, t in items])
+
+
+def test_package_types() -> None:
+    assert PACKAGE_TYPES == ["Vendor", "Client", "SWR Supplier", "Valves", "Instrumentation", "Large Mech",
+                             "Installer", "Other"]
+    with pytest.raises(ValidationError):
+        EquipmentPackage(number="P-1", description="Pumps", package_type="Electrical")
+
+
+def test_packages_are_trimmed_and_keep_their_order() -> None:
+    out = check_equipment_packages(_packages(
+        ("b", " PKG-020 ", " Control valves ", " Acme ", "Valves"),
+        ("a", "PKG-010", "Feed pumps", "Acme", "Large Mech"),      # the same vendor again is fine
+        ("c", "PKG-030", "Site installation", "", "Installer"),   # and so is no vendor
+    ))
+    assert [i.id for i in out.items] == ["b", "a", "c"]
+    assert (out.items[0].number, out.items[0].description, out.items[0].vendor) == ("PKG-020", "Control valves", "Acme")
+
+
+def test_package_number_and_description_are_required_and_unique() -> None:
+    with pytest.raises(RefValidationError) as e:
+        check_equipment_packages(_packages(
+            ("a", "PKG-010", "Feed pumps", "", "Vendor"),
+            ("b", "pkg-010", "Control valves", "", "Valves"),
+            ("c", "PKG-030", "feed  PUMPS", "", "Other"),
+            ("d", " ", "", "Acme", "Client"),
+        ))
+    assert e.value.fields == {
+        "b.number": "Package number 'pkg-010' is used twice",
+        "c.description": "Description 'feed  PUMPS' is used twice",
+        "d.number": "Package number is required",
+        "d.description": "Description is required",
+    }
+    with pytest.raises(RefValidationError):
+        check_equipment_packages(_packages(("a", "P-1", "One", "", "Other"), ("a", "P-2", "Two", "", "Other")))

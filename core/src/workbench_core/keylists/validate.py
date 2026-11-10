@@ -6,9 +6,26 @@ from __future__ import annotations
 
 from ..refdata.models import RefValidationError
 from ..refdata.validate import name_key
-from .models import PlantArea, PlantAreaList
+from .models import EquipmentPackageList, PlantArea, PlantAreaList
 
-_UNIQUE = (("tag", "Tag number", True), ("description", "Description", True), ("wbs", "WBS number", False))
+#: (field, what it is called, required). Each is unique in its list when filled in.
+_AREA_FIELDS = (("tag", "Tag number", True), ("description", "Description", True), ("wbs", "WBS number", False))
+_PACKAGE_FIELDS = (("number", "Package number", True), ("description", "Description", True))
+
+
+def _check_unique(items: list, fields: tuple, errors: dict[str, str]) -> None:
+    """Required fields must be filled in; no value is used twice (ignoring case and extra spaces)."""
+    for field, label, required in fields:
+        seen: set[str] = set()
+        for item in items:
+            value = getattr(item, field)
+            if not value:
+                if required:
+                    errors[f"{item.id}.{field}"] = f"{label} is required"
+            elif name_key(value) in seen:
+                errors[f"{item.id}.{field}"] = f"{label} '{value}' is used twice"
+            else:
+                seen.add(name_key(value))
 
 
 def check_plant_areas(areas: PlantAreaList) -> PlantAreaList:
@@ -28,17 +45,7 @@ def check_plant_areas(areas: PlantAreaList) -> PlantAreaList:
         nodes.append(n)
     by_id = {n.id: n for n in nodes}
 
-    for field, label, required in _UNIQUE:
-        seen: set[str] = set()
-        for n in nodes:
-            value = getattr(n, field)
-            if not value:
-                if required:
-                    errors[f"{n.id}.{field}"] = f"{label} is required"
-            elif name_key(value) in seen:
-                errors[f"{n.id}.{field}"] = f"{label} '{value}' is used twice"
-            else:
-                seen.add(name_key(value))
+    _check_unique(nodes, _AREA_FIELDS, errors)
 
     for n in nodes:
         if n.parent_id is not None and n.parent_id not in by_id:
@@ -78,3 +85,22 @@ def plant_area_depth(areas: PlantAreaList) -> int:
             d, p = d + 1, by_id[p].parent_id
         best = max(best, d)
     return best
+
+
+def check_equipment_packages(packages: EquipmentPackageList) -> EquipmentPackageList:
+    """Package numbers and descriptions are required and unique in the list (ignoring case
+    and extra spaces). The vendor name is optional and may repeat. Row order is kept."""
+    errors: dict[str, str] = {}
+    items = []
+    ids: set[str] = set()
+    for it in packages.items:
+        it = it.model_copy(update={"number": it.number.strip(), "description": it.description.strip(),
+                                   "vendor": it.vendor.strip()})
+        if it.id in ids:
+            raise RefValidationError("Two equipment packages have the same id.", {f"{it.id}.number": "Duplicate item"})
+        ids.add(it.id)
+        items.append(it)
+    _check_unique(items, _PACKAGE_FIELDS, errors)
+    if errors:
+        raise RefValidationError(f"{len(errors)} problem(s) in the equipment packages.", errors)
+    return packages.model_copy(update={"items": items})

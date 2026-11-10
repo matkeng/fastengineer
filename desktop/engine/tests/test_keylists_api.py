@@ -33,7 +33,8 @@ def test_plant_areas_save_rules_and_persistence(data_dir: Path) -> None:
     # Every project has the list from the start, empty.
     assert client.get(URL).json() == {"nodes": [], "updated_at": None}
     ov = client.get("/api/keylists").json()
-    assert ov == {"plant_areas": {"items": 0, "depth": 0}, "area_types": ["WBS", "Area", "Building", "Room", "Panel"]}
+    assert ov["plant_areas"] == {"items": 0, "depth": 0}
+    assert ov["area_types"] == ["WBS", "Area", "Building", "Room", "Panel"]
 
     saved = client.put(URL, json={"nodes": NODES})
     assert saved.status_code == 200, saved.text
@@ -76,3 +77,59 @@ def test_plant_areas_change_log_and_conflicts() -> None:
     assert [e["user"] for e in entries] == ["ACME\\bob", "ACME\\ann"]
     assert all(e["label"] == "Plant Areas" for e in entries)
     assert any(c["new"] == "Main substation" for c in entries[0]["changes"])
+
+
+PKG_URL = "/api/keylists/equipment-packages"
+PACKAGES = [
+    {"id": "k2", "number": "PKG-020", "description": "Control valves", "vendor": "Acme", "package_type": "Valves"},
+    {"id": "k1", "number": "PKG-010", "description": "Feed pumps", "vendor": "Acme", "package_type": "Large Mech"},
+    {"id": "k3", "number": "PKG-030", "description": "Site installation", "package_type": "Installer"},
+]
+
+
+def test_equipment_packages_save_rules_and_persistence(data_dir: Path) -> None:
+    assert client.get(PKG_URL).json() == {"items": [], "updated_at": None}
+    ov = client.get("/api/keylists").json()
+    assert ov["equipment_packages"] == {"items": 0}
+    assert ov["package_types"] == ["Vendor", "Client", "SWR Supplier", "Valves", "Instrumentation", "Large Mech",
+                                   "Installer", "Other"]
+
+    saved = client.put(PKG_URL, json={"items": PACKAGES})
+    assert saved.status_code == 200, saved.text
+    assert [i["id"] for i in saved.json()["items"]] == ["k2", "k1", "k3"]  # the order given
+    assert saved.json()["items"][2]["vendor"] == ""
+
+    bad = client.put(PKG_URL, json={"items": PACKAGES + [
+        {"id": "x1", "number": "pkg-010", "description": "CONTROL  valves", "vendor": "Acme", "package_type": "Other"},
+        {"id": "x2", "number": "", "description": " ", "package_type": "Client"},
+    ]})
+    assert bad.status_code == 422
+    assert set(bad.json()["fields"]) == {"x1.number", "x1.description", "x2.number", "x2.description"}
+    one = {"number": "P", "description": "Pipes"}
+    assert client.put(PKG_URL, json={"items": [one | {"package_type": "Piping"}]}).status_code == 422
+    assert client.put(PKG_URL, json={"items": [one]}).status_code == 422
+
+    # Refused saves kept nothing; the list survives a restart and is separate from Plant Areas.
+    storage.configure(data_dir)
+    assert [i["number"] for i in client.get(PKG_URL).json()["items"]] == ["PKG-020", "PKG-010", "PKG-030"]
+    assert client.get("/api/keylists").json()["equipment_packages"] == {"items": 3}
+    assert client.get("/api/dashboard").json()["counts"]["equipment_packages"] == 3
+    assert client.get(URL).json()["nodes"] == []
+
+
+def test_equipment_packages_change_log_and_conflicts() -> None:
+    ann_tag = client.get(PKG_URL, headers=ANN).headers["ETag"]
+    bob_tag = client.get(PKG_URL, headers=BOB).headers["ETag"]
+    assert client.put(PKG_URL, json={"items": PACKAGES}, headers={**ANN, "If-Match": ann_tag}).status_code == 200
+    r = client.put(PKG_URL, json={"items": PACKAGES[:1]}, headers={**BOB, "If-Match": bob_tag})
+    assert r.status_code == 409 and r.json()["changed_by"] == "ACME\\ann"
+    assert len(client.get(PKG_URL).json()["items"]) == 3
+    bob_tag = client.get(PKG_URL, headers=BOB).headers["ETag"]
+    changed = [dict(p, vendor="Globex") if p["id"] == "k1" else p for p in PACKAGES]
+    assert client.put(PKG_URL, json={"items": changed}, headers={**BOB, "If-Match": bob_tag}).status_code == 200
+
+    log = client.get("/api/audit", params={"entity": "equipment_packages", "record_id": "equipment-packages"}).json()
+    entries = log["entries"] if isinstance(log, dict) else log
+    assert [e["user"] for e in entries] == ["ACME\\bob", "ACME\\ann"]
+    assert all(e["label"] == "Equipment Packages" for e in entries)
+    assert any(c["new"] == "Globex" for c in entries[0]["changes"])

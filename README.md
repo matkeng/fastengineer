@@ -34,8 +34,8 @@ The app's tabs:
   list; ships with a P&ID instrument example (see below).
 - **List import**: turn an equipment list into a load list, or a tags list
   into an instrument list, with a saved, re-applicable recipe of rules (see below).
-- **Project lists**: the key lists every project has, starting with Plant Areas
-  (see below).
+- **Project lists**: the key lists every project has: Plant Areas and Equipment
+  Packages (see below).
 - **Lists & tables**: your own enumerated lists and typed tables (see below).
 - **Engine**: engine status (port, Python version, whether it's
   Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
@@ -439,8 +439,14 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
   starts as the type below its parent's. The editor is the tree editor described
   below (expand/collapse, filter, drag and drop, Alt+arrow keys, Save/Discard),
   and saves are recorded in the change log.
-- A new project starts with an empty list; copying standards from another
-  project does not copy its plant areas.
+- **Equipment Packages**: a flat list. Each row has a **Package number**
+  (required, unique in the list), a **Description** (required, unique in the
+  list), a **Vendor name** (optional; several packages can share a vendor) and a
+  **Package type**: Vendor, Client, SWR Supplier, Valves, Instrumentation,
+  Large Mech, Installer or Other. Rows keep the order you put them in and can be
+  filtered. Each list keeps its own unsaved draft when you switch between them.
+- A new project starts with empty lists; copying standards from another
+  project does not copy them.
 
 ## Lists, trees & tables
 

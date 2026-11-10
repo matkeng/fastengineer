@@ -6,7 +6,19 @@ export type AreaType = (typeof AREA_TYPES)[number];
 
 export interface PlantArea { id: string; parent_id: string | null; wbs: string; tag: string; description: string; area_type: AreaType }
 export interface PlantAreaList { nodes: PlantArea[]; updated_at: string | null }
-export interface KeyListOverview { plant_areas: { items: number; depth: number }; area_types: string[] }
+export const PACKAGE_TYPES = ['Vendor', 'Client', 'SWR Supplier', 'Valves', 'Instrumentation', 'Large Mech', 'Installer', 'Other'] as const;
+export type PackageType = (typeof PACKAGE_TYPES)[number];
+
+export interface EquipmentPackage { id: string; number: string; description: string; vendor: string; package_type: PackageType }
+export interface EquipmentPackageList { items: EquipmentPackage[]; updated_at: string | null }
+
+export type KeyListId = 'plant-areas' | 'equipment-packages';
+export interface KeyListOverview {
+	plant_areas: { items: number; depth: number };
+	area_types: string[];
+	equipment_packages: { items: number };
+	package_types: string[];
+}
 
 /** The type a new item under `parent` starts with: the next one down (a suggestion, not a rule). */
 export function nextAreaType(parent?: AreaType): AreaType {
@@ -19,20 +31,36 @@ export function plantAreaMatches(n: PlantArea, filter: string): boolean {
 	return !f || [n.tag, n.description, n.wbs, n.area_type].some((s) => s.toLowerCase().includes(f));
 }
 
-/** The same rules as the engine's check_plant_areas, for live feedback: field key -> message. */
-export function plantAreaProblems(nodes: PlantArea[]): Record<string, string> {
+type Rule<T> = readonly [field: keyof T & string, label: string, required: boolean];
+
+/** Required fields must be filled in and no value is used twice: field key -> message. */
+function uniqueProblems<T extends { id: string }>(items: T[], rules: readonly Rule<T>[]): Record<string, string> {
 	const key = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 	const out: Record<string, string> = {};
-	const rules = [['tag', 'Tag number', true], ['description', 'Description', true], ['wbs', 'WBS number', false]] as const;
 	for (const [field, label, required] of rules) {
 		const seen = new Set<string>();
-		for (const n of nodes) {
-			const v = key(n[field]);
+		for (const it of items) {
+			const v = key(String(it[field] ?? ''));
 			if (!v) {
-				if (required) out[`${n.id}.${field}`] = `${label} is required`;
-			} else if (seen.has(v)) out[`${n.id}.${field}`] = `${label} is used twice`;
+				if (required) out[`${it.id}.${field}`] = `${label} is required`;
+			} else if (seen.has(v)) out[`${it.id}.${field}`] = `${label} is used twice`;
 			else seen.add(v);
 		}
 	}
 	return out;
+}
+
+/** The same rules as the engine's check_plant_areas, for live feedback. */
+export function plantAreaProblems(nodes: PlantArea[]): Record<string, string> {
+	return uniqueProblems(nodes, [['tag', 'Tag number', true], ['description', 'Description', true], ['wbs', 'WBS number', false]]);
+}
+
+/** The same rules as the engine's check_equipment_packages, for live feedback. */
+export function equipmentPackageProblems(items: EquipmentPackage[]): Record<string, string> {
+	return uniqueProblems(items, [['number', 'Package number', true], ['description', 'Description', true]]);
+}
+
+export function equipmentPackageMatches(p: EquipmentPackage, filter: string): boolean {
+	const f = filter.trim().toLowerCase();
+	return !f || [p.number, p.description, p.vendor, p.package_type].some((s) => s.toLowerCase().includes(f));
 }

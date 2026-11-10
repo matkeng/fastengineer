@@ -42,6 +42,7 @@ ENTITIES = {
     "ref_table": "table",
     "ref_row": "table row",
     "plant_areas": "plant areas list",
+    "equipment_packages": "equipment packages list",
     "sym_library": "symbol library",
     "sym_drawing": "drawing",
     "sym_template": "symbol template",
@@ -86,7 +87,7 @@ def _keyed(items: list) -> bool:
 
 
 def _item_name(item: dict) -> str:
-    for key in ("name", "code", "label", "title", "tag"):
+    for key in ("name", "code", "label", "title", "tag", "number"):
         if isinstance(item.get(key), str) and item[key]:
             return item[key]
     return item["id"]

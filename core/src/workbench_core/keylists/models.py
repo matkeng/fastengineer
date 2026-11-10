@@ -27,3 +27,22 @@ class PlantArea(BaseModel):
 class PlantAreaList(BaseModel):
     nodes: list[PlantArea] = Field(default_factory=list)
     updated_at: datetime | None = None
+
+
+PackageType = Literal["Vendor", "Client", "SWR Supplier", "Valves", "Instrumentation", "Large Mech", "Installer", "Other"]
+PACKAGE_TYPES: list[str] = ["Vendor", "Client", "SWR Supplier", "Valves", "Instrumentation", "Large Mech", "Installer",
+                            "Other"]
+
+
+class EquipmentPackage(BaseModel):
+    """A row of the Equipment Packages list; rows are ordered as they appear in the list."""
+    id: str = Field(default_factory=new_id)
+    number: str
+    description: str
+    vendor: str = ""
+    package_type: PackageType
+
+
+class EquipmentPackageList(BaseModel):
+    items: list[EquipmentPackage] = Field(default_factory=list)
+    updated_at: datetime | None = None

@@ -697,7 +697,6 @@ button.icon-btn.danger:hover:not(:disabled) { color: var(--danger); }
 .plant-areas .tree-head { padding: 4px 8px; }
 .plant-areas .tree-head span { padding-left: 6px; }
 .plant-areas .tree-head span:first-child { padding-left: 44px; }
-.plant-areas .key-title { margin: 0; font-size: 1rem; }
 .tree-row select.cell-input { height: 24px; width: 100%; padding: 0 4px; border-color: transparent; background-color: transparent; border-radius: 2px; }
 .tree-row select.cell-input:hover { border-color: var(--border); background-color: var(--card); }
 .tree-row select.cell-input:focus { border-color: var(--accent); background-color: var(--card); }
@@ -706,6 +705,14 @@ button.icon-btn.danger:hover:not(:disabled) { color: var(--danger); }
 	.plant-areas .tree-head span:nth-child(3) { display: inline; }
 	.plant-areas .tree-row > .tree-cell:nth-child(3) { display: flex; }
 }
+/* Equipment Packages: a flat grid that fills the editor. */
+.plant-areas .key-title, .key-packages .key-title { margin: 0; font-size: 1rem; }
+main.fill .key-packages { overflow: hidden; }
+.key-packages .grid-wrap { flex: 1; min-height: 120px; max-height: none; }
+.key-packages .enum-items select { width: 100%; min-width: 130px; }
+.key-packages table.grid tbody tr { cursor: default; }
+.key-packages table.grid td { overflow: visible; }
+.ref-nav .dirty-dot { color: var(--warn); font-size: 10px; }
 /* Inputs directly in a column layout must not grow vertically. */
 .ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }
 

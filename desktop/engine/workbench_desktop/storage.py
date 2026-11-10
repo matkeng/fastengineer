@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from workbench_core.keylists import PlantAreaList
+from workbench_core.keylists import EquipmentPackageList, PlantAreaList
 from workbench_core.mel import Recipe, Revision
 from workbench_core.refdata import EnumList, RefRow, RefTable, RefTree, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
@@ -492,6 +492,7 @@ class KeyListStore:
     """The project's built-in lists. Shares the Store's connection and lock."""
 
     PLANT_AREAS = "plant-areas"
+    EQUIPMENT_PACKAGES = "equipment-packages"
 
     def __init__(self, store: Store):
         self._db = store._db
@@ -512,6 +513,22 @@ class KeyListStore:
             audit.log(self._db, "plant_areas", self.PLANT_AREAS, before or PlantAreaList().model_dump_json(),
                       areas.model_dump_json(), label="Plant Areas")
         return areas
+
+    def equipment_packages(self) -> EquipmentPackageList:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.EQUIPMENT_PACKAGES,)).fetchone()
+        return EquipmentPackageList.model_validate_json(row[0]) if row else EquipmentPackageList()
+
+    def save_equipment_packages(self, packages: EquipmentPackageList) -> EquipmentPackageList:
+        packages = packages.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.EQUIPMENT_PACKAGES,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.EQUIPMENT_PACKAGES, packages.model_dump_json()))
+            audit.log(self._db, "equipment_packages", self.EQUIPMENT_PACKAGES,
+                      before or EquipmentPackageList().model_dump_json(), packages.model_dump_json(),
+                      label="Equipment Packages")
+        return packages
 
 
 class InUse(ValueError):
