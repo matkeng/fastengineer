@@ -76,6 +76,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--parent-pid", type=int, default=None)
     parser.add_argument("--data-dir", default=None, help="where saved imports are kept (workbench.db)")
+    parser.add_argument("--server", action="store_true",
+                        help="shared server for several users: every change must name its user "
+                             "(use with --host 0.0.0.0 and a --data-dir on a local disk)")
     args = parser.parse_args(argv)
 
     _ensure_std_streams()
@@ -90,6 +93,11 @@ def main(argv: list[str] | None = None) -> None:
 
     from workbench_desktop.storage import configure
 
+    from workbench_desktop import identity
+
+    identity.server_mode = args.server
+    if args.server:
+        print("[engine] server mode: changes are logged under the user each desktop app reports", flush=True)
     store = configure(Path(args.data_dir) if args.data_dir else None)
     print(f"[engine] data: {store.path}", flush=True)
 

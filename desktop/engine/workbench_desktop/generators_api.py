@@ -432,11 +432,9 @@ async def import_inputs(rid: str, request: Request, filename: str = Query(...), 
             return _invalid(f"{len(missing)} card or rack type(s) used by racks are missing from the types sheets.", "catalogue")
     gen, tables = split(new.generator)
     rec = _record(rid)
-    store.save(rid, rec.name, gen)
-    if any(t.startswith("table:") for t in chosen):
-        store.replace_tables(rid, tables)
-    if "hardware" in chosen:
-        store.save_hardware(rid, new.hardware)
-    if any(t in chosen for t in ("card_types", "rack_types")):
-        store.save_catalogue(new.catalogue)
+    store.apply_import(
+        rid, rec.name, gen,
+        tables=tables if any(t.startswith("table:") for t in chosen) else None,
+        hardware=new.hardware if "hardware" in chosen else None,
+        catalogue=new.catalogue if any(t in chosen for t in ("card_types", "rack_types")) else None)
     return InputsImport(preview=preview, applied=chosen, record=_record(rid))

@@ -26,6 +26,8 @@ from workbench_core.generators.hardware import Catalogue, Hardware, default_cata
 from workbench_core.generators.models import BuildResult, Generator, RefTable as GenTable
 from workbench_core.generators.xlsx_import import ImportReport
 
+from . import audit
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS recipes (
     id TEXT PRIMARY KEY,
@@ -175,7 +177,23 @@ class Store:
         self._db = sqlite3.connect(path, check_same_thread=False)
         self._db.execute("PRAGMA foreign_keys = ON")
         self._db.execute("PRAGMA journal_mode = WAL")
+        self._db.execute("PRAGMA busy_timeout = 5000")
         self._db.executescript(SCHEMA)
+        self._db.executescript(audit.SCHEMA)
+
+    # -- change log ------------------------------------------------------------
+
+    def version_of(self, entity: str, record_id: str) -> int:
+        with self._lock:
+            return audit.version_of(self._db, entity, record_id)
+
+    def audit_entries(self, **filters) -> list[dict]:
+        with self._lock:
+            return audit.entries(self._db, **filters)
+
+    def audit_users(self) -> list[str]:
+        with self._lock:
+            return audit.users(self._db)
 
     # -- recipes -------------------------------------------------------------
 
@@ -194,6 +212,7 @@ class Store:
             self._db.execute("INSERT INTO recipes VALUES (?, ?, ?, ?, ?, ?)",
                              (recipe.id, recipe.name, recipe.target, recipe.model_dump_json(),
                               recipe.updated_at.isoformat(), recipe.updated_at.isoformat()))
+            audit.log(self._db, "mel_recipe", recipe.id, None, recipe.model_dump_json())
         return recipe
 
     def get_recipe(self, recipe_id: str) -> Recipe:
@@ -206,16 +225,21 @@ class Store:
     def save_recipe(self, recipe: Recipe) -> Recipe:
         recipe = recipe.model_copy(update={"updated_at": _now()})
         with self._lock, self._db:
-            cur = self._db.execute("UPDATE recipes SET name = ?, target = ?, data = ?, updated_at = ? WHERE id = ?",
-                                   (recipe.name, recipe.target, recipe.model_dump_json(),
-                                    recipe.updated_at.isoformat(), recipe.id))
-        if cur.rowcount == 0:
-            raise NotFound(recipe.id)
+            before = audit.data_of(self._db, "recipes", "id = ?", (recipe.id,))
+            if before is None:
+                raise NotFound(recipe.id)
+            self._db.execute("UPDATE recipes SET name = ?, target = ?, data = ?, updated_at = ? WHERE id = ?",
+                             (recipe.name, recipe.target, recipe.model_dump_json(),
+                              recipe.updated_at.isoformat(), recipe.id))
+            audit.log(self._db, "mel_recipe", recipe.id, before, recipe.model_dump_json())
         return recipe
 
     def delete_recipe(self, recipe_id: str) -> None:
         with self._lock, self._db:
+            before = audit.data_of(self._db, "recipes", "id = ?", (recipe_id,))
             self._db.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
+            if before is not None:
+                audit.log(self._db, "mel_recipe", recipe_id, before, None)
 
     # -- revisions -------------------------------------------------------------
 
@@ -233,6 +257,9 @@ class Store:
             self._db.execute("INSERT INTO revisions VALUES (?, ?, ?, ?, ?)",
                              (info.id, recipe_id, info.rev, info.model_dump_json(), data))
             self._db.execute("UPDATE recipes SET updated_at = ? WHERE id = ?", (_now().isoformat(), recipe_id))
+            # The row data can be large; the log keeps the file's details, not its contents.
+            audit.log(self._db, "mel_revision", info.id, None, info.model_dump_json(), parent_id=recipe_id,
+                      label=f"Rev {info.rev}: {info.file_name}")
         return info
 
     def list_revisions(self, recipe_id: str) -> list[RevisionInfo]:
@@ -252,7 +279,12 @@ class Store:
 
     def delete_revision(self, recipe_id: str, revision_id: str) -> None:
         with self._lock, self._db:
+            before = audit.data_of(self._db, "revisions", "id = ? AND recipe_id = ?", (revision_id, recipe_id), "info")
             self._db.execute("DELETE FROM revisions WHERE id = ? AND recipe_id = ?", (revision_id, recipe_id))
+            if before is not None:
+                info = json.loads(before)
+                audit.log(self._db, "mel_revision", revision_id, info, None, parent_id=recipe_id,
+                          label=f"Rev {info.get('rev')}: {info.get('file_name')}")
 
 
 class RefStore:
@@ -292,15 +324,20 @@ class RefStore:
     def save_enum(self, enum: EnumList, create: bool = False) -> EnumList:
         enum = enum.model_copy(update={"updated_at": _now()})
         with self._lock, self._db:
-            if not create and not self._db.execute("SELECT 1 FROM ref_enums WHERE id = ?", (enum.id,)).fetchone():
+            before = audit.data_of(self._db, "ref_enums", "id = ?", (enum.id,))
+            if not create and before is None:
                 raise NotFound(enum.id)
             self._claim_name("enum", enum.id, enum.name)
             self._db.execute("INSERT INTO ref_enums VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
                              (enum.id, enum.model_dump_json()))
+            audit.log(self._db, "ref_enum", enum.id, before, enum.model_dump_json())
         return enum
 
     def delete_enum(self, enum_id: str) -> None:
         with self._lock, self._db:
+            before = audit.data_of(self._db, "ref_enums", "id = ?", (enum_id,))
+            if before is not None:
+                audit.log(self._db, "ref_enum", enum_id, before, None)
             self._db.execute("DELETE FROM ref_enums WHERE id = ?", (enum_id,))
             self._db.execute("DELETE FROM ref_names WHERE object_id = ?", (enum_id,))
 
@@ -320,15 +357,20 @@ class RefStore:
     def save_tree(self, tree: RefTree, create: bool = False) -> RefTree:
         tree = tree.model_copy(update={"updated_at": _now()})
         with self._lock, self._db:
-            if not create and not self._db.execute("SELECT 1 FROM ref_trees WHERE id = ?", (tree.id,)).fetchone():
+            before = audit.data_of(self._db, "ref_trees", "id = ?", (tree.id,))
+            if not create and before is None:
                 raise NotFound(tree.id)
             self._claim_name("tree", tree.id, tree.name)
             self._db.execute("INSERT INTO ref_trees VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
                              (tree.id, tree.model_dump_json()))
+            audit.log(self._db, "ref_tree", tree.id, before, tree.model_dump_json())
         return tree
 
     def delete_tree(self, tree_id: str) -> None:
         with self._lock, self._db:
+            before = audit.data_of(self._db, "ref_trees", "id = ?", (tree_id,))
+            if before is not None:
+                audit.log(self._db, "ref_tree", tree_id, before, None)
             self._db.execute("DELETE FROM ref_trees WHERE id = ?", (tree_id,))
             self._db.execute("DELETE FROM ref_names WHERE object_id = ?", (tree_id,))
 
@@ -353,18 +395,29 @@ class RefStore:
         """Save the table definition and, when given, the converted rows, in one transaction."""
         table = table.model_copy(update={"updated_at": _now()})
         with self._lock, self._db:
-            if not create and not self._db.execute("SELECT 1 FROM ref_tables WHERE id = ?", (table.id,)).fetchone():
+            before = audit.data_of(self._db, "ref_tables", "id = ?", (table.id,))
+            if not create and before is None:
                 raise NotFound(table.id)
             self._claim_name("table", table.id, table.name)
             # Upsert, not INSERT OR REPLACE: REPLACE deletes first, which would cascade to the rows.
             self._db.execute("INSERT INTO ref_tables VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
                              (table.id, table.model_dump_json()))
+            audit.log(self._db, "ref_table", table.id, before, table.model_dump_json())
             for r in rows or []:
+                old = audit.data_of(self._db, "ref_rows", "id = ?", (r.id,))
                 self._db.execute("UPDATE ref_rows SET data = ? WHERE id = ?", (r.model_dump_json(), r.id))
+                if old is not None:
+                    audit.log(self._db, "ref_row", r.id, old, r.model_dump_json(), parent_id=table.id,
+                              label=f"{table.name}: row")
         return table
 
     def delete_table(self, table_id: str) -> None:
         with self._lock, self._db:
+            before = audit.data_of(self._db, "ref_tables", "id = ?", (table_id,))
+            if before is not None:
+                (count,) = self._db.execute("SELECT COUNT(*) FROM ref_rows WHERE table_id = ?", (table_id,)).fetchone()
+                audit.log(self._db, "ref_table", table_id, before, None,
+                          note=f"{count} row(s) deleted with the table" if count else None)
             self._db.execute("DELETE FROM ref_tables WHERE id = ?", (table_id,))
             self._db.execute("DELETE FROM ref_names WHERE object_id = ?", (table_id,))
 
@@ -380,19 +433,32 @@ class RefStore:
             (seq,) = self._db.execute("SELECT COALESCE(MAX(seq), 0) + 1 FROM ref_rows WHERE table_id = ?",
                                       (table_id,)).fetchone()
             self._db.execute("INSERT INTO ref_rows VALUES (?, ?, ?, ?)", (row.id, table_id, seq, row.model_dump_json()))
+            audit.log(self._db, "ref_row", row.id, None, row.model_dump_json(), parent_id=table_id,
+                      label=self._row_label(table_id))
         return row
 
     def update_row(self, table_id: str, row: RefRow) -> RefRow:
         row = row.model_copy(update={"updated_at": _now()})
         with self._lock, self._db:
-            cur = self._db.execute("UPDATE ref_rows SET data = ? WHERE id = ? AND table_id = ?",
-                                   (row.model_dump_json(), row.id, table_id))
-        if cur.rowcount == 0:
-            raise NotFound(row.id)
+            before = audit.data_of(self._db, "ref_rows", "id = ? AND table_id = ?", (row.id, table_id))
+            if before is None:
+                raise NotFound(row.id)
+            self._db.execute("UPDATE ref_rows SET data = ? WHERE id = ? AND table_id = ?",
+                             (row.model_dump_json(), row.id, table_id))
+            audit.log(self._db, "ref_row", row.id, before, row.model_dump_json(), parent_id=table_id,
+                      label=self._row_label(table_id), stored_time=json.loads(before).get("updated_at"))
         return row
+
+    def _row_label(self, table_id: str) -> str:
+        data = audit.data_of(self._db, "ref_tables", "id = ?", (table_id,))
+        return f"{json.loads(data)['name']}: row" if data else "row"
 
     def delete_row(self, table_id: str, row_id: str) -> None:
         with self._lock, self._db:
+            before = audit.data_of(self._db, "ref_rows", "id = ? AND table_id = ?", (row_id, table_id))
+            if before is not None:
+                audit.log(self._db, "ref_row", row_id, before, None, parent_id=table_id,
+                          label=self._row_label(table_id), stored_time=json.loads(before).get("updated_at"))
             self._db.execute("DELETE FROM ref_rows WHERE id = ? AND table_id = ?", (row_id, table_id))
 
 
@@ -450,11 +516,14 @@ class SymbolStore:
                 if create:
                     self._db.execute("INSERT INTO sym_libraries VALUES (?, ?, ?, ?)",
                                      (lib.id, name_key(lib.name), lib.model_dump_json(), _now().isoformat()))
+                    audit.log(self._db, "sym_library", lib.id, None, lib.model_dump_json())
                 else:
-                    cur = self._db.execute("UPDATE sym_libraries SET name_key = ?, data = ? WHERE id = ?",
-                                           (name_key(lib.name), lib.model_dump_json(), lib.id))
-                    if cur.rowcount == 0:
+                    before = audit.data_of(self._db, "sym_libraries", "id = ?", (lib.id,))
+                    if before is None:
                         raise NotFound(lib.id)
+                    self._db.execute("UPDATE sym_libraries SET name_key = ?, data = ? WHERE id = ?",
+                                     (name_key(lib.name), lib.model_dump_json(), lib.id))
+                    audit.log(self._db, "sym_library", lib.id, before, lib.model_dump_json())
         except sqlite3.IntegrityError as exc:
             raise RefValidationError(f"There is already a library called '{lib.name}'.", {"name": "Already used."}) from exc
         return lib
@@ -465,6 +534,12 @@ class SymbolStore:
         if n:
             raise InUse(f"{n} drawing(s) use this library. Move them to another library or remove them first.")
         with self._lock, self._db:
+            before = audit.data_of(self._db, "sym_libraries", "id = ?", (library_id,))
+            if before is not None:
+                (count,) = self._db.execute("SELECT COUNT(*) FROM sym_templates WHERE library_id = ?",
+                                            (library_id,)).fetchone()
+                audit.log(self._db, "sym_library", library_id, before, None,
+                          note=f"{count} template(s) deleted with the library" if count else None)
             self._db.execute("DELETE FROM sym_libraries WHERE id = ?", (library_id,))
 
     # -- drawings --------------------------------------------------------------
@@ -476,14 +551,28 @@ class SymbolStore:
         with self._lock, self._db:
             self._db.execute("INSERT INTO sym_drawings VALUES (?, ?, ?, ?)",
                              (drawing.id, drawing.library_id, drawing.model_dump_json(), _now().isoformat()))
+            audit.log(self._db, "sym_drawing", drawing.id, None, self._drawing_summary(drawing.model_dump_json()),
+                      note=f"PDF uploaded ({len(pdf):,} bytes)")
         return drawing
+
+    @staticmethod
+    def _drawing_summary(data: str) -> dict:
+        """A drawing without its per-page render details, which the engine fills in, not the user."""
+        d = json.loads(data)
+        pages = d.pop("pages", None)
+        if isinstance(pages, list):
+            d["page_count"] = len(pages)
+        return d
 
     def save_drawing(self, drawing: Drawing) -> Drawing:
         with self._lock, self._db:
-            cur = self._db.execute("UPDATE sym_drawings SET library_id = ?, data = ? WHERE id = ?",
-                                   (drawing.library_id, drawing.model_dump_json(), drawing.id))
-        if cur.rowcount == 0:
-            raise NotFound(drawing.id)
+            before = audit.data_of(self._db, "sym_drawings", "id = ?", (drawing.id,))
+            if before is None:
+                raise NotFound(drawing.id)
+            self._db.execute("UPDATE sym_drawings SET library_id = ?, data = ? WHERE id = ?",
+                             (drawing.library_id, drawing.model_dump_json(), drawing.id))
+            audit.log(self._db, "sym_drawing", drawing.id, self._drawing_summary(before),
+                      self._drawing_summary(drawing.model_dump_json()))
         return drawing
 
     def drawings(self) -> list[Drawing]:
@@ -501,6 +590,9 @@ class SymbolStore:
     def delete_drawing(self, doc_id: str) -> None:
         import shutil
         with self._lock, self._db:
+            before = audit.data_of(self._db, "sym_drawings", "id = ?", (doc_id,))
+            if before is not None:
+                audit.log(self._db, "sym_drawing", doc_id, self._drawing_summary(before), None)
             self._db.execute("DELETE FROM sym_drawings WHERE id = ?", (doc_id,))
         shutil.rmtree(self.doc_dir(doc_id), ignore_errors=True)
 
@@ -536,7 +628,7 @@ class SymbolStore:
             raise NotFound(template_id)
         return bytes(row[0]) if row[0] is not None else None
 
-    def add_template(self, t: Template, png: bytes, mask: bytes | None = None) -> Template:
+    def add_template(self, t: Template, png: bytes, mask: bytes | None = None, log: bool = True) -> Template:
         """Append to the end of its library's priority list."""
         self.get_library(t.library_id)
         with self._lock, self._db:
@@ -545,6 +637,9 @@ class SymbolStore:
             t = t.model_copy(update={"priority": count, "has_custom_mask": mask is not None})
             self._db.execute("INSERT INTO sym_templates VALUES (?, ?, ?, ?, ?, ?)",
                              (t.id, t.library_id, t.priority, t.model_dump_json(), png, mask))
+            if log:
+                audit.log(self._db, "sym_template", t.id, None, t.model_dump_json(), parent_id=t.library_id,
+                          note=f"image {len(png):,} bytes")
         return t
 
     def save_template(self, t: Template) -> Template:
@@ -553,23 +648,32 @@ class SymbolStore:
         if old.library_id != t.library_id:
             png, mask = self.template_image(t.id), self.template_mask(t.id)
             with self._lock, self._db:
+                audit.check(self._db, "sym_template", t.id)
                 self._db.execute("DELETE FROM sym_templates WHERE id = ?", (t.id,))
                 self._renumber(old.library_id)
-            return self.add_template(t.model_copy(update={"width": old.width, "height": old.height}), png, mask)
+            new = self.add_template(t.model_copy(update={"width": old.width, "height": old.height}), png, mask, log=False)
+            with self._lock, self._db:
+                audit.log(self._db, "sym_template", t.id, old.model_dump_json(), new.model_dump_json(),
+                          parent_id=new.library_id)
+            return new
         t = t.model_copy(update={"priority": old.priority, "width": old.width, "height": old.height,
                                  "has_custom_mask": old.has_custom_mask})
         with self._lock, self._db:
             self._db.execute("UPDATE sym_templates SET data = ? WHERE id = ?", (t.model_dump_json(), t.id))
+            audit.log(self._db, "sym_template", t.id, old.model_dump_json(), t.model_dump_json(), parent_id=t.library_id)
         return t
 
     def set_template_mask(self, template_id: str, mask: bytes | None) -> Template:
-        t = self.get_template(template_id).model_copy(update={"has_custom_mask": mask is not None})
+        old = self.get_template(template_id)
+        t = old.model_copy(update={"has_custom_mask": mask is not None})
         if mask is None and t.mask_mode == "custom":
             t.mask_mode = "auto"
         elif mask is not None:
             t.mask_mode = "custom"
         with self._lock, self._db:
             self._db.execute("UPDATE sym_templates SET mask = ?, data = ? WHERE id = ?", (mask, t.model_dump_json(), t.id))
+            audit.log(self._db, "sym_template", t.id, old.model_dump_json(), t.model_dump_json(), parent_id=t.library_id,
+                      note="custom mask removed" if mask is None else f"custom mask drawn ({len(mask):,} bytes)")
         return t
 
     def _renumber(self, library_id: str, order: list[str] | None = None) -> None:
@@ -592,11 +696,14 @@ class SymbolStore:
             ids.remove(template_id)
             ids.insert(max(0, min(index, len(ids))), template_id)
             self._renumber(t.library_id, ids)
+            after = audit.data_of(self._db, "sym_templates", "id = ?", (template_id,))
+            audit.log(self._db, "sym_template", template_id, t.model_dump_json(), after, parent_id=t.library_id)
         return self.get_template(template_id)
 
     def delete_template(self, template_id: str) -> None:
         t = self.get_template(template_id)
         with self._lock, self._db:
+            audit.log(self._db, "sym_template", template_id, t.model_dump_json(), None, parent_id=t.library_id)
             self._db.execute("DELETE FROM sym_templates WHERE id = ?", (template_id,))
             self._renumber(t.library_id)
 
@@ -611,14 +718,22 @@ class SymbolStore:
         self.get_drawing(doc_id)
         self.get_template(ov.template_id)
         with self._lock, self._db:
+            where, args = "doc_id = ? AND page = ? AND template_id = ?", (doc_id, page, ov.template_id)
+            before = audit.data_of(self._db, "sym_overrides", where, args)
             self._db.execute("INSERT INTO sym_overrides VALUES (?, ?, ?, ?) ON CONFLICT(doc_id, page, template_id) "
                              "DO UPDATE SET data = excluded.data", (doc_id, page, ov.template_id, ov.model_dump_json()))
+            audit.log(self._db, "sym_override", f"{doc_id}/{page}/{ov.template_id}", before, ov.model_dump_json(),
+                      parent_id=doc_id, label=f"Page {page} override")
         return ov
 
     def delete_override(self, doc_id: str, page: int, template_id: str) -> None:
         with self._lock, self._db:
-            self._db.execute("DELETE FROM sym_overrides WHERE doc_id = ? AND page = ? AND template_id = ?",
-                             (doc_id, page, template_id))
+            where, args = "doc_id = ? AND page = ? AND template_id = ?", (doc_id, page, template_id)
+            before = audit.data_of(self._db, "sym_overrides", where, args)
+            if before is not None:
+                audit.log(self._db, "sym_override", f"{doc_id}/{page}/{template_id}", before, None,
+                          parent_id=doc_id, label=f"Page {page} override")
+            self._db.execute(f"DELETE FROM sym_overrides WHERE {where}", args)
 
     def save_result(self, doc_id: str, result: PageResult) -> None:
         with self._lock, self._db:
@@ -639,14 +754,19 @@ class SymbolStore:
     def save_review(self, doc_id: str, page: int, review: PageReview) -> PageReview:
         self.get_drawing(doc_id)
         with self._lock, self._db:
+            before = audit.data_of(self._db, "sym_reviews", "doc_id = ? AND page = ?", (doc_id, page))
             self._db.execute("INSERT INTO sym_reviews VALUES (?, ?, ?) ON CONFLICT(doc_id, page) "
                              "DO UPDATE SET data = excluded.data", (doc_id, page, review.model_dump_json()))
+            audit.log(self._db, "sym_review", f"{doc_id}/{page}", before, review.model_dump_json(),
+                      parent_id=doc_id, label=f"Page {page} review")
         return review
 
     # -- runs ------------------------------------------------------------------
 
     def save_run(self, run: RunInfo, sheets: list[dict] | None = None) -> RunInfo:
         with self._lock, self._db:
+            if not self._db.execute("SELECT 1 FROM sym_runs WHERE id = ?", (run.id,)).fetchone():
+                audit.log(self._db, "sym_run", run.id, None, run.model_dump_json(), label="Detection run")
             self._db.execute("INSERT INTO sym_runs (id, info, created_at) VALUES (?, ?, ?) ON CONFLICT(id) "
                              "DO UPDATE SET info = excluded.info", (run.id, run.model_dump_json(), _now().isoformat()))
             if sheets is not None:
@@ -678,6 +798,9 @@ class SymbolStore:
 
     def delete_run(self, run_id: str) -> None:
         with self._lock, self._db:
+            before = audit.data_of(self._db, "sym_runs", "id = ?", (run_id,), "info")
+            if before is not None:
+                audit.log(self._db, "sym_run", run_id, before, None, label="Detection run")
             self._db.execute("DELETE FROM sym_runs WHERE id = ?", (run_id,))
 
     # -- first run -------------------------------------------------------------
@@ -708,6 +831,9 @@ class GeneratorStore:
                               report.model_dump_json() if report else None))
             self._db.executemany("INSERT INTO gen_tables VALUES (?, ?, ?)",
                                  [(rid, n, t.model_dump_json()) for n, t in tables.items()])
+            audit.log(self._db, "generator", rid, None,
+                      {"name": name, "kind": kind, "source_file": source_file, "runs": len(gen.runsheet.rows),
+                       "templates": len({t.id for t in gen.templates}), "tables": sorted(tables)})
         return self.get(rid)
 
     def list(self) -> list[GenSummary]:
@@ -747,22 +873,63 @@ class GeneratorStore:
     def save(self, rid: str, name: str, gen: Generator) -> GenRecord:
         gen = gen.model_copy(update={"tables": {}})
         with self._lock, self._db:
-            cur = self._db.execute("UPDATE gen_generators SET name = ?, data = ?, updated_at = ? WHERE id = ?",
-                                   (name, gen.model_dump_json(), _now().isoformat(), rid))
-        if cur.rowcount == 0:
-            raise NotFound(rid)
+            self._save(rid, name, gen)
         return self.get(rid)
+
+    def _save(self, rid: str, name: str, gen: Generator) -> None:
+        """Caller holds the lock and the transaction."""
+        row = self._db.execute("SELECT name, data FROM gen_generators WHERE id = ?", (rid,)).fetchone()
+        if not row:
+            raise NotFound(rid)
+        data = gen.model_dump_json()
+        self._db.execute("UPDATE gen_generators SET name = ?, data = ?, updated_at = ? WHERE id = ?",
+                         (name, data, _now().isoformat(), rid))
+        audit.log(self._db, "generator", rid, {"name": row[0], **json.loads(row[1])}, {"name": name, **json.loads(data)},
+                  label=name)
 
     def delete(self, rid: str) -> None:
         with self._lock, self._db:
+            row = self._db.execute("SELECT name, kind, source_file FROM gen_generators WHERE id = ?", (rid,)).fetchone()
+            if row:
+                audit.log(self._db, "generator", rid, dict(zip(("name", "kind", "source_file"), row)), None)
             self._db.execute("DELETE FROM gen_generators WHERE id = ?", (rid,))
 
     def replace_tables(self, rid: str, tables: dict[str, GenTable]) -> None:
         self.get(rid)
         with self._lock, self._db:
-            self._db.execute("DELETE FROM gen_tables WHERE generator_id = ?", (rid,))
-            self._db.executemany("INSERT INTO gen_tables VALUES (?, ?, ?)",
-                                 [(rid, n, t.model_dump_json()) for n, t in tables.items()])
+            self._replace_tables(rid, tables)
+
+    @staticmethod
+    def _table_sizes(tables: dict[str, GenTable]) -> dict[str, str]:
+        return {n: f"{len(t.rows)} row(s), {len(t.columns)} column(s)" for n, t in tables.items()}
+
+    def _replace_tables(self, rid: str, tables: dict[str, GenTable]) -> None:
+        """Caller holds the lock and the transaction. Lookup tables can be large, so the
+        log keeps each table's size, not its contents."""
+        old = {n: GenTable.model_validate_json(d) for n, d in self._db.execute(
+            "SELECT name, data FROM gen_tables WHERE generator_id = ?", (rid,))}
+        self._db.execute("DELETE FROM gen_tables WHERE generator_id = ?", (rid,))
+        self._db.executemany("INSERT INTO gen_tables VALUES (?, ?, ?)",
+                             [(rid, n, t.model_dump_json()) for n, t in tables.items()])
+        changed = sorted(n for n in tables if n in old and old[n] != tables[n])
+        (name,) = self._db.execute("SELECT name FROM gen_generators WHERE id = ?", (rid,)).fetchone()
+        audit.log(self._db, "gen_tables", rid, self._table_sizes(old), self._table_sizes(tables), parent_id=rid,
+                  label=f"{name}: lookup tables",
+                  note=("contents changed in: " + ", ".join(changed)) if changed else None)
+
+    def apply_import(self, rid: str, name: str, gen: Generator, tables: dict[str, GenTable] | None = None,
+                     hardware: Hardware | None = None, catalogue: Catalogue | None = None) -> None:
+        """Save everything an inputs-workbook import changes in one transaction, so a
+        failure (or a conflict) leaves nothing half-applied."""
+        gen = gen.model_copy(update={"tables": {}})
+        with self._lock, self._db:
+            self._save(rid, name, gen)
+            if tables is not None:
+                self._replace_tables(rid, tables)
+            if hardware is not None:
+                self._save_hardware(rid, hardware)
+            if catalogue is not None:
+                self._save_catalogue(catalogue)
 
     # -- builds ------------------------------------------------------------------
 
@@ -773,6 +940,8 @@ class GeneratorStore:
             info = info.model_copy(update={"seq": latest + 1})
             self._db.execute("INSERT INTO gen_builds VALUES (?, ?, ?, ?, ?)",
                              (info.id, info.generator_id, info.seq, info.model_dump_json(), result.model_dump_json()))
+            audit.log(self._db, "gen_build", info.id, None, info.model_dump_json(), parent_id=info.generator_id,
+                      label=f"Build {info.seq}")
         return info
 
     def list_builds(self, rid: str) -> list[BuildInfo]:
@@ -797,6 +966,9 @@ class GeneratorStore:
 
     def delete_build(self, bid: str) -> None:
         with self._lock, self._db:
+            row = self._db.execute("SELECT info, generator_id, seq FROM gen_builds WHERE id = ?", (bid,)).fetchone()
+            if row:
+                audit.log(self._db, "gen_build", bid, row[0], None, parent_id=row[1], label=f"Build {row[2]}")
             self._db.execute("DELETE FROM gen_builds WHERE id = ?", (bid,))
 
     def counts(self) -> tuple[int, int]:
@@ -814,9 +986,17 @@ class GeneratorStore:
 
     def save_catalogue(self, cat: Catalogue) -> Catalogue:
         with self._lock, self._db:
-            self._db.execute("INSERT INTO settings VALUES ('gen_hw_catalogue', ?) "
-                             "ON CONFLICT(key) DO UPDATE SET data = excluded.data", (cat.model_dump_json(),))
+            self._save_catalogue(cat)
         return cat
+
+    def _save_catalogue(self, cat: Catalogue) -> None:
+        """Caller holds the lock and the transaction."""
+        before = audit.data_of(self._db, "settings", "key = ?", ("gen_hw_catalogue",))
+        self._db.execute("INSERT INTO settings VALUES ('gen_hw_catalogue', ?) "
+                         "ON CONFLICT(key) DO UPDATE SET data = excluded.data", (cat.model_dump_json(),))
+        # Before the first save the built-in defaults are in effect, so that is what changed.
+        audit.log(self._db, "gen_catalogue", "catalogue", before or default_catalogue().model_dump_json(),
+                  cat.model_dump_json(), label="Card and rack types")
 
     def hardware(self, rid: str) -> Hardware:
         self.get(rid)
@@ -826,11 +1006,19 @@ class GeneratorStore:
 
     def save_hardware(self, rid: str, hw: Hardware) -> Hardware:
         self.get(rid)
-        now = _now().isoformat()
         with self._lock, self._db:
-            self._db.execute("INSERT INTO gen_hardware VALUES (?, ?, ?) ON CONFLICT(generator_id) DO UPDATE SET "
-                             "data = excluded.data, updated_at = excluded.updated_at", (rid, hw.model_dump_json(), now))
+            self._save_hardware(rid, hw)
         return hw
+
+    def _save_hardware(self, rid: str, hw: Hardware) -> None:
+        """Caller holds the lock and the transaction."""
+        before = audit.data_of(self._db, "gen_hardware", "generator_id = ?", (rid,))
+        self._db.execute("INSERT INTO gen_hardware VALUES (?, ?, ?) ON CONFLICT(generator_id) DO UPDATE SET "
+                         "data = excluded.data, updated_at = excluded.updated_at",
+                         (rid, hw.model_dump_json(), _now().isoformat()))
+        (name,) = self._db.execute("SELECT name FROM gen_generators WHERE id = ?", (rid,)).fetchone()
+        audit.log(self._db, "gen_hardware", rid, before or Hardware().model_dump_json(), hw.model_dump_json(),
+                  parent_id=rid, label=f"{name}: PLC hardware")
 
     def hardware_counts(self) -> tuple[int, int]:
         """(panels, cards) across all generators."""
