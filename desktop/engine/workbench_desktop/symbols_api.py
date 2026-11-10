@@ -48,7 +48,7 @@ from workbench_core.symbols.match import _iou, locate_near, locate_symbols, prep
 from workbench_core.symbols.render import PdfError, decode_gray, encode_png, page_count, render_pages
 from workbench_core.symbols.pipeline import REVIEW_IOU
 from workbench_core.symbols.tags import apply_exclusion, check_format, compile_pattern, format_tag, group_names, resolve_points
-from workbench_core.symbols.templates import crop, effective_mask, erase_words, trim
+from workbench_core.symbols.templates import crop, effective_mask, erase_words, trim_box
 
 from .storage import InUse, NotFound, SymbolStore, get_symbols
 
@@ -715,6 +715,21 @@ class FromPage(BaseModel):
     trim: bool = True
 
 
+def _cut(st: SymbolStore, d: Drawing, lib: Library, page: int, rect: list[float], trimmed: bool):
+    """A template image cut from a page (text erased, optionally trimmed to the ink) and where
+    it lies on the page."""
+    gray = _gray(st, d.id, page)
+    w, _, _ = page_words(st, d, page, gray, lib)
+    clean = erase_words(gray, w)
+    if trimmed:
+        box = trim_box(clean, rect)
+    else:
+        img = crop(clean, rect)  # validates the size
+        box = [min(rect[0], rect[2]), min(rect[1], rect[3]), max(rect[0], rect[2]), max(rect[1], rect[3])]
+        return img, box
+    return crop(clean, box), box
+
+
 @router.post("/templates/from-page", response_model=Template)
 async def template_from_page(body: FromPage) -> Template:
     """Cut a template from a page render (lossless, with the page text erased) into the
@@ -723,17 +738,32 @@ async def template_from_page(body: FromPage) -> Template:
     _page(d, body.page)
     st = store()
     lib = _library(d.library_id)
-
-    def cut():
-        gray = _gray(st, d.id, body.page)
-        w, _, _ = page_words(st, d, body.page, gray, lib)
-        img = crop(erase_words(gray, w), body.rect)
-        return trim(img) if body.trim else img
     try:
-        img = await run_in_threadpool(cut)
+        img, _ = await run_in_threadpool(_cut, st, d, lib, body.page, body.rect, body.trim)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return _new_template(img, body.desc, d.library_id)
+
+
+class TemplatePreview(BaseModel):
+    rect: list[float]  # what the template would keep, in page pixels
+    width: int
+    height: int
+    png: str  # base64
+
+
+@router.post("/templates/preview", response_model=TemplatePreview)
+async def template_preview(body: FromPage) -> TemplatePreview:
+    """What New template would cut from this box, without saving anything."""
+    d = _drawing(body.doc_id)
+    _page(d, body.page)
+    st = store()
+    try:
+        img, box = await run_in_threadpool(_cut, st, d, _library(d.library_id), body.page, body.rect, body.trim)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return TemplatePreview(rect=box, width=int(img.shape[1]), height=int(img.shape[0]),
+                           png=base64.b64encode(encode_png(img)).decode())
 
 
 def _decode_upload(data: bytes):

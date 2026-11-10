@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Matthew Kelly
 from __future__ import annotations
 
+import base64
 import io
 import json
 import time
@@ -281,3 +282,23 @@ def test_review_false_positives_and_missed_symbols(data_dir: Path) -> None:
     other = client.post(f"{API}/libraries", json={"name": "Other", "copy_from": lib["id"]}).json()
     foreign = client.get(f"{API}/templates", params={"library_id": other["id"]}).json()[0]
     assert client.post(url, json={"action": "add", "template_id": foreign["id"], "x": cx, "y": cy}).status_code == 422
+
+
+def test_template_preview_matches_the_template_created(data_dir: Path) -> None:
+    lib = _example()
+    d = _upload(lib["id"])
+    res = client.post(f"{API}/drawings/{d['id']}/pages/1/analyse").json()
+    b = next(s for s in res["symbols"] if s["tag"] == "PT-1025")["box"]
+    drag = [b[0] - 20, b[1] - 20, b[2] + 20, b[3] + 20]
+    pv = client.post(f"{API}/templates/preview", json={"doc_id": d["id"], "page": 1, "rect": drag})
+    assert pv.status_code == 200, pv.text
+    pv = pv.json()
+    assert drag[0] <= pv["rect"][0] and pv["rect"][2] <= drag[2] and drag[1] <= pv["rect"][1] and pv["rect"][3] <= drag[3]
+    assert pv["width"] < drag[2] - drag[0]  # trimmed
+    assert base64.b64decode(pv["png"])[:4] == b"\x89PNG"
+    t = client.post(f"{API}/templates/from-page", json={"doc_id": d["id"], "page": 1, "rect": drag, "desc": "Copy"}).json()
+    assert (t["width"], t["height"]) == (pv["width"], pv["height"])
+    loose = client.post(f"{API}/templates/preview", json={"doc_id": d["id"], "page": 1, "rect": drag, "trim": False}).json()
+    assert loose["width"] == round(drag[2] - drag[0])
+    blank = client.post(f"{API}/templates/preview", json={"doc_id": d["id"], "page": 1, "rect": [5, 5, 60, 60]})
+    assert blank.status_code == 400 and "linework" in blank.json()["detail"]

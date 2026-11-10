@@ -7,7 +7,7 @@ import {
 } from '../lib/engine';
 import type {
 	Drawing, Library, LibrarySummary, OcrStatus, PageOverride, PageResult, PageReview, ReviewAction, ReviewResult, RunInfo, RunSheet,
-	TagsTable, Template, TestResult, Word,
+	TagsTable, Template, TemplatePreview, TestResult, Word,
 } from '../lib/symbolTypes';
 
 export type SymView =
@@ -51,6 +51,8 @@ export const useSymbols = defineStore('symbols', () => {
 	const test = ref<{ template: Template; doc: string; page: number; result: TestResult } | null>(null);
 	// The page last looked at: where "Test" runs
 	const lastPage = ref<{ id: string; page: number } | null>(null);
+	// The page viewer opens in this mode next time (the sidebar's "Draw on a drawing")
+	const pendingMode = ref<'template' | null>(null);
 
 	const templateDirty = computed(
 		() => !!templateDraft.value && (!!maskDraft.value || JSON.stringify(templateDraft.value) !== JSON.stringify(templateSaved.value)),
@@ -303,8 +305,8 @@ export const useSymbols = defineStore('symbols', () => {
 		view.value = { kind: 'template', id };
 	}
 
-	async function templateFromPage(id: string, page: number, rect: number[], desc: string) {
-		const t = await run(() => apiPostJson<Template>(`${API}/templates/from-page`, { doc_id: id, page, rect, desc }));
+	async function templateFromPage(id: string, page: number, rect: number[], desc: string, trim = true) {
+		const t = await run(() => apiPostJson<Template>(`${API}/templates/from-page`, { doc_id: id, page, rect, desc, trim }));
 		if (t) {
 			await refresh();
 			await openTemplate(t.id, true);
@@ -312,6 +314,30 @@ export const useSymbols = defineStore('symbols', () => {
 		}
 		return t;
 	}
+
+	/** The page to draw a new template on for a library: the last page looked at, if it is
+	 * in that library, else the first page of its first ready drawing. */
+	function drawTarget(libId: string): { id: string; page: number } | null {
+		const ready = (id: string) => drawings.value.find((d) => d.id === id && d.status === 'ready' && d.library_id === libId);
+		if (lastPage.value && ready(lastPage.value.id)) return lastPage.value;
+		const d = drawings.value.find((x) => x.status === 'ready' && x.library_id === libId);
+		return d ? { id: d.id, page: 1 } : null;
+	}
+
+	function drawTemplate(libId: string) {
+		const target = drawTarget(libId);
+		if (!target) {
+			error.value = 'Add a PDF to this library first, then draw a box around a symbol on it.';
+			return false;
+		}
+		pendingMode.value = 'template'; // the viewer picks this up when it shows the page
+		if (show({ kind: 'drawing', id: target.id, page: target.page })) return true;
+		pendingMode.value = null;
+		return false;
+	}
+
+	const previewTemplate = (id: string, page: number, rect: number[], trim: boolean) =>
+		apiPostJson<TemplatePreview>(`${API}/templates/preview`, { doc_id: id, page, rect, trim });
 
 	async function uploadTemplate(file: Blob, filename: string, libId: string) {
 		const q = new URLSearchParams({ filename, library_id: libId });
@@ -464,7 +490,7 @@ export const useSymbols = defineStore('symbols', () => {
 	return {
 		drawings, templates, libraries, runs, ocr, view, libraryId, library, checked, busy, error, fieldErrors, message,
 		templateSaved, templateDraft, maskDraft, templateDirty, librarySaved, libraryDraft, libraryDirty, dirty, test,
-		lastPage, anyRendering, activeRun, libraryName,
+		lastPage, pendingMode, drawTarget, drawTemplate, previewTemplate, anyRendering, activeRun, libraryName,
 		refresh, show, openLibrary, createLibrary, saveLibrary, discardLibrary, deleteLibrary, patchLibrary, importLibrary,
 		restoreExample, exportLibrary, upload, editDrawing, removeDrawing, pageImage, pageResult, pageWords, analysePage,
 		overrides, setOverride, openTemplate, templateFromPage, uploadTemplate, saveTemplate, clearCustomMask,

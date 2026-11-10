@@ -146,3 +146,6 @@ export interface RunInfo {
 export interface OcrStatus { available: boolean; engine: string | null; reason: string | null }
 export interface TagsTable { headers: string[]; rows: Record<string, string>[] }
 export interface TestResult { symbols: Symbol[]; best: number; skipped: string | null }
+
+/** What New template would cut from a dragged box (nothing saved). */
+export interface TemplatePreview { rect: Box; width: number; height: number; png: string }

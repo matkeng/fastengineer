@@ -40,8 +40,7 @@ def erase_words(gray, words, pad: float = 0.5):
     return out
 
 
-def crop(gray, rect: Box):
-    """Crop [x1, y1, x2, y2] (any corner order, clamped to the image)."""
+def _clamp(gray, rect: Box) -> tuple[int, int, int, int]:
     h, w = gray.shape[:2]
     x1, x2 = sorted((int(round(rect[0])), int(round(rect[2]))))
     y1, y2 = sorted((int(round(rect[1])), int(round(rect[3]))))
@@ -49,17 +48,35 @@ def crop(gray, rect: Box):
     x2, y2 = min(x2, w), min(y2, h)
     if x2 - x1 < 4 or y2 - y1 < 4:
         raise ValueError("Draw a box at least 4 pixels across around the symbol.")
+    return x1, y1, x2, y2
+
+
+def crop(gray, rect: Box):
+    """Crop [x1, y1, x2, y2] (any corner order, clamped to the image)."""
+    x1, y1, x2, y2 = _clamp(gray, rect)
     return gray[y1:y2, x1:x2].copy()
 
 
-def trim(gray, pad: int = 2):
-    """Shrink a template to its ink plus a small margin (a loose drag still matches tightly)."""
+def _ink_bounds(gray, pad: int) -> tuple[int, int, int, int]:
     import numpy as np
     ys, xs = np.nonzero(ink(gray))
     if len(xs) == 0:
         raise ValueError("The box has no linework in it.")
     h, w = gray.shape[:2]
-    return gray[max(ys.min() - pad, 0):min(ys.max() + pad + 1, h), max(xs.min() - pad, 0):min(xs.max() + pad + 1, w)].copy()
+    return max(int(xs.min()) - pad, 0), max(int(ys.min()) - pad, 0), min(int(xs.max()) + pad + 1, w), min(int(ys.max()) + pad + 1, h)
+
+
+def trim(gray, pad: int = 2):
+    """Shrink a template to its ink plus a small margin (a loose drag still matches tightly)."""
+    x1, y1, x2, y2 = _ink_bounds(gray, pad)
+    return gray[y1:y2, x1:x2].copy()
+
+
+def trim_box(gray, rect: Box, pad: int = 2) -> Box:
+    """Where trim(crop(gray, rect)) lies on the page: the box a template drawn as `rect` keeps."""
+    x1, y1, x2, y2 = _clamp(gray, rect)
+    a, b, c, d = _ink_bounds(gray[y1:y2, x1:x2], pad)
+    return [float(x1 + a), float(y1 + b), float(x1 + c), float(y1 + d)]
 
 
 def custom_mask(png_gray, shape):

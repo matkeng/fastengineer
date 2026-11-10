@@ -19,6 +19,7 @@ const imgInput = ref<HTMLInputElement | null>(null);
 
 const libTemplates = computed(() => sym.templates.filter((t) => t.library_id === sym.libraryId));
 const checkedReady = computed(() => sym.checked.filter((id) => sym.drawings.some((d) => d.id === id && d.status === 'ready')));
+const canDraw = computed(() => !!sym.library && !!sym.drawTarget(sym.libraryId));
 const hasExample = computed(() => sym.libraries.some((l) => l.name.startsWith('P&ID instruments')));
 
 async function onFiles(files: FileList | null | undefined) {
@@ -104,8 +105,13 @@ onMounted(() => sym.refresh());
 							<button type="button" class="link small" :disabled="i === libTemplates.length - 1" title="Move down" @click.stop="sym.moveTemplate(t.id, i + 1)">▼</button>
 						</li>
 					</ol>
-					<p v-if="!libTemplates.length" class="hint">None yet: open a drawing and use <strong>New template</strong>, or add a symbol image.</p>
-					<button type="button" class="secondary small" :disabled="!sym.library" title="Add a symbol image file as a template" @click="imgInput?.click()">Add image…</button>
+					<p v-if="!libTemplates.length" class="hint">None yet: draw a box around a symbol on one of this library's drawings.</p>
+					<div class="row tight wrap">
+						<button type="button" class="small" :disabled="!canDraw"
+							:title="canDraw ? 'Open a drawing and drag a box around one symbol' : 'Add a PDF to this library first'"
+							@click="sym.drawTemplate(sym.libraryId)">Draw on a drawing…</button>
+						<button type="button" class="link small" :disabled="!sym.library" title="Add a symbol image file as a template" @click="imgInput?.click()">or add an image…</button>
+					</div>
 					<input ref="imgInput" type="file" accept="image/*" hidden @change="onTemplateImage(($event.target as HTMLInputElement).files?.[0])" />
 				</section>
 
@@ -164,7 +170,8 @@ onMounted(() => sym.refresh());
 				<ol class="steps-help">
 					<li><strong>Library:</strong> pick one, or make a <em>New library</em> for your drawings. Its <em>Settings</em>
 						say what a tag looks like (a pattern such as <code>FT-1023</code>, or any text) and what text to ignore.</li>
-					<li><strong>Templates:</strong> open a drawing, choose <em>New template</em> and drag a box around a symbol. In
+					<li><strong>Templates:</strong> press <em>Draw on a drawing</em> (or <em>New template</em> on a page) and drag a box
+						around a symbol; adjust it with the handles and check the preview, then create it. In
 						the template, click where each part of its tag is written, set the threshold, and if needed paint a
 						custom mask of the parts to compare.</li>
 					<li><strong>Analyse</strong> the ticked drawings: symbols are matched with OpenCV, and tags are read from the PDF

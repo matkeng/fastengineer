@@ -2,7 +2,7 @@
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { Box, FoundTag, PageOverride, PageResult, ReviewAction, RunSheet, Symbol, Word } from '../../lib/symbolTypes';
+import type { Box, FoundTag, PageOverride, PageResult, ReviewAction, RunSheet, Symbol, TemplatePreview, Word } from '../../lib/symbolTypes';
 import { useSymbols } from '../../stores/symbols';
 
 // With runId the page shows that analysis run's result, page navigation goes through the
@@ -31,6 +31,12 @@ const mode = ref<'pan' | 'add' | 'template' | 'exclude'>('pan');
 const addTemplate = ref(''); // "Add missed": the template placed on click
 const selection = ref<Box | null>(null); // dragged rectangle, image pixels
 const dragging = ref(false); // banners wait for the drag to end (and overlay the canvas: no layout shift)
+// New template: what the dragged box would cut (trimmed to the linework), shown before creating it
+const preview = ref<TemplatePreview | null>(null);
+const previewError = ref<string | null>(null);
+const trimOn = ref(true);
+type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'move';
+const hoverHandle = ref<Handle | null>(null);
 const newName = ref('');
 // What a click picked: a symbol or a text-scan tag, kept or marked as a false positive.
 type Pick =
@@ -239,16 +245,87 @@ function draw() {
 		rect(ctx, pickedInfo.value.box.map((v, i) => v + (i < 2 ? -4 : 4)) as Box);
 	}
 	if (selection.value) {
+		const b = selection.value;
+		const col = mode.value === 'exclude' ? '#5f6368' : '#1a73e8';
+		if (mode.value === 'template' && preview.value && trimOn.value && !dragging.value) {
+			// What the template keeps
+			ctx.lineWidth = 1.5;
+			ctx.strokeStyle = '#16a34a';
+			rect(ctx, preview.value.rect);
+		}
 		ctx.lineWidth = 2;
-		ctx.strokeStyle = mode.value === 'exclude' ? '#5f6368' : '#1a73e8';
+		ctx.strokeStyle = col;
 		ctx.setLineDash([5, 3]);
-		rect(ctx, selection.value);
+		rect(ctx, b);
 		ctx.setLineDash([]);
+		label(ctx, b, `${Math.round(b[2] - b[0])} × ${Math.round(b[3] - b[1])} px`, col, true);
+		ctx.fillStyle = '#fff';
+		for (const [, hx, hy] of handles(b)) {
+			ctx.fillRect(hx - HANDLE / 2, hy - HANDLE / 2, HANDLE, HANDLE);
+			ctx.strokeRect(hx - HANDLE / 2, hy - HANDLE / 2, HANDLE, HANDLE);
+		}
 	}
 }
 
+// -- selection handles (screen pixels) --------------------------------------------
+const HANDLE = 8;
+
+function handles(b: Box): [Handle, number, number][] {
+	const x1 = b[0] * scale + ox, y1 = b[1] * scale + oy, x2 = b[2] * scale + ox, y2 = b[3] * scale + oy;
+	const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+	return [['nw', x1, y1], ['n', mx, y1], ['ne', x2, y1], ['e', x2, my], ['se', x2, y2], ['s', mx, y2], ['sw', x1, y2], ['w', x1, my]];
+}
+
+function handleAt(e: PointerEvent): Handle | null {
+	const b = selection.value;
+	if (!b || (mode.value !== 'template' && mode.value !== 'exclude')) return null;
+	const r = canvas.value!.getBoundingClientRect();
+	const x = e.clientX - r.left, y = e.clientY - r.top;
+	const hit = handles(b).find(([, hx, hy]) => Math.abs(x - hx) <= HANDLE && Math.abs(y - hy) <= HANDLE);
+	if (hit) return hit[0];
+	return inside(toImage(e), b) ? 'move' : null;
+}
+
+function adjusted(h: Handle, b: Box, dx: number, dy: number): Box {
+	if (h === 'move') return [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
+	const n = [...b] as Box;
+	if (h.includes('w')) n[0] += dx;
+	if (h.includes('e')) n[2] += dx;
+	if (h.includes('n')) n[1] += dy;
+	if (h.includes('s')) n[3] += dy;
+	return [Math.min(n[0], n[2]), Math.min(n[1], n[3]), Math.max(n[0], n[2]), Math.max(n[1], n[3])];
+}
+
+// -- template preview ---------------------------------------------------------------
+let previewTimer: ReturnType<typeof setTimeout> | undefined;
+let previewSeq = 0;
+
+function schedulePreview() {
+	clearTimeout(previewTimer);
+	if (mode.value !== 'template' || !selection.value) return;
+	const rect = selection.value.map((v) => Math.round(v));
+	previewTimer = setTimeout(async () => {
+		const seq = ++previewSeq;
+		try {
+			const pv = await sym.previewTemplate(props.docId, props.page, rect, trimOn.value);
+			if (seq !== previewSeq) return;
+			preview.value = pv;
+			previewError.value = null;
+		} catch (err) {
+			if (seq !== previewSeq) return;
+			preview.value = null;
+			previewError.value = err instanceof Error ? err.message : String(err);
+		}
+		draw();
+	}, 250);
+}
+
 // -- pointer -------------------------------------------------------------------
-let drag: { x: number; y: number; ox: number; oy: number; moved: boolean; start?: [number, number] } | null = null;
+let drag: {
+	x: number; y: number; ox: number; oy: number; moved: boolean;
+	start?: [number, number]; // drawing a new box from here (image pixels)
+	edit?: { handle: Handle; box: Box; from: [number, number] }; // resizing / moving the box
+} | null = null;
 
 function toImage(e: PointerEvent | MouseEvent): [number, number] {
 	const r = canvas.value!.getBoundingClientRect();
@@ -260,17 +337,28 @@ function onDown(e: PointerEvent) {
 	drag = { x: e.clientX, y: e.clientY, ox, oy, moved: false };
 	dragging.value = true;
 	if ((mode.value === 'template' || mode.value === 'exclude') && e.button === 0) {
-		drag.start = toImage(e);
-		selection.value = null;
+		const h = handleAt(e);
+		if (h && selection.value) drag.edit = { handle: h, box: [...selection.value] as Box, from: toImage(e) };
+		else {
+			drag.start = toImage(e);
+			selection.value = null;
+		}
 	}
 }
 
 function onMove(e: PointerEvent) {
-	if (!drag) return;
+	if (!drag) {
+		const h = handleAt(e);
+		if (h !== hoverHandle.value) hoverHandle.value = h;
+		return;
+	}
 	const dx = e.clientX - drag.x;
 	const dy = e.clientY - drag.y;
 	if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
-	if (drag.start) {
+	if (drag.edit) {
+		const [x, y] = toImage(e);
+		selection.value = adjusted(drag.edit.handle, drag.edit.box, x - drag.edit.from[0], y - drag.edit.from[1]);
+	} else if (drag.start) {
 		const [x, y] = toImage(e);
 		selection.value = [Math.min(drag.start[0], x), Math.min(drag.start[1], y), Math.max(drag.start[0], x), Math.max(drag.start[1], y)];
 	} else {
@@ -285,11 +373,14 @@ function onUp(e: PointerEvent) {
 	drag = null;
 	dragging.value = false;
 	if (!d) return;
-	if (!d.moved && !d.start) {
+	if (!d.moved && !d.start && !d.edit) {
 		if (mode.value === 'add') void addAt(toImage(e));
 		else pick(toImage(e));
 	}
-	if (d.start && selection.value && selection.value[2] - selection.value[0] < 6) selection.value = null;
+	if (d.start && selection.value && (selection.value[2] - selection.value[0] < 6 || selection.value[3] - selection.value[1] < 6)) {
+		selection.value = null;
+	}
+	if ((d.start || d.edit) && selection.value) schedulePreview();
 	draw();
 }
 
@@ -390,7 +481,9 @@ async function analyse() {
 
 async function createTemplate() {
 	if (!selection.value) return;
-	const t = await sym.templateFromPage(props.docId, props.page, selection.value, newName.value || 'Symbol');
+	if (previewError.value) return;
+	const rect = selection.value.map((v) => Math.round(v));
+	const t = await sym.templateFromPage(props.docId, props.page, rect, newName.value || 'Symbol', trimOn.value);
 	if (t) {
 		selection.value = null;
 		newName.value = '';
@@ -441,6 +534,33 @@ watch(() => show.value.words, async (on) => {
 });
 watch([show, exclusion, testHere, () => sym.templates], draw, { deep: true });
 watch(mode, () => { selection.value = null; draw(); });
+watch(selection, (b) => {
+	if (!b) {
+		clearTimeout(previewTimer);
+		previewSeq++;
+		preview.value = null;
+		previewError.value = null;
+	}
+});
+watch(trimOn, () => schedulePreview());
+// The sidebar's "Draw on a drawing" opens the page ready to draw
+function takePendingMode() {
+	if (sym.pendingMode !== 'template') return;
+	sym.pendingMode = null;
+	mode.value = 'template';
+	sym.message = 'Drag a box around one symbol. Adjust it with the handles, check the preview, then create the template.';
+}
+watch(() => sym.pendingMode, takePendingMode);
+
+function onKey(e: KeyboardEvent) {
+	if (!selection.value || dragging.value) return;
+	const typing = e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+	if (e.key === 'Escape') {
+		selection.value = null;
+		draw();
+	} else if (e.key === 'Enter' && !typing && mode.value === 'template') void createTemplate();
+	else if (e.key === 'Enter' && !typing && mode.value === 'exclude') void addExclusion();
+}
 watch(libTemplates, (ts) => {
 	if (!ts.some((t) => t.id === addTemplate.value)) addTemplate.value = ts[0]?.id ?? '';
 }, { immediate: true });
@@ -449,9 +569,15 @@ let ro: ResizeObserver | null = null;
 onMounted(() => {
 	ro = new ResizeObserver(() => (img.value && scale ? draw() : fit()));
 	if (host.value) ro.observe(host.value);
+	window.addEventListener('keydown', onKey);
+	takePendingMode();
 	void load();
 });
-onBeforeUnmount(() => ro?.disconnect());
+onBeforeUnmount(() => {
+	ro?.disconnect();
+	window.removeEventListener('keydown', onKey);
+	clearTimeout(previewTimer);
+});
 </script>
 
 <template>
@@ -504,15 +630,26 @@ onBeforeUnmount(() => ro?.disconnect());
 		<p v-else-if="sym.message" class="saved">{{ sym.message }}</p>
 
 		<div class="sym-body" :class="{ 'no-side': !side }">
-			<div ref="host" class="sym-canvas-host" :class="`mode-${mode}`">
+			<div ref="host" class="sym-canvas-host" :class="[`mode-${mode}`, hoverHandle ? `handle-${hoverHandle}` : '']">
 				<canvas ref="canvas" @pointerdown="onDown" @pointermove="onMove" @pointerup="onUp" @wheel.prevent="onWheel" @dblclick="fit" />
-				<div v-if="selection && !dragging && mode === 'template'" class="sym-banner floating">
-					<span>Make a template from the selected symbol (its text is left out, and the box is trimmed to the linework):</span>
-					<input v-model="newName" placeholder="Name, e.g. Instrument bubble" @keydown.enter="createTemplate" />
-					<button type="button" class="small" :disabled="sym.busy" @click="createTemplate">Create template</button>
+				<div v-if="selection && !dragging && mode === 'template'" class="sym-banner floating bottom">
+					<div class="sym-preview" :title="preview ? 'What the template will be (page text left out)' : ''">
+						<img v-if="preview" :src="`data:image/png;base64,${preview.png}`" alt="Template preview" />
+						<span v-else-if="!previewError" class="hint small">Preview…</span>
+					</div>
+					<div class="sym-preview-side">
+						<span v-if="previewError" class="error small">{{ previewError }}</span>
+						<span v-else-if="preview" class="small">New template: {{ preview.width }} × {{ preview.height }} px{{ trimOn ? ' after trimming' : '' }}.
+							Drag the handles to adjust the box; Esc cancels.</span>
+						<label class="check small" title="Shrink the box to the symbol's lines (green outline)"><input v-model="trimOn" type="checkbox" /> Trim to the linework</label>
+						<div class="row tight">
+							<input v-model="newName" placeholder="Name, e.g. Instrument bubble" aria-label="Template name" @keydown.enter="createTemplate" />
+							<button type="button" class="small" :disabled="sym.busy || !!previewError" @click="createTemplate">Create template</button>
+						</div>
+					</div>
 					<button type="button" class="secondary small" @click="selection = null; draw()">Cancel</button>
 				</div>
-				<div v-else-if="selection && !dragging && mode === 'exclude'" class="sym-banner floating">
+				<div v-else-if="selection && !dragging && mode === 'exclude'" class="sym-banner floating bottom">
 					<span>Ignore text in this area on every sheet that uses “{{ lib?.name }}” (title block, notes, revision table)?</span>
 					<button type="button" class="small" :disabled="sym.busy" @click="addExclusion">Ignore area</button>
 					<button type="button" class="secondary small" @click="selection = null; draw()">Cancel</button>

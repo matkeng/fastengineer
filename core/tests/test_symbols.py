@@ -417,3 +417,14 @@ def test_apply_review_matches_by_overlap_and_is_repeatable() -> None:
     assert again.model_dump() == out.model_dump()
     restored = apply_review(out, words, PageReview(), lib, {"t": t})
     assert sorted(x.tag for x in restored.tags) == ["FT-101", "LT-500", "PT-102"]
+
+
+def test_trim_box_matches_trim() -> None:
+    from workbench_core.symbols.templates import crop, trim, trim_box
+    page = np.full((200, 300), 255, np.uint8)
+    cv2.circle(page, (150, 100), 20, 0, 2)
+    box = trim_box(page, [100, 50, 220, 160])
+    assert box == [127.0, 77.0, 174.0, 124.0]
+    assert crop(page, box).shape == trim(crop(page, [100, 50, 220, 160])).shape
+    with pytest.raises(ValueError, match="no linework"):
+        trim_box(page, [0, 0, 50, 50])

@@ -180,9 +180,11 @@ imported only when used). API: `desktop/engine/workbench_desktop/symbols_api.py`
 2. **Add PDFs** into a library. Each page is rendered once at 200 DPI to a lossless PNG,
    with the page's rotation applied, and its text-layer words are mapped into the same pixel
    frame (`<data dir>/symbols/<drawing>/`).
-3. **Templates.** On a page, choose **New template** and drag a box around a symbol. It is
-   cut with the page text erased and trimmed to the linework. You can also add a symbol
-   image file. In the template editor:
+3. **Templates.** Press **Draw on a drawing** in the sidebar (or **New template** on any
+   page) and drag a box around a symbol. Adjust the box with its handles; a preview shows
+   the template that will be cut (page text erased, trimmed to the linework, outlined in
+   green on the sheet) and its size before you create it. You can also add a symbol image
+   file. In the template editor:
    - click where each part of the tag is written;
    - set the **threshold**; any page can override it, or skip the template;
    - choose the rotated, mirrored and size variants;

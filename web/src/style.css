@@ -430,6 +430,7 @@ main.fill .sym-viewer, main.fill .sym-run { overflow: hidden; }
 .sym-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; margin-bottom: 8px; border-radius: 6px;
 	background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); flex-shrink: 0; }
 .sym-banner.floating { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 2; background: var(--card); box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+.sym-banner.floating.bottom { top: auto; bottom: 8px; } /* keeps the box being drawn (usually mid-sheet) and its handles visible */
 .sym-banner.test { background: #fff7ed; border-color: #fdba74; }
 .sym-banner.ok { background: color-mix(in srgb, var(--ok) 12%, transparent); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 .sym-banner input { min-width: 200px; }
@@ -439,6 +440,18 @@ main.fill .sym-viewer, main.fill .sym-run { overflow: hidden; }
 .sym-canvas-host { position: relative; min-height: 360px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: #e5e7eb; }
 .sym-canvas-host canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 .sym-canvas-host.mode-template canvas, .sym-canvas-host.mode-exclude canvas, .sym-canvas-host.mode-add canvas { cursor: crosshair; }
+.sym-canvas-host.handle-move canvas { cursor: move; }
+.sym-canvas-host.handle-nw canvas, .sym-canvas-host.handle-se canvas { cursor: nwse-resize; }
+.sym-canvas-host.handle-ne canvas, .sym-canvas-host.handle-sw canvas { cursor: nesw-resize; }
+.sym-canvas-host.handle-n canvas, .sym-canvas-host.handle-s canvas { cursor: ns-resize; }
+.sym-canvas-host.handle-e canvas, .sym-canvas-host.handle-w canvas { cursor: ew-resize; }
+.sym-preview { display: flex; align-items: center; justify-content: center; width: 104px; height: 104px; flex: 0 0 104px;
+	border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+.sym-preview img { max-width: 96px; max-height: 96px; image-rendering: pixelated; }
+.sym-preview-side { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 220px; }
+.sym-preview-side label.check { align-self: flex-start; }
+.sym-banner .sym-preview-side input[type=checkbox] { min-width: 0; }
+.sym-preview-side .row input { flex: 1; }
 .sym-overlay-msg { position: absolute; top: 12px; left: 12px; margin: 0; padding: 4px 10px; background: var(--card); border-radius: 6px; }
 .sym-side { overflow: auto; min-height: 0; font-size: 0.86rem; }
 .sym-side h4:first-of-type { margin-top: 8px; }
