@@ -34,6 +34,8 @@ The app's tabs:
   list; ships with a P&ID instrument example (see below).
 - **List import**: turn an equipment list into a load list, or a tags list
   into an instrument list, with a saved, re-applicable recipe of rules (see below).
+- **Project lists**: the key lists every project has, starting with Plant Areas
+  (see below).
 - **Lists & tables**: your own enumerated lists and typed tables (see below).
 - **Engine**: engine status (port, Python version, whether it's
   Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
@@ -421,6 +423,24 @@ Differences from the PRD's implementation, from its known-issues list (§11):
   warning, rather than replaced with `-9999`.
 - Not included: pushing into a load-list database (there isn't one here yet;
   export instead) and Transpose columns (not applied in the PRD either).
+
+## Project lists
+
+The key lists every project has, with fixed columns and rules
+(`core/src/workbench_core/keylists/`, API
+`desktop/engine/workbench_desktop/keylists_api.py`, UI `web/src/components/keylists/`).
+Unlike **Lists & tables**, you don't create or name them: each project has one of each.
+
+- **Plant Areas**: a tree of the plant's breakdown. Each item has a
+  **Tag number** (required, unique in the whole list), a **Description**
+  (required, unique in the whole list), a **WBS number** (optional, but not used
+  twice) and an **Area type**: WBS, Area, Building, Room or Panel. Uniqueness
+  ignores case and extra spaces. Any type can sit under any other; a new item
+  starts as the type below its parent's. The editor is the tree editor described
+  below (expand/collapse, filter, drag and drop, Alt+arrow keys, Save/Discard),
+  and saves are recorded in the change log.
+- A new project starts with an empty list; copying standards from another
+  project does not copy its plant areas.
 
 ## Lists, trees & tables
 

@@ -23,6 +23,7 @@ from .mel_api import router as mel_router
 from .symbols_api import router as symbols_router
 from .refdata_api import router as refdata_router
 from .generators_api import router as generators_router
+from .keylists_api import router as keylists_router
 from .projects_api import router as projects_router
 from .storage import get_store
 
@@ -35,6 +36,7 @@ _RECORD_URLS = [(re.compile(p), entity) for p, entity in (
     (r"^/api/ref/enums/([^/]+)$", "ref_enum"),
     (r"^/api/ref/trees/([^/]+)$", "ref_tree"),
     (r"^/api/ref/tables/([^/]+)$", "ref_table"),
+    (r"^/api/keylists/(plant-areas)$", "plant_areas"),
     (r"^/api/mel/recipes/([^/]+)$", "mel_recipe"),
     (r"^/api/symbols/libraries/([^/]+)$", "sym_library"),
     (r"^/api/symbols/templates/([^/]+)$", "sym_template"),
@@ -84,6 +86,7 @@ def conflict(_: Request, exc: Conflict) -> JSONResponse:
 app.include_router(excel_router)
 app.include_router(mel_router)
 app.include_router(refdata_router)
+app.include_router(keylists_router)
 app.include_router(symbols_router)
 app.include_router(generators_router)
 app.include_router(dashboard_router)

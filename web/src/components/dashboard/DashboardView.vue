@@ -67,6 +67,7 @@ const kpis = computed<Kpi[]>(() => {
 			sub: k.latest_run_at ? `latest analysis, ${ago(k.latest_run_at)}` : 'no analysis yet' },
 		{ label: 'List imports', icon: 'recipe', value: k.recipes, go: 'mel',
 			sub: `${k.revisions} file revision(s)${k.latest_revision_at ? `, last ${ago(k.latest_revision_at)}` : ''}` },
+		{ label: 'Plant areas', icon: 'tree', value: k.plant_areas, go: 'keylists', sub: 'project list' },
 		{ label: 'Lists, trees & tables', icon: 'database', value: k.enums + k.trees + k.tables, go: 'ref',
 			sub: `${k.enums} lists · ${k.trees} trees · ${k.tables} tables · ${k.rows} rows` },
 		{ label: 'Generators', icon: 'generator', value: k.generators, go: 'generators',

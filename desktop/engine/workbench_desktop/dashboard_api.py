@@ -11,7 +11,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from .excel_api import store as workbooks
-from .storage import get_generators, get_ref, get_store
+from .storage import get_generators, get_keylists, get_ref, get_store
 from . import symbols_api  # looked up per request, so tests can stub its OCR provider
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -53,6 +53,7 @@ class Counts(BaseModel):
     trees: int = 0
     tables: int = 0
     rows: int = 0
+    plant_areas: int = 0
     generators: int = 0
     gen_builds: int = 0
     plc_panels: int = 0
@@ -137,6 +138,8 @@ def dashboard() -> Dashboard:
         if t.updated_at:
             events.append(Event(kind="table", section="ref", id=t.id, title=t.name,
                                 detail=f"table · {counts.get(t.id, 0)} rows", at=t.updated_at))
+
+    c.plant_areas = len(get_keylists().plant_areas().nodes)
 
     # Symbol detection
     sym = symbols_api.store()

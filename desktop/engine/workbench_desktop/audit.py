@@ -41,6 +41,7 @@ ENTITIES = {
     "ref_tree": "tree",
     "ref_table": "table",
     "ref_row": "table row",
+    "plant_areas": "plant areas list",
     "sym_library": "symbol library",
     "sym_drawing": "drawing",
     "sym_template": "symbol template",

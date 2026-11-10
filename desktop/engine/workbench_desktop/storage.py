@@ -17,6 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from workbench_core.keylists import PlantAreaList
 from workbench_core.mel import Recipe, Revision
 from workbench_core.refdata import EnumList, RefRow, RefTable, RefTree, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
@@ -149,6 +150,11 @@ CREATE TABLE IF NOT EXISTS gen_hardware (
 );
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
+    data TEXT NOT NULL
+);
+-- Key lists: the project's built-in lists, one JSON document each (id 'plant-areas', ...).
+CREATE TABLE IF NOT EXISTS key_lists (
+    id TEXT PRIMARY KEY,
     data TEXT NOT NULL
 );
 """
@@ -480,6 +486,32 @@ class RefStore:
                 audit.log(self._db, "ref_row", row_id, before, None, parent_id=table_id,
                           label=self._row_label(table_id), stored_time=json.loads(before).get("updated_at"))
             self._db.execute("DELETE FROM ref_rows WHERE id = ? AND table_id = ?", (row_id, table_id))
+
+
+class KeyListStore:
+    """The project's built-in lists. Shares the Store's connection and lock."""
+
+    PLANT_AREAS = "plant-areas"
+
+    def __init__(self, store: Store):
+        self._db = store._db
+        self._lock = store._lock
+
+    def plant_areas(self) -> PlantAreaList:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.PLANT_AREAS,)).fetchone()
+        return PlantAreaList.model_validate_json(row[0]) if row else PlantAreaList()
+
+    def save_plant_areas(self, areas: PlantAreaList) -> PlantAreaList:
+        areas = areas.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.PLANT_AREAS,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.PLANT_AREAS, areas.model_dump_json()))
+            # Every project has the list from the start (empty), so the first save is a change too.
+            audit.log(self._db, "plant_areas", self.PLANT_AREAS, before or PlantAreaList().model_dump_json(),
+                      areas.model_dump_json(), label="Plant Areas")
+        return areas
 
 
 class InUse(ValueError):
@@ -1073,6 +1105,10 @@ def get_store() -> Store:
 
 def get_ref() -> RefStore:
     return RefStore(get_store())
+
+
+def get_keylists() -> KeyListStore:
+    return KeyListStore(get_store())
 
 
 def get_symbols() -> SymbolStore:

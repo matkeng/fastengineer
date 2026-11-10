@@ -691,6 +691,21 @@ button.icon-btn.danger:hover:not(:disabled) { color: var(--danger); }
 .tree-empty { padding: 14px; }
 .tree-drop-top { margin: 6px; padding: 8px; border: 1px dashed var(--accent); border-radius: 3px; color: var(--accent); text-align: center; font-size: 12px; background: var(--select); }
 @media (max-width: 900px) { .tree-head, .tree-row { grid-template-columns: minmax(220px, 1.3fr) minmax(120px, 1fr) auto; } .tree-head span:nth-child(3), .tree-row > .tree-cell:nth-child(3) { display: none; } }
+/* Plant Areas: the same tree with tag, description, WBS number and area type columns. */
+.plant-areas .tree-head, .plant-areas .tree-row { grid-template-columns: minmax(260px, 1.2fr) minmax(180px, 1.5fr) minmax(90px, 0.6fr) 110px 190px; }
+/* Same padding as the rows, so the headings sit over their columns. */
+.plant-areas .tree-head { padding: 4px 8px; }
+.plant-areas .tree-head span { padding-left: 6px; }
+.plant-areas .tree-head span:first-child { padding-left: 44px; }
+.plant-areas .key-title { margin: 0; font-size: 1rem; }
+.tree-row select.cell-input { height: 24px; width: 100%; padding: 0 4px; border-color: transparent; background-color: transparent; border-radius: 2px; }
+.tree-row select.cell-input:hover { border-color: var(--border); background-color: var(--card); }
+.tree-row select.cell-input:focus { border-color: var(--accent); background-color: var(--card); }
+@media (max-width: 900px) {
+	.plant-areas .tree-head, .plant-areas .tree-row { grid-template-columns: minmax(200px, 1.2fr) minmax(140px, 1.5fr) 80px 100px 190px; }
+	.plant-areas .tree-head span:nth-child(3) { display: inline; }
+	.plant-areas .tree-row > .tree-cell:nth-child(3) { display: flex; }
+}
 /* Inputs directly in a column layout must not grow vertically. */
 .ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }
 
