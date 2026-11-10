@@ -37,7 +37,45 @@ export interface LoadTypeForm {
 }
 export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id'>;
 
-export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | CodeListId;
+export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | CodeListId;
+
+/** An item of the Electrical Equipment List (references are ids in the other lists). */
+export interface EelItem {
+	id: string; tag: string; description: string; equipment_code_id: string; plant_area_id: string;
+	vendor_package_id: string | null; load_type_id: string | null; rating: string | null; rating_unit: RatingUnit | null;
+	voltage: number | null; phases: Phases | null; is_panel: boolean; supplied_from: string | null;
+	manufacturer: string; model_number: string; supplied_by_id: string | null; installed_by_id: string | null; terminated_by_id: string | null;
+}
+/** An item as typed into the form: numbers are text until the engine converts them. */
+export type EelForm = Omit<EelItem, 'rating' | 'voltage'> & { rating: string; voltage: string };
+export interface EelChoice { id: string; label: string; depth: number }
+export interface EelView {
+	items: EelItem[];
+	choices: {
+		equipment_codes: EelChoice[]; packages: EelChoice[]; plant_areas: EelChoice[]; supplies: EelChoice[];
+		load_types: (EelChoice & { rating_unit: RatingUnit; voltage: number; phases: Phases })[];
+	};
+	clashes: Record<string, string[]>; // item id -> imports that have its tag too
+	updated_at: string | null;
+}
+export const EEL_SOURCE = 'eel';
+
+/** The same rules as the engine's check_eel (the import-tag check is the engine's), for the form. */
+export function eelProblems(f: EelForm, others: EelItem[]): Record<string, string> {
+	const key = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+	const out: Record<string, string> = {};
+	if (!key(f.tag)) out.tag = 'Tag number is required';
+	else if (others.some((o) => key(o.tag) === key(f.tag))) out.tag = 'Tag number is used by another item';
+	if (!key(f.description)) out.description = 'Description is required';
+	if (!f.equipment_code_id) out.equipment_code_id = 'Equipment type is required';
+	if (!f.plant_area_id) out.plant_area_id = 'Plant area is required';
+	const v = f.voltage.trim().replace(/,/g, '');
+	if (v && !/^\d+(\.0*)?$/.test(v)) out.voltage = /^-/.test(v) ? "Can't be negative" : 'Not a whole number';
+	const r = f.rating.trim().replace(/,/g, '');
+	if (r && !/^[+-]?(\d+\.?\d*|\.\d+)$/.test(r)) out.rating = 'Not a number';
+	if (f.supplied_from === `${EEL_SOURCE}/${f.id}`) out.supplied_from = "An item can't be supplied from itself";
+	return out;
+}
 
 /** Equipment Codes and Instrument Codes: code, name, description and one more field. */
 export type CodeListId = 'equipment-codes' | 'instrument-codes';
@@ -93,6 +131,7 @@ export interface KeyListOverview {
 	load_types: { items: number };
 	load_list: { rows: number; unallocated: number };
 	equipment_codes: { items: number };
+	eel: { items: number };
 	instrument_codes: { items: number };
 	rating_units: string[];
 	phases: string[];

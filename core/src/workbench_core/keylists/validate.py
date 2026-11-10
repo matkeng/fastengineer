@@ -15,6 +15,8 @@ from .models import (
     DISCIPLINES,
     PHASES,
     RATING_UNITS,
+    EelItem,
+    EelList,
     EquipmentPackageList,
     LoadType,
     LoadTypeList,
@@ -238,3 +240,78 @@ def check_code_list(rows: list[dict], model: type[BaseModel], what: str) -> list
     if errors:
         raise RefValidationError(f"{len(errors)} problem(s) in the {what}.", errors)
     return items
+
+
+# -- the Electrical Equipment List ----------------------------------------------------------
+
+#: Reference fields -> (what it is called, required).
+EEL_REFS = {
+    "equipment_code_id": ("Equipment type", True), "plant_area_id": ("Plant area", True),
+    "vendor_package_id": ("Vendor package", False), "load_type_id": ("Load type", False),
+    "supplied_by_id": ("Supplied by", False), "installed_by_id": ("Installed by", False),
+    "terminated_by_id": ("Terminated by", False), "supplied_from": ("Supplied from", False),
+}
+_EEL_TEXT = ("tag", "description", "manufacturer", "model_number")
+
+
+def check_eel(rows: list[dict], known: dict[str, set[str]]) -> EelList:
+    """Check the items of the Electrical Equipment List as sent (numbers may be text).
+
+    The tag is required and unique in the list; description, equipment type and plant area
+    are required; each reference must be one of `known[field]` (`supplied_from`: the primary
+    supply or a distribution panel); an item can't be supplied from itself. Rating is a
+    number, voltage a whole number (not negative). Order is kept. (Tags must also not repeat
+    an import's tags: the engine checks that, as it knows the imports.)"""
+    from .loadlist import EEL_SOURCE, PRIMARY_SUPPLY
+
+    errors: dict[str, str] = {}
+    out: list[SimpleNamespace] = []
+    ids: set[str] = set()
+    for raw in rows:
+        r = SimpleNamespace(id=str(raw.get("id") or new_id()))
+        if r.id in ids:
+            raise RefValidationError("Two equipment items have the same id.", {f"{r.id}.tag": "Duplicate item"})
+        ids.add(r.id)
+
+        def problem(field: str, message: str) -> None:
+            errors[f"{r.id}.{field}"] = message
+
+        for field in _EEL_TEXT:
+            setattr(r, field, str(raw.get(field) or "").strip())
+        if not r.description:
+            problem("description", "Description is required")
+        for field, (label, required) in EEL_REFS.items():
+            value = raw.get(field) or None
+            setattr(r, field, value)
+            if value is None:
+                if required:
+                    problem(field, f"{label} is required")
+            elif field == "supplied_from" and value == f"{EEL_SOURCE}/{r.id}":
+                problem(field, "An item can't be supplied from itself")
+            elif value not in known.get(field, set()) and not (field == "supplied_from" and value == PRIMARY_SUPPLY):
+                problem(field, f"That {label.lower()} no longer exists" if field != "supplied_from"
+                        else "Not an active distribution panel")
+        r.rating_unit = raw.get("rating_unit") or None
+        if r.rating_unit is not None and r.rating_unit not in RATING_UNITS:
+            problem("rating_unit", "Choose kW or Amps")
+        r.phases = raw.get("phases") or None
+        if r.phases is not None and r.phases not in PHASES:
+            problem("phases", "Choose the phases")
+        try:
+            r.voltage = coerce(raw.get("voltage"), _INTEGER, None)
+            if r.voltage is not None and r.voltage < 0:
+                problem("voltage", "Can't be negative")
+        except ValueError as exc:
+            r.voltage = None
+            problem("voltage", str(exc))
+        try:
+            r.rating = coerce(raw.get("rating"), _DECIMAL, None)
+        except ValueError as exc:
+            r.rating = None
+            problem("rating", str(exc))
+        r.is_panel = str(raw.get("is_panel") or "").strip().casefold() in TRUE
+        out.append(r)
+    _check_unique(out, (("tag", "Tag number", True),), errors)
+    if errors:
+        raise RefValidationError(f"{len(errors)} problem(s) in the equipment list.", errors)
+    return EelList(items=[EelItem(**vars(r)) for r in out])

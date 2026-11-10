@@ -5,7 +5,7 @@ import type { ColumnsConfig } from 'datatables.net';
 import { computed, onBeforeUnmount, ref, toRaw, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, type SelectFilter, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
-import { type Allocation, type LoadListChoice, type LoadListRow, PRIMARY_SUPPLY, rowRef, rowTag } from '../../lib/keyListTypes';
+import { type Allocation, EEL_SOURCE, type LoadListChoice, type LoadListRow, PRIMARY_SUPPLY, rowRef, rowTag } from '../../lib/keyListTypes';
 import { LOAD_FIELD_LABELS } from '../../lib/melTypes';
 import { useKeyLists } from '../../stores/keylists';
 import { useUi } from '../../stores/ui';
@@ -49,6 +49,9 @@ const supplyChoices = (except?: string): LoadListChoice[] => [
 ];
 const bulkChoices = (kind: SelectKind) => (kind === 'supplied_from' ? supplyChoices() : choices(kind));
 const FROM_IMPORT = new Set(['area', 'load_type', 'is_a_loadcentre', 'supplied_from']);
+// Rows from the Electrical Equipment List: what is edited here is set there instead.
+const fromEel = (r: LoadListRow) => r.recipe_id === EEL_SOURCE;
+const eelCell = (text: string) => `<span class="from-eel" title="Set in the Electrical Equipment List">${escapeHtml(text) || '—'}</span>`;
 const autoTip = 'Filled in automatically from the import (it follows the import until you choose)';
 const labelOf = (kind: Kind, id: string | null) => (id ? choices(kind).find((c) => c.id === id)?.label ?? '⚠ deleted item' : '');
 
@@ -88,6 +91,7 @@ function build() {
 		render: (id: string, type: string, row: LoadListRow) => {
 			const label = labelOf(kind, id || null);
 			if (type !== 'display') return label;
+			if (fromEel(row)) return eelCell(label);
 			let html = options[kind];
 			if (id && !choices(kind).some((c) => c.id === id)) html += `<option value="${escapeHtml(id)}">⚠ deleted item</option>`;
 			if (id) html = html.replace(`value="${escapeHtml(id)}"`, `value="${escapeHtml(id)}" selected`);
@@ -122,6 +126,7 @@ function build() {
 			title: 'Distribution panel', data: (row: LoadListRow) => row.is_panel, className: 'alloc-col center',
 			render: (on: boolean, type: string, row: LoadListRow) => {
 				if (type !== 'display') return on ? 'Yes' : 'No';
+				if (fromEel(row)) return eelCell(on ? '✓' : '');
 				const tip = row.is_panel_by === 'auto' ? autoTip : 'Other rows can be supplied from a distribution panel';
 				return `<label class="panel-flag${row.is_panel_by === 'auto' ? ' auto' : ''}" title="${tip}"><input type="checkbox" class="alloc-check" data-row="${rows.indexOf(row)}" aria-label="Distribution panel"${on ? ' checked' : ''} /></label>`;
 			},
@@ -131,6 +136,7 @@ function build() {
 			render: (ref: string, type: string, row: LoadListRow) => {
 				const label = supplyLabel(ref || null);
 				if (type !== 'display') return label;
+				if (fromEel(row)) return eelCell(label);
 				const own = rowRef(row);
 				const options = supplyChoices(own);
 				let html = '<option value="">— not set —</option>'
@@ -229,13 +235,14 @@ async function onChange(e: Event) {
 }
 
 // -- set an allocation for every row the filters show ---------------------------------------
-const bulk = ref<{ kind: SelectKind; value: string; rows: LoadListRow[] } | null>(null);
+const bulk = ref<{ kind: SelectKind; value: string; rows: LoadListRow[]; skipped: number } | null>(null);
 const BULK_TITLE: Record<SelectKind, string> = { plant_area: 'plant area', load_type: 'load type', supplied_from: 'supplied from' };
 
 function openBulk(kind: SelectKind) {
 	if (!table) return;
-	const rows = table.api.rows({ search: 'applied' }).data().toArray() as LoadListRow[];
-	bulk.value = { kind, value: '', rows };
+	const shown = table.api.rows({ search: 'applied' }).data().toArray() as LoadListRow[];
+	const rows = shown.filter((r) => !fromEel(r));
+	bulk.value = { kind, value: '', rows, skipped: shown.length - rows.length };
 }
 
 async function applyBulk() {
@@ -272,7 +279,8 @@ onBeforeUnmount(() => table?.api.destroy());
 		</div>
 		<p v-if="kl.error && !bulk" class="error">{{ kl.error }}</p>
 		<p class="hint small">
-			The rows of every MEL and EEL import (latest file, saved rules and mapping). The plant area, load type, distribution
+			The rows of every MEL and EEL import (latest file, saved rules and mapping) and of the Electrical Equipment List
+			(whose plant area, load type, panel and supply are set in that list). The plant area, load type, distribution
 			panel and supplied from are edited here, each saved as soon as you choose it. <em>Italic</em> ones were filled in
 			automatically from the import: its area / load type equals a plant area's tag number / a load type's code, its
 			"is a load centre" marks a panel, and its "supplied from" equals a panel's tag.
@@ -302,6 +310,9 @@ onBeforeUnmount(() => table?.api.destroy());
 				<p>
 					This sets the {{ BULK_TITLE[bulk.kind] }} of the
 					<strong>{{ bulk.rows.length }}</strong> row(s) the filters show, replacing what they have now.
+				</p>
+				<p v-if="bulk.skipped" class="hint">
+					{{ bulk.skipped }} row(s) from the Electrical Equipment List are left out: change those in that list.
 				</p>
 				<label class="field">
 					<span>{{ BULK_TITLE[bulk.kind][0].toUpperCase() + BULK_TITLE[bulk.kind].slice(1) }}</span>

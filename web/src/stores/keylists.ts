@@ -4,7 +4,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { ApiError, apiDelete, apiGet, apiGetBlob, apiPut, apiPutBytes, apiPutWith } from '../lib/engine';
 import type {
-	Allocation, CodeList, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList,
+	Allocation, CodeList, EelForm, EelView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList,
 } from '../lib/keyListTypes';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -31,6 +31,8 @@ export const useKeyLists = defineStore('keylists', () => {
 	// The Load List is built from the imports each time it is opened (it can take a moment).
 	const loadList = ref<LoadListView | null>(null);
 	// Equipment Codes and Instrument Codes: no draft either; a row is saved from its form.
+	// The Electrical Equipment List, with the choices for its references.
+	const eel = ref<EelView | null>(null);
 	const codeLists = ref<Record<CodeListId, CodeList | null>>({ 'equipment-codes': null, 'instrument-codes': null });
 	const areasDirty = computed(() => differ(areasDraft.value, areasSaved.value));
 	const packagesDirty = computed(() => differ(packagesDraft.value, packagesSaved.value));
@@ -97,6 +99,8 @@ export const useKeyLists = defineStore('keylists', () => {
 		}
 		const l = await run(() => apiGet<LoadTypeList>(LOAD_TYPES));
 		if (l) loadTypes.value = l;
+		const e = await run(() => apiGet<EelView>('/api/eel'));
+		if (e) eel.value = e;
 		for (const id of ['equipment-codes', 'instrument-codes'] as const) {
 			const c = await run(() => apiGet<CodeList>(`/api/keylists/${id}`));
 			if (c) codeLists.value[id] = c;
@@ -167,6 +171,27 @@ export const useKeyLists = defineStore('keylists', () => {
 		return true;
 	}
 
+	/** Add the item to the Electrical Equipment List, or replace the saved item with the same id. */
+	function saveEelItem(item: EelForm): Promise<boolean> {
+		const items: unknown[] = [...(eel.value?.items ?? [])];
+		const i = items.findIndex((r) => (r as { id: string }).id === item.id);
+		if (i >= 0) items.splice(i, 1, item);
+		else items.push(item);
+		return putEel(items);
+	}
+
+	function deleteEelItem(id: string): Promise<boolean> {
+		return putEel((eel.value?.items ?? []).filter((r) => r.id !== id));
+	}
+
+	async function putEel(items: unknown[]): Promise<boolean> {
+		const e = await run(() => apiPut<EelView>('/api/eel', { items }));
+		if (!e) return false;
+		eel.value = e;
+		await refresh();
+		return true;
+	}
+
 	async function saveAreas() {
 		const d = areasDraft.value;
 		if (!d) return;
@@ -202,6 +227,6 @@ export const useKeyLists = defineStore('keylists', () => {
 	return {
 		overview, selected, busy, error, fieldErrors, message, areasSaved, areasDraft, packagesSaved, packagesDraft,
 		loadTypes, areasDirty, packagesDirty, dirty, refresh, select, load, saveAreas, savePackages, discard,
-		saveLoadType, deleteLoadType, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow,
+		saveLoadType, deleteLoadType, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem,
 	};
 });

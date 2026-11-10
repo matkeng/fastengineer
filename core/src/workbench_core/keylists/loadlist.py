@@ -33,7 +33,11 @@ LOAD_LIST_TARGETS = ("MEL", "EEL")
 PRIMARY_SUPPLY = "primary"
 
 CellValue = str | float | int | bool | None
-AllocatedBy = Literal["auto", "user"]
+AllocatedBy = Literal["auto", "user", "eel"]
+#: Who set a value that automatic fill must leave alone: a person, or the Electrical Equipment List.
+KEPT = ("user", "eel")
+#: The Load List "import id" of the Electrical Equipment List's items (row key = the item's id).
+EEL_SOURCE = "eel"
 
 
 class LoadListRow(BaseModel):
@@ -85,12 +89,12 @@ def apply_auto(row: LoadListRow, areas: dict[str, str | None], types: dict[str, 
     row; a person's choice is kept. (Supplied from comes after, see apply_auto_supply.)"""
     update: dict[str, object] = {}
     for kind, field, index in (("plant_area", "area", areas), ("load_type", "load_type", types)):
-        if getattr(row, f"{kind}_by") == "user":
+        if getattr(row, f"{kind}_by") in KEPT:
             continue
         found = auto_match(row.values.get(field), index)
         update[f"{kind}_id"] = found
         update[f"{kind}_by"] = "auto" if found else None
-    if row.is_panel_by != "user":
+    if row.is_panel_by not in KEPT:
         flag = row.values.get("is_a_loadcentre")
         update["is_panel"] = flag is True
         update["is_panel_by"] = "auto" if isinstance(flag, bool) else None
@@ -104,7 +108,7 @@ def panel_index(rows: list[LoadListRow]) -> dict[str, str | None]:
 
 def apply_auto_supply(row: LoadListRow, panels: dict[str, str | None]) -> LoadListRow:
     """Fill in (or follow) the automatic supplied-from of a row from its `supplied_from` text."""
-    if row.supplied_from_by == "user":
+    if row.supplied_from_by in KEPT:
         return row
     found = auto_match(row.values.get("supplied_from"), panels)
     if found == row.ref():

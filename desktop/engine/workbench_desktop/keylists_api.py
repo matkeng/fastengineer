@@ -56,7 +56,8 @@ def overview() -> dict:
             "load_list": _load_list_counts(),
             "equipment_codes": {"items": len(lists.code_list("equipment-codes").items)},
             "instrument_codes": {"items": len(lists.code_list("instrument-codes").items)},
-            "disciplines": [{"code": c, "name": n} for c, n in DISCIPLINES.items()]}
+            "disciplines": [{"code": c, "name": n} for c, n in DISCIPLINES.items()],
+            "eel": {"items": len(lists.eel().items)}}
 
 
 def _load_list_counts() -> dict[str, int]:
@@ -65,8 +66,19 @@ def _load_list_counts() -> dict[str, int]:
     return {"rows": len(rows), "unallocated": sum(not (r.plant_area_id and r.load_type_id) for r in rows)}
 
 
+def _refuse_eel(fields: tuple[str, ...], removed: dict[str, str], what: str) -> None:
+    """Refuse to delete items the Electrical Equipment List refers to. `removed`: id -> label."""
+    from .eel_api import eel_uses  # imported late: eel_api builds on the key lists
+    in_use = eel_uses(fields, removed)
+    if in_use:
+        raise RefValidationError(f"These {what} are used in the Electrical Equipment List and can't be deleted: "
+                                 f"{', '.join(in_use)}. Change those items first.")
+
+
 def _refuse_in_use(kind: str, removed: dict[str, str], what: str) -> None:
-    """Refuse to delete items a person allocated in the Load List. `removed`: id -> label."""
+    """Refuse to delete items a person (or the Electrical Equipment List) allocated in the Load
+    List. `removed`: id -> label."""
+    _refuse_eel((f"{kind}_id",), removed, what)
     used = get_loadlist().used(kind)
     in_use = [f"{label} ({used[i]} row{'s' if used[i] > 1 else ''})" for i, label in removed.items() if i in used]
     if in_use:
@@ -110,7 +122,11 @@ def update_equipment_packages(body: EquipmentPackagesUpdate):
     lists = get_keylists()
     types = lists.equipment_packages().types if body.types is None else body.types
     try:
-        return lists.save_equipment_packages(check_equipment_packages(EquipmentPackageList(items=body.items, types=types)))
+        packages = check_equipment_packages(EquipmentPackageList(items=body.items, types=types))
+        kept = {p.id for p in packages.items}
+        _refuse_eel(("vendor_package_id", "supplied_by_id", "installed_by_id", "terminated_by_id"),
+                    {p.id: p.number for p in lists.equipment_packages().items if p.id not in kept}, "packages")
+        return lists.save_equipment_packages(packages)
     except RefValidationError as exc:
         return invalid(exc)
 
@@ -200,7 +216,12 @@ def _code_list_routes(list_id: str, model, list_model, what: str) -> None:
     @router.put(f"/{list_id}", response_model=list_model, name=f"update_{list_id}")
     def update_codes(body: CodeListUpdate):
         try:
-            return get_keylists().save_code_list(list_id, check_code_list(body.items, model, what))
+            items = check_code_list(body.items, model, what)
+            if list_id == "equipment-codes":
+                kept = {i.id for i in items}
+                _refuse_eel(("equipment_code_id",), {c.id: c.code for c in get_keylists().code_list(list_id).items
+                                                     if c.id not in kept}, "equipment codes")
+            return get_keylists().save_code_list(list_id, items)
         except RefValidationError as exc:
             return invalid(exc)
 

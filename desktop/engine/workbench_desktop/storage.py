@@ -18,8 +18,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from workbench_core.keylists import (
+    EEL_SOURCE,
+    KEPT,
     PRIMARY_SUPPLY,
     AttachedFile,
+    EelList,
     EquipmentCodeList,
     EquipmentPackageList,
     InstrumentCodeList,
@@ -555,6 +558,24 @@ class KeyListStore:
                       label="Equipment Packages")
         return packages
 
+    EEL = "electrical-equipment"
+
+    def eel(self) -> EelList:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.EEL,)).fetchone()
+        return EelList.model_validate_json(row[0]) if row else EelList()
+
+    def save_eel(self, items: EelList) -> EelList:
+        items = items.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.EEL,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.EEL, items.model_dump_json()))
+            # Logged as record "eel": the record the URL /api/eel names (for the stale-save check).
+            audit.log(self._db, "eel", "eel", before or EelList().model_dump_json(), items.model_dump_json(),
+                      label="Electrical Equipment List")
+        return items
+
     def code_list(self, list_id: str):
         model = self.CODE_LISTS[list_id][0]
         with self._lock:
@@ -677,9 +698,11 @@ class LoadListStore:
             for row in live:
                 old = stored.get((row.recipe_id, row.key))
                 base = old or LoadListRow(recipe_id=row.recipe_id, key=row.key, source=row.source, target=row.target)
-                out[(row.recipe_id, row.key)] = apply_auto(base.model_copy(update={
-                    "source": row.source, "target": row.target, "values": row.values, "status": row.status,
-                    "deleted_reason": row.deleted_reason}), areas, types)
+                update = {"source": row.source, "target": row.target, "values": row.values, "status": row.status,
+                          "deleted_reason": row.deleted_reason}
+                if row.recipe_id == EEL_SOURCE:  # the Electrical Equipment List sets these itself
+                    update |= {f: getattr(row, f) for f in self.EDITABLE} | {by: getattr(row, by) for by in self.EDITABLE.values()}
+                out[(row.recipe_id, row.key)] = apply_auto(base.model_copy(update=update), areas, types)
             for k, old in stored.items():
                 if k in out:
                     continue
@@ -718,6 +741,9 @@ class LoadListStore:
             for k in keys:
                 if k not in stored:
                     raise NotFound(f"{k[0]}/{k[1]}")
+                if k[0] == EEL_SOURCE:
+                    raise RefValidationError(f"{stored[k].tag()} is from the Electrical Equipment List: change it there.",
+                                             {"rows": "From the Electrical Equipment List"})
                 rows.append(stored[k])
             by_ref = {r.ref(): r for r in stored.values()}
 
@@ -745,7 +771,7 @@ class LoadListStore:
                 changed = {r.ref() for r in rows}
                 fed = {}
                 for r in stored.values():
-                    if r.supplied_from in changed and r.supplied_from_by == "user" and r.ref() not in changed:
+                    if r.supplied_from in changed and r.supplied_from_by in KEPT and r.ref() not in changed:
                         fed[r.supplied_from] = fed.get(r.supplied_from, 0) + 1
                 if fed:
                     raise RefValidationError(
@@ -783,7 +809,7 @@ class LoadListStore:
         """Ids a person allocated (kind "plant_area" or "load_type") -> how many rows."""
         counts: dict[str, int] = {}
         for r in self.rows():
-            if getattr(r, f"{kind}_by") == "user" and getattr(r, f"{kind}_id"):
+            if getattr(r, f"{kind}_by") in KEPT and getattr(r, f"{kind}_id"):
                 counts[getattr(r, f"{kind}_id")] = counts.get(getattr(r, f"{kind}_id"), 0) + 1
         return counts
 

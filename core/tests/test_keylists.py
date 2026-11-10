@@ -310,3 +310,39 @@ def test_code_lists() -> None:
                             {"id": "b", "code": "PT", "name": "Pressure transmitter", "plc_code": "AI"}],
                            InstrumentCode, "instrument codes")
     assert [i.plc_code for i in inst] == ["AI", "AI"]  # a PLC code may repeat
+
+
+# -- the Electrical Equipment List --------------------------------------------------------
+
+def test_check_eel() -> None:
+    from workbench_core.keylists import LoadListRow, apply_auto, apply_auto_supply, check_eel
+
+    known = {"equipment_code_id": {"c1"}, "plant_area_id": {"a1"}, "load_type_id": {"t1"}, "vendor_package_id": {"p1"},
+             "supplied_by_id": {"p1"}, "installed_by_id": {"p1"}, "terminated_by_id": {"p1"}, "supplied_from": {"eel/i1"}}
+    ok = {"id": "i1", "tag": " MCC-1 ", "description": "Motor control centre", "equipment_code_id": "c1", "plant_area_id": "a1"}
+    out = check_eel([ok | {"rating": "2.50", "voltage": "415", "rating_unit": "kW", "phases": "AC-3-phase", "is_panel": True,
+                           "manufacturer": " ACME ", "supplied_by_id": "p1"},
+                     {"id": "i2", "tag": "P-1", "description": "Pump", "equipment_code_id": "c1", "plant_area_id": "a1",
+                      "supplied_from": "eel/i1"}], known)
+    a, b = out.items
+    assert (a.tag, a.rating, a.voltage, a.is_panel, a.manufacturer, a.supplied_by_id) == ("MCC-1", "2.5", 415, True, "ACME", "p1")
+    assert (b.supplied_from, b.rating, b.load_type_id) == ("eel/i1", None, None)
+
+    with pytest.raises(RefValidationError) as e:
+        check_eel([ok, {"id": "i2", "tag": "mcc-1", "description": " ", "equipment_code_id": "nope", "plant_area_id": "",
+                        "voltage": "-1", "rating": "x", "phases": "AC", "supplied_from": "eel/i2"},
+                   {"id": "i3", "tag": "", "description": "d", "equipment_code_id": "c1", "plant_area_id": "a1",
+                    "supplied_from": "zz/1", "vendor_package_id": "p9"}], known)
+    assert e.value.fields == {
+        "i2.tag": "Tag number 'mcc-1' is used twice", "i2.description": "Description is required",
+        "i2.equipment_code_id": "That equipment type no longer exists", "i2.plant_area_id": "Plant area is required",
+        "i2.voltage": "Can't be negative", "i2.rating": "Not a number", "i2.phases": "Choose the phases",
+        "i2.supplied_from": "An item can't be supplied from itself", "i3.tag": "Tag number is required",
+        "i3.supplied_from": "Not an active distribution panel", "i3.vendor_package_id": "That vendor package no longer exists",
+    }
+
+    # Values the list sets ("eel") are left alone by automatic fill.
+    row = LoadListRow(recipe_id="eel", key="i1", source="EEL", target="EEL", values={"area": "100", "supplied_from": "X"},
+                      plant_area_id="a1", plant_area_by="eel", is_panel=True, is_panel_by="eel")
+    row = apply_auto_supply(apply_auto(row, {"100": "a2"}, {}), {"x": "r/X"})
+    assert (row.plant_area_id, row.is_panel, row.supplied_from) == ("a1", True, "r/X")

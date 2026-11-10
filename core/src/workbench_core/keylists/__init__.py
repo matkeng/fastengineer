@@ -16,6 +16,8 @@ from .models import (
     AREA_TYPES,
     DISCIPLINES,
     AttachedFile,
+    EelItem,
+    EelList,
     EquipmentCode,
     EquipmentCodeList,
     InstrumentCode,
@@ -34,6 +36,8 @@ from .models import (
     PlantAreaList,
 )
 from .loadlist import (
+    EEL_SOURCE,
+    KEPT,
     LOAD_LIST_TARGETS,
     PRIMARY_SUPPLY,
     LoadListRow,
@@ -44,9 +48,10 @@ from .loadlist import (
     panel_index,
     supply_loop,
 )
-from .validate import check_code_list, check_equipment_packages, check_load_types, check_plant_areas, plant_area_depth
+from .validate import EEL_REFS, check_code_list, check_eel, check_equipment_packages, check_load_types, check_plant_areas, plant_area_depth
 
 __all__ = [
+    "EEL_REFS", "EEL_SOURCE", "KEPT", "EelItem", "EelList", "check_eel",
     "DISCIPLINES", "EquipmentCode", "EquipmentCodeList", "InstrumentCode", "InstrumentCodeList", "check_code_list",
     "LOAD_LIST_TARGETS", "PRIMARY_SUPPLY", "LoadListRow", "apply_auto", "apply_auto_supply", "auto_match", "match_index",
     "panel_index", "supply_loop",

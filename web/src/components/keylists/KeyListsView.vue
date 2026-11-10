@@ -7,6 +7,7 @@ import { useUi } from '../../stores/ui';
 import EquipmentPackagesEditor from './EquipmentPackagesEditor.vue';
 import LoadListEditor from './LoadListEditor.vue';
 import CodeListEditor from './CodeListEditor.vue';
+import EelEditor from './EelEditor.vue';
 import LoadTypesEditor from './LoadTypesEditor.vue';
 import PlantAreasEditor from './PlantAreasEditor.vue';
 
@@ -14,9 +15,9 @@ import PlantAreasEditor from './PlantAreasEditor.vue';
 const kl = useKeyLists();
 const ui = useUi();
 const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Load List',
-	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes' };
+	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes', eel: 'Electrical Equipment List' };
 const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true,
-	'equipment-codes': kl.codeLists['equipment-codes'], 'instrument-codes': kl.codeLists['instrument-codes'] }[kl.selected]);
+	'equipment-codes': kl.codeLists['equipment-codes'], 'instrument-codes': kl.codeLists['instrument-codes'], eel: kl.eel }[kl.selected]);
 
 onMounted(() => kl.load());
 // Coming back to the section shows what is saved now (a draft with unsaved changes is kept).
@@ -55,8 +56,12 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 				</section>
 				<section>
 					<h3>Load List</h3>
-					<p class="hint">The MEL and EEL imports' rows, with a plant area and load type for each.</p>
+					<p class="hint">The Electrical Equipment List, and the Load List: its items and the MEL and EEL imports' rows.</p>
 					<ul class="ref-nav">
+						<li :class="{ current: kl.selected === 'eel' }" @click="kl.select('eel')">
+							<span class="name">Electrical Equipment List</span>
+							<span class="count" title="equipment item(s)">{{ kl.overview?.eel.items ?? 0 }}</span>
+						</li>
 						<li :class="{ current: kl.selected === 'load-list' }" @click="kl.select('load-list')">
 							<span class="name">Load List</span>
 							<span class="count" :class="{ warn: kl.overview?.load_list.unallocated }"
@@ -71,6 +76,7 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 			<LoadTypesEditor v-if="kl.loadTypes" v-show="kl.selected === 'load-types'" />
 			<CodeListEditor v-if="kl.codeLists['equipment-codes']" v-show="kl.selected === 'equipment-codes'" list-id="equipment-codes" />
 			<CodeListEditor v-if="kl.codeLists['instrument-codes']" v-show="kl.selected === 'instrument-codes'" list-id="instrument-codes" />
+			<EelEditor v-if="kl.eel" v-show="kl.selected === 'eel'" />
 			<LoadListEditor v-if="kl.selected === 'load-list'" />
 			<section v-if="!loaded" class="card wizard ref-empty">
 				<h2>{{ TITLES[kl.selected] }}</h2>

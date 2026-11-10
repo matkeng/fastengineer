@@ -128,3 +128,31 @@ class InstrumentCode(BaseModel):
 class InstrumentCodeList(BaseModel):
     items: list[InstrumentCode] = Field(default_factory=list)
     updated_at: datetime | None = None
+
+
+class EelItem(BaseModel):
+    """An item of the Electrical Equipment List. References are ids in the other key lists;
+    `supplied_from` is PRIMARY_SUPPLY or a Load List row ref (see keylists.loadlist)."""
+    id: str = Field(default_factory=new_id)
+    tag: str
+    description: str
+    equipment_code_id: str
+    plant_area_id: str
+    vendor_package_id: str | None = None
+    load_type_id: str | None = None
+    rating: str | None = None  # normalised decimal text
+    rating_unit: RatingUnit | None = None
+    voltage: int | None = None
+    phases: Phases | None = None
+    is_panel: bool = False
+    supplied_from: str | None = None
+    manufacturer: str = ""
+    model_number: str = ""
+    supplied_by_id: str | None = None
+    installed_by_id: str | None = None
+    terminated_by_id: str | None = None
+
+
+class EelList(BaseModel):
+    items: list[EelItem] = Field(default_factory=list)
+    updated_at: datetime | None = None

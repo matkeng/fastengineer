@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from workbench_core.keylists import LOAD_LIST_TARGETS, LoadListRow, match_index
+from workbench_core.keylists import EEL_SOURCE, LOAD_LIST_TARGETS, EelList, LoadListRow, match_index
 from workbench_core.mel import run_pipeline
 from workbench_core.mel.models import ELEC_LOAD_FIELDS
 from workbench_core.mel.pipeline import output_list
@@ -54,10 +54,15 @@ def _choices() -> tuple[list[Choice], list[Choice]]:
     return areas, types
 
 
-@router.get("", response_model=LoadListView)
-def load_list() -> LoadListView:
+EEL_NAME = "Electrical Equipment List"
+EEL_GONE = "Deleted from the Electrical Equipment List"
+
+
+def import_rows() -> tuple[list[LoadListRow], dict[str, str], list[Source], list[str]]:
+    """The MEL and EEL imports' rows as they are now: (live rows, gone, sources, warnings).
+    `gone`: import id -> why its remembered rows that aren't live are deleted (see
+    LoadListStore.sync); it covers every import and every remembered import but the EEL list."""
     st = get_store()
-    lists = get_keylists()
     live: list[LoadListRow] = []
     gone: dict[str, str] = {}
     sources: list[Source] = []
@@ -85,16 +90,49 @@ def load_list() -> LoadListView:
                                     deleted_reason="Marked deleted in the file" if marked else ""))
         gone[rid] = "Not in the latest file"
         sources.append(Source(id=rid, name=recipe.name, target=recipe.target, rows=len(out.rows), has_file=True))
-    known = {info["id"] for info in recipes}
-    loadlist = get_loadlist()
-    for r in loadlist.rows():
+    known = {info["id"] for info in recipes} | {EEL_SOURCE}
+    for r in get_loadlist().rows():
         if r.recipe_id not in known:
             gone[r.recipe_id] = "Its import was deleted"
+    return live, gone, sources, warnings
 
-    areas, types = _choices()
+
+def eel_rows(eel: EelList) -> list[LoadListRow]:
+    """The Electrical Equipment List's items as Load List rows: its allocations are its own ("eel")."""
+    lists = get_keylists()
+    codes = {c.id: c.code for c in lists.code_list("equipment-codes").items}
+    rows = []
+    for i in eel.items:
+        values = {"tag": i.tag, "desc": i.description, "equip_type": codes.get(i.equipment_code_id, ""),
+                  "load_rating": float(i.rating) if i.rating is not None and "." in i.rating else
+                  (int(i.rating) if i.rating is not None else None),
+                  "load_units": i.rating_unit, "load_voltage": i.voltage, "phases": i.phases}
+        by = lambda v: "eel" if v not in (None, False) else None  # noqa: E731
+        rows.append(LoadListRow(
+            recipe_id=EEL_SOURCE, key=i.id, source=EEL_NAME, target="EEL", values=values,
+            plant_area_id=i.plant_area_id, plant_area_by=by(i.plant_area_id),
+            load_type_id=i.load_type_id, load_type_by=by(i.load_type_id),
+            is_panel=i.is_panel, is_panel_by="eel", supplied_from=i.supplied_from, supplied_from_by=by(i.supplied_from)))
+    return rows
+
+
+def sync_rows(live: list[LoadListRow], gone: dict[str, str]) -> list[LoadListRow]:
+    lists = get_keylists()
     area_index = match_index([(n.id, n.tag) for n in lists.plant_areas().nodes])
     type_index = match_index([(t.id, t.code) for t in lists.load_types().items])
-    rows = loadlist.sync(live, gone, area_index, type_index)
+    return get_loadlist().sync(live, gone, area_index, type_index)
+
+
+@router.get("", response_model=LoadListView)
+def load_list() -> LoadListView:
+    live, gone, sources, warnings = import_rows()
+    eel = get_keylists().eel()
+    live += eel_rows(eel)
+    gone[EEL_SOURCE] = EEL_GONE
+    if eel.items:
+        sources.append(Source(id=EEL_SOURCE, name=EEL_NAME, target="EEL", rows=len(eel.items), has_file=True))
+    areas, types = _choices()
+    rows = sync_rows(live, gone)
 
     used = {f for r in rows for f in r.values}
     tags: dict[str, tuple[str, list[str]]] = {}

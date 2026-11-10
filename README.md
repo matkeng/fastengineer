@@ -472,6 +472,24 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
   Instrumentation, M Mechanical, P Piping, C Civil, S Structural, H HVAC; the
   grid filters by one); instrument codes have an optional **PLC code** (free
   text, several codes may share one).
+- **Electrical Equipment List** (EEL): equipment entered and edited here, in
+  addition to any EEL import. A grid of every item; click a row (or **Add
+  equipment**) for a form. **Tag number** (required, and unique across this list
+  and every MEL / EEL import's rows), **Description**, **Equipment type** (an
+  equipment code) and **Plant area** are required. Optional: **Vendor package**,
+  **Load type** (choosing one copies its kW or Amps, voltage and phases),
+  **Rating**, **kW or Amps**, **Voltage**, **Phases**, **Distribution panel**,
+  **Supplied from** (Primary Supply or a panel of the Load List),
+  **Manufacturer**, **Model number**, and **Supplied by / Installed by /
+  Terminated by** (equipment packages).
+  - Every item is also a Load List row (source "Electrical Equipment List"); its
+    plant area, load type, panel and supply are set here and shown read-only
+    there. Load List rows can be supplied from its panels. A deleted item's row
+    stays in the Load List, marked deleted.
+  - A panel can't stop being one (or be deleted) while rows are supplied from it
+    by a person's or this list's choice, and supplies can't loop. Plant areas,
+    load types, equipment codes and packages it uses can't be deleted.
+  - A tag that an import gains later is marked ⚠ on the item.
 - **Load List**: the rows of every **MEL and EEL** import in the project,
   combined and always live (each import's latest file through its saved rules
   and mapping), with the mapped fields as read-only, sortable, filterable

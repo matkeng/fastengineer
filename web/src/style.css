@@ -767,6 +767,17 @@ fieldset.disciplines { border: 1px solid var(--border); border-radius: 3px; padd
 fieldset.disciplines.invalid { border-color: var(--danger); }
 fieldset.disciplines legend { padding: 0 4px; }
 .disc-pick { display: inline-flex; align-items: center; gap: 4px; color: var(--text); cursor: pointer; }
+/* Electrical Equipment List */
+.key-eel .key-title { margin: 0; font-size: 1rem; }
+.key-eel .result-table td { white-space: nowrap; }
+.key-eel .result-table td.desc-col { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+dialog.modal.eel-form { width: min(820px, calc(100vw - 32px)); }
+.eel-form fieldset.electrical { border: 1px solid var(--border); border-radius: 3px; padding: 6px 10px 2px; display: grid;
+	grid-template-columns: repeat(3, 1fr); column-gap: 12px; }
+.eel-form fieldset.electrical legend { padding: 0 4px; }
+.eel-form fieldset.electrical .wide { grid-column: 1 / -1; }
+.eel-form fieldset.electrical .field.check { flex-direction: row; align-items: center; gap: 8px; align-self: center; }
+.key-loadlist .from-eel { color: var(--muted); padding: 0 6px; }
 /* Inputs directly in a column layout must not grow vertically. */
 .ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }
 
