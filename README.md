@@ -195,7 +195,16 @@ imported only when used). API: `desktop/engine/workbench_desktop/symbols_api.py`
    Templates run in priority order, and each match is blanked before the next template runs.
 4. **Analyse** ticked drawings in the background, with progress and cancel. Text comes from
    the PDF, or **Windows' built-in OCR** on scanned sheets. Nothing is bundled for OCR.
-5. **Tags list.** One row per unique tag: `Tag`, the pattern's groups, `Count, Drawings,
+5. **Review drawings.** When the analysis finishes it opens on the drawing pages, with
+   every detection highlighted (step through the run's pages from the toolbar). Click a box
+   and mark it as a **false positive** (a symbol, or a text-scan tag): it turns grey and
+   crossed out, and **Restore** undoes it. **Add missed** places a symbol the matcher
+   didn't find: pick its template and click on it. The box snaps to the template's best
+   match near the click, and the tag is read from the template's tag points (type it if
+   nothing is read). Corrections are kept with the drawing page, so every later analysis of
+   that page applies them again, and the run's tags list, export and list import update
+   at once. The plain page viewer offers the same corrections on a page's latest result.
+6. **Tags list.** One row per unique tag: `Tag`, the pattern's groups, `Count, Drawings,
    Sheets, Symbols, Source`. Export it to `.xlsx` (with a per-symbol *Detections* sheet) or
    `.csv`, or **Send to a list import**. For P&IDs that is a `PIL` import mapping onto
    instrument-list fields (`tag`, `loop`, `instrument_type`, `signal_type`, …), whose saved

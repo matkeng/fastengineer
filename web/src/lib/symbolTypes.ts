@@ -79,6 +79,8 @@ export interface Symbol {
 	variant: string;
 	parts: Record<string, string | null>;
 	tag: string | null;
+	origin: 'auto' | 'manual';
+	tag_override: string | null;
 }
 
 export interface FoundTag {
@@ -99,6 +101,31 @@ export interface PageResult {
 	tags: FoundTag[];
 	skipped: SkippedTemplate[];
 	warnings: string[];
+	rejected_symbols: Symbol[];
+	rejected_tags: FoundTag[];
+}
+
+/** A detection marked as a false positive; matched to later detections by box overlap. */
+export interface Rejection { kind: 'symbol' | 'tag'; box: Box; template_id: string | null; tag: string | null }
+/** The user's corrections to one drawing page, re-applied on every analysis. */
+export interface PageReview { rejected: Rejection[]; added: Symbol[] }
+
+export type ReviewAction =
+	| { action: 'reject' | 'restore'; kind: 'symbol' | 'tag'; box: Box; template_id?: string | null; tag?: string | null }
+	| { action: 'add'; template_id: string; x: number; y: number; tag?: string | null }
+	| { action: 'tag'; box: Box; tag: string | null };
+
+export interface ReviewResult { result: PageResult; review: PageReview; symbol: Symbol | null }
+
+/** One page an analysis run looked at. */
+export interface RunSheet {
+	doc_id: string | null;
+	file_name: string;
+	page: number;
+	symbols: number;
+	tags: number;
+	rejected: number;
+	added: number;
 }
 
 export interface RunInfo {

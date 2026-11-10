@@ -6,7 +6,8 @@ import {
 	ApiError, apiDelete, apiGet, apiGetBlob, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, apiPutBytes, runningInTauri,
 } from '../lib/engine';
 import type {
-	Drawing, Library, LibrarySummary, OcrStatus, PageOverride, PageResult, RunInfo, TagsTable, Template, TestResult, Word,
+	Drawing, Library, LibrarySummary, OcrStatus, PageOverride, PageResult, PageReview, ReviewAction, ReviewResult, RunInfo, RunSheet,
+	TagsTable, Template, TestResult, Word,
 } from '../lib/symbolTypes';
 
 export type SymView =
@@ -416,6 +417,23 @@ export const useSymbols = defineStore('symbols', () => {
 	}
 
 	const runTags = (id: string) => run(() => apiGet<TagsTable>(`${API}/runs/${id}/tags`));
+	const runSheets = (id: string) => apiGet<RunSheet[]>(`${API}/runs/${id}/sheets`);
+	const runPageResult = (id: string, doc: string, page: number) =>
+		apiGet<PageResult>(`${API}/runs/${id}/sheets/${doc}/${page}`);
+	const pageReview = (id: string, page: number) => apiGet<PageReview>(`${API}/drawings/${id}/pages/${page}/review`);
+	/** Bumped after each review correction, so a run's tags list knows to reload. */
+	const reviewVersion = ref(0);
+
+	/** Correct a page's detections (false positive, restore, add by hand, type a tag). Kept with
+	 * the drawing page and, with runId, applied to that run's tags list and export too. */
+	async function review(id: string, page: number, body: ReviewAction, runId: string | null = null) {
+		const r = await run(() => apiPostJson<ReviewResult>(`${API}/drawings/${id}/pages/${page}/review`, { ...body, run_id: runId }));
+		if (r) {
+			reviewVersion.value++;
+			if (runId) runs.value = await apiGet<RunInfo[]>(`${API}/runs`);
+		}
+		return r;
+	}
 
 	async function exportRun(id: string, format: 'csv' | 'xlsx') {
 		const filter = format === 'csv' ? { name: 'CSV', extensions: ['csv'] } : { name: 'Excel workbook', extensions: ['xlsx'] };
@@ -451,6 +469,6 @@ export const useSymbols = defineStore('symbols', () => {
 		restoreExample, exportLibrary, upload, editDrawing, removeDrawing, pageImage, pageResult, pageWords, analysePage,
 		overrides, setOverride, openTemplate, templateFromPage, uploadTemplate, saveTemplate, clearCustomMask,
 		discardTemplate, deleteTemplate, moveTemplate, testTemplate, backToTemplate, startRun, cancelRun, deleteRun,
-		runTags, exportRun, sendToImport,
+		runTags, exportRun, sendToImport, runSheets, runPageResult, pageReview, review, reviewVersion,
 	};
 });

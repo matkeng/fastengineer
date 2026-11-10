@@ -438,12 +438,25 @@ main.fill .sym-viewer, main.fill .sym-run { overflow: hidden; }
 @media (max-width: 1100px) { .sym-body { grid-template-columns: 1fr; } .sym-side { max-height: 260px; } }
 .sym-canvas-host { position: relative; min-height: 360px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: #e5e7eb; }
 .sym-canvas-host canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
-.sym-canvas-host.mode-template canvas, .sym-canvas-host.mode-exclude canvas { cursor: crosshair; }
+.sym-canvas-host.mode-template canvas, .sym-canvas-host.mode-exclude canvas, .sym-canvas-host.mode-add canvas { cursor: crosshair; }
 .sym-overlay-msg { position: absolute; top: 12px; left: 12px; margin: 0; padding: 4px 10px; background: var(--card); border-radius: 6px; }
 .sym-side { overflow: auto; min-height: 0; font-size: 0.86rem; }
 .sym-side h4:first-of-type { margin-top: 8px; }
 .sym-side input.num, .sym-template input.num { width: 72px; }
 .sym-picked { margin: 8px 0; padding: 6px 8px; border-left: 3px solid #facc15; background: #fefce8; color: #1f2937; }
+.sym-picked.rejected { border-left-color: #6b7280; background: #f3f4f6; }
+.sym-picked .chip { margin-left: 6px; }
+.sym-picked button, .sym-picked .row { margin-top: 6px; }
+.sym-modehint { margin: 6px 0; }
+.sym-corrections .strike { text-decoration: line-through; color: var(--muted); }
+.sym-corrections li button { margin-left: auto; }
+/* An analysis run: tabs between reviewing its drawings and its tags list */
+.sym-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 4px 0 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.sym-tabs button[role=tab] { margin: 0 0 -1px; border-radius: 6px 6px 0 0; border: 1px solid transparent; background: none; color: var(--muted); padding: 6px 12px; }
+.sym-tabs button[role=tab].on { border-color: var(--border); border-bottom-color: var(--card); background: var(--card); color: var(--text); font-weight: 600; }
+.sym-tabs .hint { margin: 0 0 0 auto; }
+.sym-main .sym-run-viewer { border: 0; box-shadow: none; padding: 0; margin: 0; flex: 1; min-height: 520px; }
+main.fill .sym-run .sym-run-viewer { min-height: 0; }
 .sym-taglist { list-style: none; padding: 0; margin: 0; max-height: 220px; overflow: auto; }
 .sym-taglist li { display: flex; gap: 6px; padding: 2px 4px; cursor: pointer; border-radius: 4px; }
 .sym-taglist li:hover { background: var(--bg); }

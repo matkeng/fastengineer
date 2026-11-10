@@ -30,20 +30,24 @@ from workbench_core.symbols import (
     PageInfo,
     PageOverride,
     PageResult,
+    PageReview,
+    Rejection,
     RunInfo,
     SheetResult,
     Symbol,
     Template,
     Word,
     analyse_page,
+    apply_review,
     choose_words,
     tags_table,
 )
 from workbench_core.symbols import ocr as ocr_mod
 from workbench_core.symbols.export import tags_csv, tags_xlsx
-from workbench_core.symbols.match import locate_symbols, prepare
+from workbench_core.symbols.match import _iou, locate_near, locate_symbols, prepare
 from workbench_core.symbols.render import PdfError, decode_gray, encode_png, page_count, render_pages
-from workbench_core.symbols.tags import check_format, compile_pattern, format_tag, group_names, resolve_points
+from workbench_core.symbols.pipeline import REVIEW_IOU
+from workbench_core.symbols.tags import apply_exclusion, check_format, compile_pattern, format_tag, group_names, resolve_points
 from workbench_core.symbols.templates import crop, effective_mask, erase_words, trim
 
 from .storage import InUse, NotFound, SymbolStore, get_symbols
@@ -360,7 +364,7 @@ def analyse_one(st: SymbolStore, d: Drawing, n: int, lib: Library, prepared=None
     if source == "ocr":
         provider, _ = ocr_provider()
         region = getattr(provider, "read_region", None)
-    res = analyse_page(n, gray, words, source, prepared, st.overrides(d.id, n), lib, region)
+    res = analyse_page(n, gray, words, source, prepared, st.overrides(d.id, n), lib, region, st.review(d.id, n))
     res.warnings = warnings + res.warnings
     st.save_result(d.id, res)
     page = d.pages[n - 1]
@@ -378,6 +382,7 @@ def _run_job(run_id: str) -> None:
     run.status, run.started_at = "running", _now()
     st.save_run(run)
     sheets: list[SheetResult] = []
+    sheet_docs: list[str] = []  # the drawing of each sheet, for reviewing the run page by page
     try:
         libs: dict[str, tuple[Library, list]] = {}
         for doc_id in run.doc_ids:
@@ -405,6 +410,7 @@ def _run_job(run_id: str) -> None:
                 res = analyse_one(st, d, page.n, lib, prepared)
                 run.warnings += [f"{d.file_name} p{page.n}: {w}" for w in res.warnings]
                 sheets.append(SheetResult(d.file_name, res))
+                sheet_docs.append(d.id)
                 run.done_steps += 1
             st.save_drawing(d)
             if run.status == "cancelled":
@@ -415,7 +421,8 @@ def _run_job(run_id: str) -> None:
         run.status, run.error = "error", str(exc)
     run.finished_at, run.current = _now(), ""
     run.tag_count = len(tags_table(sheets, run.columns)[1])
-    st.save_run(run, [{"file_name": s.file_name, "result": s.result.model_dump(mode="json")} for s in sheets])
+    st.save_run(run, [{"doc_id": doc, "file_name": s.file_name, "result": s.result.model_dump(mode="json")}
+                      for doc, s in zip(sheet_docs, sheets)])
     _cancel.discard(run_id)
 
 
@@ -518,6 +525,144 @@ def set_override(doc_id: str, n: int, template_id: str, body: PageOverride):
 def delete_override(doc_id: str, n: int, template_id: str) -> dict[str, str]:
     store().delete_override(doc_id, n, template_id)
     return {"status": "deleted"}
+
+
+# -- review: false positives and symbols added by hand -------------------------------
+
+class ReviewAction(BaseModel):
+    """reject: mark a detection (symbol or text-scan tag) as a false positive; a symbol
+    added by hand is removed instead. restore: undo a rejection. add: place `template_id`
+    at the clicked point (x, y), snapped to its best match nearby. tag: type the tag of a
+    symbol added by hand. Boxes and points are page-image pixels."""
+    action: Literal["reject", "restore", "add", "tag"]
+    kind: Literal["symbol", "tag"] = "symbol"
+    box: list[float] | None = None
+    template_id: str | None = None
+    tag: str | None = None
+    x: float | None = None
+    y: float | None = None
+    run_id: str | None = None  # also correct this run's result (tags list, export)
+
+
+class ReviewResult(BaseModel):
+    result: PageResult
+    review: PageReview
+    symbol: Symbol | None = None  # the symbol just added
+
+
+@router.get("/drawings/{doc_id}/pages/{n}/review", response_model=PageReview)
+def get_review(doc_id: str, n: int) -> PageReview:
+    _page(_drawing(doc_id), n)
+    return store().review(doc_id, n)
+
+
+def _box(body: ReviewAction) -> list[float]:
+    if not body.box or len(body.box) != 4:
+        raise HTTPException(422, "A box [x1, y1, x2, y2] is needed.")
+    return body.box
+
+
+def _change_review(st: SymbolStore, lib: Library, body: ReviewAction, gray, words: list[Word],
+                   review: PageReview) -> Symbol | None:
+    """Apply one action to the page's review (in place); returns the symbol added, if any."""
+    def near(b: list[float], other: list[float]) -> bool:
+        return _iou(b, other) >= REVIEW_IOU
+
+    if body.action == "reject":
+        b = _box(body)
+        if body.kind == "symbol":
+            manual = [a for a in review.added if near(b, a.box)]
+            if manual:
+                review.added = [a for a in review.added if a not in manual]
+                return None
+        if not any(r.kind == body.kind and near(b, r.box) for r in review.rejected):
+            review.rejected.append(Rejection(kind=body.kind, box=b, template_id=body.template_id if body.kind == "symbol" else None,
+                                             tag=body.tag if body.kind == "tag" else None))
+        return None
+    if body.action == "restore":
+        b = _box(body)
+        review.rejected = [r for r in review.rejected if not (r.kind == body.kind and near(b, r.box))]
+        return None
+    if body.action == "tag":
+        b = _box(body)
+        hit = next((a for a in review.added if near(b, a.box)), None)
+        if hit is None:
+            raise HTTPException(422, "Only a symbol added by hand can have its tag typed.")
+        hit.tag_override = (body.tag or "").strip() or None
+        return hit
+    # add
+    if body.template_id is None or body.x is None or body.y is None:
+        raise HTTPException(422, "Pick a template and click on the symbol.")
+    t = _template(body.template_id)
+    if t.library_id != lib.id:
+        raise HTTPException(422, f"'{t.desc}' is not in this drawing's library “{lib.name}”.")
+    ti = _prepared(st, [t])[0]
+    s = locate_near(erase_words(gray, words), ti, body.x, body.y)
+    if s is None:
+        raise HTTPException(422, f"'{t.desc}' can't be placed there.")
+    # Clicking a symbol that was rejected brings it back rather than adding a copy.
+    back = [r for r in review.rejected if r.kind == "symbol" and r.template_id in (None, t.id) and near(s.box, r.box)]
+    if back:
+        review.rejected = [r for r in review.rejected if r not in back]
+        return s
+    if any(near(s.box, a.box) for a in review.added):
+        raise HTTPException(422, "That symbol has already been added.")
+    s.tag_override = (body.tag or "").strip() or None
+    review.added.append(s)
+    return s
+
+
+@router.post("/drawings/{doc_id}/pages/{n}/review", response_model=ReviewResult)
+async def review_page(doc_id: str, n: int, body: ReviewAction):
+    """Correct a page's detections. The correction is kept with the drawing page (every
+    later analysis re-applies it) and applied at once to the page's latest result and,
+    with run_id, to that run's sheet, so its tags list and export change too."""
+    d = _drawing(doc_id)
+    _page(d, n)
+    st = store()
+    lib = _library(d.library_id)
+
+    def go():
+        run = sheets = None
+        index = -1
+        if body.run_id:
+            run, sheets = _raw_run(body.run_id)
+            if run.status in ("queued", "running"):
+                raise HTTPException(409, "The run hasn't finished yet.")
+            index = _sheet_index(sheets, doc_id, n)
+        latest = st.result(doc_id, n)
+        if run is None and latest is None:
+            raise HTTPException(409, "Analyse the page first.")
+        gray = _gray(st, doc_id, n)
+        words, source, _ = page_words(st, d, n, gray, lib)
+        excluded = apply_exclusion(words, lib.exclusion, gray.shape[1], gray.shape[0])
+        review = st.review(doc_id, n).model_copy(deep=True)
+        added = _change_review(st, lib, body, gray, excluded, review)
+        templates = {t.id: t for t in st.templates(lib.id)}
+        region = None
+        if source == "ocr":
+            provider, _ = ocr_provider()
+            region = getattr(provider, "read_region", None)
+        st.save_review(doc_id, n, review)
+
+        def fix(res: PageResult) -> PageResult:
+            return apply_review(res, words, review, lib, templates, gray, region)
+
+        out = None
+        if latest is not None:
+            out = fix(latest)
+            st.save_result(doc_id, out)
+        if run is not None:
+            out = fix(PageResult.model_validate(sheets[index]["result"]))
+            sheets[index] = {**sheets[index], "result": out.model_dump(mode="json")}
+            all_sheets = [SheetResult(sh["file_name"], PageResult.model_validate(sh["result"])) for sh in sheets]
+            run.tag_count = len(tags_table(all_sheets, run.columns)[1])
+            st.update_run_sheet(run, index, sheets[index])
+        if added is not None:
+            added = next((x for x in out.symbols if _iou(x.box, added.box) >= REVIEW_IOU), added)
+        return ReviewResult(result=out, review=review, symbol=added)
+
+    return await run_in_threadpool(go)
 
 
 # -- templates ----------------------------------------------------------------------
@@ -780,11 +925,28 @@ def list_runs() -> list[RunInfo]:
     return store().runs()
 
 
-def _run(run_id: str) -> tuple[RunInfo, list[SheetResult]]:
+def _raw_run(run_id: str) -> tuple[RunInfo, list[dict]]:
+    """The run and its stored sheets, each with its drawing id (runs saved before reviews
+    existed only kept the file name: match it against the run's drawings)."""
+    st = store()
     try:
-        run, sheets = store().get_run(run_id)
+        run, sheets = st.get_run(run_id)
     except NotFound as exc:
         raise _nf("run") from exc
+    if any("doc_id" not in sh for sh in sheets):
+        by_name: dict[str, str] = {}
+        for doc_id in run.doc_ids:
+            try:
+                by_name.setdefault(st.get_drawing(doc_id).file_name, doc_id)
+            except NotFound:
+                pass
+        for sh in sheets:
+            sh.setdefault("doc_id", by_name.get(sh["file_name"]))
+    return run, sheets
+
+
+def _run(run_id: str) -> tuple[RunInfo, list[SheetResult]]:
+    run, sheets = _raw_run(run_id)
     return run, [SheetResult(s["file_name"], PageResult.model_validate(s["result"])) for s in sheets]
 
 
@@ -823,6 +985,42 @@ def run_tags(run_id: str) -> tuple[RunInfo, list[SheetResult], TagsTable]:
 @router.get("/runs/{run_id}/tags", response_model=TagsTable)
 def get_run_tags(run_id: str) -> TagsTable:
     return run_tags(run_id)[2]
+
+
+class RunSheet(BaseModel):
+    doc_id: str | None
+    file_name: str
+    page: int
+    symbols: int
+    tags: int
+    rejected: int
+    added: int
+
+
+@router.get("/runs/{run_id}/sheets", response_model=list[RunSheet])
+def get_run_sheets(run_id: str) -> list[RunSheet]:
+    """The pages a run analysed, for reviewing its detections on the drawings."""
+    _, sheets = _raw_run(run_id)
+    out = []
+    for sh in sheets:
+        r = PageResult.model_validate(sh["result"])
+        out.append(RunSheet(doc_id=sh["doc_id"], file_name=sh["file_name"], page=r.page, symbols=len(r.symbols),
+                            tags=len(r.tags), rejected=len(r.rejected_symbols) + len(r.rejected_tags),
+                            added=sum(1 for x in r.symbols if x.origin == "manual")))
+    return out
+
+
+def _sheet_index(sheets: list[dict], doc_id: str, n: int) -> int:
+    for i, sh in enumerate(sheets):
+        if sh["doc_id"] == doc_id and sh["result"]["page"] == n:
+            return i
+    raise _nf("page in this run")
+
+
+@router.get("/runs/{run_id}/sheets/{doc_id}/{n}", response_model=PageResult)
+def get_run_sheet(run_id: str, doc_id: str, n: int) -> PageResult:
+    _, sheets = _raw_run(run_id)
+    return PageResult.model_validate(sheets[_sheet_index(sheets, doc_id, n)]["result"])
 
 
 class ExportRequest(BaseModel):

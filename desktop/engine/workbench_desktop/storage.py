@@ -20,7 +20,7 @@ from pathlib import Path
 from workbench_core.mel import Recipe, Revision
 from workbench_core.refdata import EnumList, RefRow, RefTable, RefTree, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
-from workbench_core.symbols import Drawing, Library, PageOverride, PageResult, RunInfo, Template
+from workbench_core.symbols import Drawing, Library, PageOverride, PageResult, PageReview, RunInfo, Template
 from workbench_core.generators.editable import BuildInfo, BuildRecord, GenRecord, GenSummary, summarise
 from workbench_core.generators.hardware import Catalogue, Hardware, default_catalogue
 from workbench_core.generators.models import BuildResult, Generator, RefTable as GenTable
@@ -98,6 +98,12 @@ CREATE TABLE IF NOT EXISTS sym_overrides (
     PRIMARY KEY (doc_id, page, template_id)
 );
 CREATE TABLE IF NOT EXISTS sym_results (
+    doc_id TEXT NOT NULL REFERENCES sym_drawings(id) ON DELETE CASCADE,
+    page INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    PRIMARY KEY (doc_id, page)
+);
+CREATE TABLE IF NOT EXISTS sym_reviews (
     doc_id TEXT NOT NULL REFERENCES sym_drawings(id) ON DELETE CASCADE,
     page INTEGER NOT NULL,
     data TEXT NOT NULL,
@@ -624,6 +630,19 @@ class SymbolStore:
             row = self._db.execute("SELECT data FROM sym_results WHERE doc_id = ? AND page = ?", (doc_id, page)).fetchone()
         return PageResult.model_validate_json(row[0]) if row else None
 
+    def review(self, doc_id: str, page: int) -> PageReview:
+        """The user's corrections to a page (false positives, symbols added by hand)."""
+        with self._lock:
+            row = self._db.execute("SELECT data FROM sym_reviews WHERE doc_id = ? AND page = ?", (doc_id, page)).fetchone()
+        return PageReview.model_validate_json(row[0]) if row else PageReview()
+
+    def save_review(self, doc_id: str, page: int, review: PageReview) -> PageReview:
+        self.get_drawing(doc_id)
+        with self._lock, self._db:
+            self._db.execute("INSERT INTO sym_reviews VALUES (?, ?, ?) ON CONFLICT(doc_id, page) "
+                             "DO UPDATE SET data = excluded.data", (doc_id, page, review.model_dump_json()))
+        return review
+
     # -- runs ------------------------------------------------------------------
 
     def save_run(self, run: RunInfo, sheets: list[dict] | None = None) -> RunInfo:
@@ -645,6 +664,17 @@ class SymbolStore:
         if not row:
             raise NotFound(run_id)
         return RunInfo.model_validate_json(row[0]), json.loads(row[1])
+
+    def update_run_sheet(self, run: RunInfo, index: int, sheet: dict) -> None:
+        """Replace one sheet of a finished run (after a review correction) and its info."""
+        with self._lock, self._db:
+            row = self._db.execute("SELECT sheets FROM sym_runs WHERE id = ?", (run.id,)).fetchone()
+            if not row:
+                raise NotFound(run.id)
+            sheets = json.loads(row[0])
+            sheets[index] = sheet
+            self._db.execute("UPDATE sym_runs SET info = ?, sheets = ? WHERE id = ?",
+                             (run.model_dump_json(), json.dumps(sheets), run.id))
 
     def delete_run(self, run_id: str) -> None:
         with self._lock, self._db:

@@ -129,6 +129,8 @@ class Symbol(BaseModel):
     variant: str = "0"
     parts: dict[str, str | None] = Field(default_factory=dict)
     tag: str | None = None
+    origin: Literal["auto", "manual"] = "auto"  # manual: added by the user on review
+    tag_override: str | None = None  # manual symbols: tag typed by the user
 
 
 class FoundTag(BaseModel):
@@ -147,6 +149,20 @@ class SkippedTemplate(BaseModel):
     reason: str
 
 
+class Rejection(BaseModel):
+    """A detection the user marked as a false positive. Matched to later detections by box."""
+    kind: Literal["symbol", "tag"]
+    box: Box
+    template_id: str | None = None  # symbols
+    tag: str | None = None  # text-scan tags
+
+
+class PageReview(BaseModel):
+    """The user's corrections to one drawing page, re-applied on every analysis."""
+    rejected: list[Rejection] = Field(default_factory=list)
+    added: list[Symbol] = Field(default_factory=list)
+
+
 class PageResult(BaseModel):
     page: int
     text_source: TextSource = "pdf"
@@ -154,6 +170,8 @@ class PageResult(BaseModel):
     tags: list[FoundTag] = Field(default_factory=list)
     skipped: list[SkippedTemplate] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    rejected_symbols: list[Symbol] = Field(default_factory=list)  # left out of tags; shown for undo
+    rejected_tags: list[FoundTag] = Field(default_factory=list)
 
 
 class RunInfo(BaseModel):

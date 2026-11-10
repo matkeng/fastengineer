@@ -16,6 +16,8 @@ from .models import (
     PageInfo,
     PageOverride,
     PageResult,
+    PageReview,
+    Rejection,
     RunInfo,
     SkippedTemplate,
     Symbol,
@@ -24,10 +26,10 @@ from .models import (
     Variants,
     Word,
 )
-from .pipeline import FIXED_HEADERS, SheetResult, analyse_page, choose_words, tags_table
+from .pipeline import FIXED_HEADERS, SheetResult, analyse_page, apply_review, choose_words, tags_table
 
 __all__ = [
-    "DPI", "Drawing", "Exclusion", "FoundTag", "Library", "PageInfo", "PageOverride", "PageResult", "RunInfo",
+    "DPI", "Drawing", "Exclusion", "FoundTag", "Library", "PageInfo", "PageOverride", "PageResult", "PageReview", "Rejection", "RunInfo",
     "SkippedTemplate", "Symbol", "TagPoint", "Template", "Variants", "Word",
-    "FIXED_HEADERS", "SheetResult", "analyse_page", "choose_words", "tags_table",
+    "FIXED_HEADERS", "SheetResult", "analyse_page", "apply_review", "choose_words", "tags_table",
 ]

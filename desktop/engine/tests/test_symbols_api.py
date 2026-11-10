@@ -204,3 +204,80 @@ def test_scanned_pdf_without_ocr_warns_and_bad_input(data_dir: Path) -> None:
     client.delete(f"{API}/drawings/{d['id']}")
     assert not (data_dir / "symbols" / d["id"]).exists()
     assert client.get(f"{API}/drawings/{d['id']}").status_code == 404
+
+
+def test_review_false_positives_and_missed_symbols(data_dir: Path) -> None:
+    lib = _example()
+    d = _upload(lib["id"])
+    run = _wait(f"{API}/runs/{client.post(f'{API}/runs', json={'doc_ids': [d['id']]}).json()['id']}")
+    assert run["tag_count"] == 11
+    sheets = client.get(f"{API}/runs/{run['id']}/sheets").json()
+    assert [(s["doc_id"], s["page"]) for s in sheets] == [(d["id"], 1), (d["id"], 2)]
+    page = client.get(f"{API}/runs/{run['id']}/sheets/{d['id']}/1").json()
+    sym = next(s for s in page["symbols"] if s["tag"] == "PT-1025")
+    url = f"{API}/drawings/{d['id']}/pages/1/review"
+    tags = lambda: {r["Tag"] for r in client.get(f"{API}/runs/{run['id']}/tags").json()["rows"]}  # noqa: E731
+
+    # Reject a symbol: its tag leaves the run's tags list (and the export), and it's kept for undo.
+    res = client.post(url, json={"action": "reject", "kind": "symbol", "box": sym["box"],
+                                 "template_id": sym["template_id"], "run_id": run["id"]})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert [s["tag"] for s in body["result"]["rejected_symbols"]] == ["PT-1025"]
+    assert "PT-1025" not in tags()
+    assert client.get(f"{API}/runs/{run['id']}").json()["tag_count"] == 10
+    assert client.get(url).json()["rejected"][0]["kind"] == "symbol"
+    xlsx = client.post(f"{API}/runs/{run['id']}/export", json={"format": "xlsx"})
+    assert load_workbook(io.BytesIO(xlsx.content))["Tags"].max_row == 11
+
+    # Re-analysing the page keeps the correction.
+    again = client.post(f"{API}/drawings/{d['id']}/pages/1/analyse").json()
+    assert "PT-1025" not in {t["tag"] for t in again["tags"]} and len(again["rejected_symbols"]) == 1
+
+    # Restore brings it back.
+    client.post(url, json={"action": "restore", "kind": "symbol", "box": sym["box"], "run_id": run["id"]})
+    assert "PT-1025" in tags()
+
+    # A missed symbol: reject it, then add it back by clicking near its centre (snapped).
+    client.post(url, json={"action": "reject", "kind": "symbol", "box": sym["box"], "template_id": sym["template_id"]})
+    cx, cy = (sym["box"][0] + sym["box"][2]) / 2 + 6, (sym["box"][1] + sym["box"][3]) / 2 - 5
+    added = client.post(url, json={"action": "add", "template_id": sym["template_id"], "x": cx, "y": cy,
+                                   "run_id": run["id"]}).json()
+    assert added["symbol"]["tag"] == "PT-1025"
+    assert not added["review"]["rejected"]  # adding on a rejected symbol just restores it
+    # Clear the stored correction, then add as a genuinely manual symbol with a typed tag.
+    client.put(f"{API}/drawings/{d['id']}/pages/1/overrides/{sym['template_id']}",
+               json={"template_id": sym["template_id"], "ignore": True})
+    page = client.post(f"{API}/drawings/{d['id']}/pages/1/analyse").json()
+    assert not any(s["template_id"] == sym["template_id"] for s in page["symbols"])
+    added = client.post(url, json={"action": "add", "template_id": sym["template_id"], "x": cx, "y": cy}).json()
+    s = added["symbol"]
+    assert s["origin"] == "manual" and s["tag"] == "PT-1025"
+    ix = max(0, min(s["box"][2], sym["box"][2]) - max(s["box"][0], sym["box"][0]))
+    iy = max(0, min(s["box"][3], sym["box"][3]) - max(s["box"][1], sym["box"][1]))
+    area = (sym["box"][2] - sym["box"][0]) * (sym["box"][3] - sym["box"][1])
+    assert ix * iy / area > 0.8
+    assert client.post(url, json={"action": "add", "template_id": sym["template_id"], "x": cx, "y": cy}).status_code == 422
+    typed = client.post(url, json={"action": "tag", "box": s["box"], "tag": "PT-9999"}).json()
+    assert "PT-9999" in {t["tag"] for t in typed["result"]["tags"]}
+    page = client.post(f"{API}/drawings/{d['id']}/pages/1/analyse").json()
+    assert any(x["origin"] == "manual" and x["tag"] == "PT-9999" for x in page["symbols"])
+    # Rejecting a hand-added symbol removes it.
+    gone = client.post(url, json={"action": "reject", "kind": "symbol", "box": s["box"]}).json()
+    assert not gone["review"]["added"] and not any(x["origin"] == "manual" for x in gone["result"]["symbols"])
+
+    # Text-scan tags can be rejected too.
+    p1 = client.get(f"{API}/runs/{run['id']}/sheets/{d['id']}/1").json()
+    scan = next(t for t in p1["tags"] if t["source"] == "pattern")
+    assert scan["tag"] == "PSV-1040"
+    r = client.post(url, json={"action": "reject", "kind": "tag", "box": scan["box"], "tag": scan["tag"],
+                               "run_id": run["id"]}).json()
+    assert [t["tag"] for t in r["result"]["rejected_tags"]] == ["PSV-1040"]
+    assert "PSV-1040" not in tags()
+    client.post(url, json={"action": "restore", "kind": "tag", "box": scan["box"], "run_id": run["id"]})
+    assert "PSV-1040" in tags()
+
+    assert client.post(url, json={"action": "add"}).status_code == 422
+    other = client.post(f"{API}/libraries", json={"name": "Other", "copy_from": lib["id"]}).json()
+    foreign = client.get(f"{API}/templates", params={"library_id": other["id"]}).json()[0]
+    assert client.post(url, json={"action": "add", "template_id": foreign["id"], "x": cx, "y": cy}).status_code == 422

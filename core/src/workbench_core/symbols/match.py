@@ -174,3 +174,42 @@ def locate_symbols(gray, templates: list[TemplateImage], overrides: dict[str, Pa
 def prepare(template: Template, gray, custom_mask=None) -> TemplateImage:
     """custom_mask: the user's mask image (greyscale array), used when mask_mode is "custom"."""
     return TemplateImage(template, gray, effective_mask(template.mask_mode, gray, template.buffer_space, custom_mask))
+
+
+def locate_near(gray, ti: TemplateImage, x: float, y: float, reach: float = 1.0) -> Symbol | None:
+    """The best placement of one template around a clicked point, whatever its score: how a
+    symbol the matcher missed is added by hand. `gray` is the text-free page (as for
+    locate_symbols); the search window is the template's size plus `reach` of it each side,
+    so the click needn't be exact. Returns None only when the template can't be scored."""
+    import cv2
+    t = ti.template
+    h, w = gray.shape[:2]
+    best: tuple[float, Box, str] | None = None
+    for factor in t.scales or [1.0]:
+        timg, tmask = ti.gray, ti.mask
+        if factor != 1.0:
+            size = (max(int(round(timg.shape[1] * factor)), 2), max(int(round(timg.shape[0] * factor)), 2))
+            timg = cv2.resize(timg, size, interpolation=cv2.INTER_AREA)
+            if tmask is not None:
+                tmask = cv2.resize(tmask, size, interpolation=cv2.INTER_NEAREST)
+        for vname, vimg, vmask in _variants(t, timg, tmask):
+            vh, vw = vimg.shape[:2]
+            x1 = max(int(x - vw / 2 - vw * reach), 0)
+            y1 = max(int(y - vh / 2 - vh * reach), 0)
+            x2 = min(int(x + vw / 2 + vw * reach) + 1, w)
+            y2 = min(int(y + vh / 2 + vh * reach) + 1, h)
+            if x2 - x1 < vw or y2 - y1 < vh:
+                continue
+            work = (ink(gray[y1:y2, x1:x2]) > 0).astype('float32')
+            res = masked_ncc(work, ink(vimg), vmask)
+            if res is None or not res.size:
+                continue
+            _, score, _, (px, py) = cv2.minMaxLoc(res)
+            label = vname if factor == 1.0 else f"{vname}@{factor:g}"
+            if best is None or score > best[0]:
+                best = (float(score), [float(x1 + px), float(y1 + py), float(x1 + px + vw), float(y1 + py + vh)], label)
+    if best is None:
+        return None
+    score, box, vname = best
+    return Symbol(template_id=t.id, template_desc=t.desc, box=box, score=round(max(score, 0.0), 4),
+                  variant=vname, origin="manual")

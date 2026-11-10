@@ -394,3 +394,26 @@ def test_region_ocr_rereads_symbols_with_missing_tag_parts(pages) -> None:
 
     split = [Word(text="F", box=[10, 10, 16, 22]), Word(text="T", box=[17, 10, 23, 22]), Word(text="1023", box=[8, 26, 30, 38])]
     assert [w.text for w in join_split_letters(split)] == ["FT", "1023"]
+
+
+def test_apply_review_matches_by_overlap_and_is_repeatable() -> None:
+    from workbench_core.symbols import PageResult, PageReview, Rejection, Symbol, Word, apply_review
+    lib = Library(id="l", name="L", tag_pattern=r"(?P<f>[A-Z]{2,3})-(?P<n>\d{3,4})")
+    t = Template(id="t", library_id="l", desc="Bubble", width=100, height=100)
+    a = Symbol(template_id="t", template_desc="Bubble", box=[0, 0, 100, 100], score=0.9, tag="FT-101")
+    b = Symbol(template_id="t", template_desc="Bubble", box=[300, 0, 400, 100], score=0.9, tag="PT-102")
+    words = [Word(text="FT-101", box=[30, 40, 70, 60]), Word(text="LT-500", box=[600, 10, 650, 20])]
+    res = PageResult(page=1, symbols=[a, b])
+    review = PageReview(rejected=[Rejection(kind="symbol", box=[4, 3, 104, 103], template_id="t"),
+                                  Rejection(kind="tag", box=[598, 8, 652, 22], tag="LT-500")],
+                        added=[Symbol(template_id="t", template_desc="", box=[800, 0, 900, 100], score=0.4,
+                                      origin="manual", tag_override="TT-900")])
+    out = apply_review(res, words, review, lib, {"t": t})
+    assert [s.tag for s in out.symbols] == ["PT-102", "TT-900"]
+    assert [s.tag for s in out.rejected_symbols] == ["FT-101"]
+    assert [x.tag for x in out.rejected_tags] == ["LT-500"]
+    assert sorted(x.tag for x in out.tags) == ["PT-102", "TT-900"]  # FT-101's own text isn't re-found
+    again = apply_review(out, words, review, lib, {"t": t})
+    assert again.model_dump() == out.model_dump()
+    restored = apply_review(out, words, PageReview(), lib, {"t": t})
+    assert sorted(x.tag for x in restored.tags) == ["FT-101", "LT-500", "PT-102"]

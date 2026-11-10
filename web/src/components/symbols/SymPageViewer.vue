@@ -2,10 +2,13 @@
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { Box, PageOverride, PageResult, Word } from '../../lib/symbolTypes';
+import type { Box, FoundTag, PageOverride, PageResult, ReviewAction, RunSheet, Symbol, Word } from '../../lib/symbolTypes';
 import { useSymbols } from '../../stores/symbols';
 
-const props = defineProps<{ docId: string; page: number }>();
+// With runId the page shows that analysis run's result, page navigation goes through the
+// run's sheets, and corrections also update the run's tags list.
+const props = defineProps<{ docId: string; page: number; runId?: string | null }>();
+const emit = defineEmits<{ navigate: [docId: string, page: number] }>();
 const sym = useSymbols();
 
 const drawing = computed(() => sym.drawings.find((d) => d.id === props.docId) ?? null);
@@ -23,12 +26,39 @@ const img = ref<ImageBitmap | null>(null);
 const result = ref<PageResult | null>(null);
 const words = ref<Word[]>([]);
 const overrides = ref<Record<string, PageOverride>>({});
-const show = ref({ symbols: true, tags: true, words: false, excluded: true });
-const mode = ref<'pan' | 'template' | 'exclude'>('pan');
+const show = ref({ symbols: true, tags: true, words: false, excluded: true, rejected: true });
+const mode = ref<'pan' | 'add' | 'template' | 'exclude'>('pan');
+const addTemplate = ref(''); // "Add missed": the template placed on click
 const selection = ref<Box | null>(null); // dragged rectangle, image pixels
 const dragging = ref(false); // banners wait for the drag to end (and overlay the canvas: no layout shift)
 const newName = ref('');
-const picked = ref<{ box: Box; title: string; lines: string[] } | null>(null);
+// What a click picked: a symbol or a text-scan tag, kept or marked as a false positive.
+type Pick =
+	| { kind: 'symbol'; rejected: boolean; item: Symbol }
+	| { kind: 'tag'; rejected: boolean; item: FoundTag }
+	| { kind: 'test'; rejected: false; item: Symbol };
+const picked = ref<Pick | null>(null);
+const typedTag = ref('');
+const sheets = ref<RunSheet[]>([]);
+const sheetIndex = computed(() => sheets.value.findIndex((x) => x.doc_id === props.docId && x.page === props.page));
+const pickedInfo = computed(() => {
+	const p = picked.value;
+	if (!p) return null;
+	if (p.kind === 'tag') return { box: p.item.box, title: p.item.tag, lines: ['Found by the text scan (the library\'s tag pattern)'] };
+	const s = p.item;
+	return {
+		box: s.box,
+		title: s.tag ?? '(no tag)',
+		lines: [
+			`${s.template_desc} · ${s.origin === 'manual' ? 'added by hand, score' : 'score'} ${s.score.toFixed(3)}${s.variant !== '0' ? ` · variant ${s.variant}` : ''}`,
+			...Object.entries(s.parts).map(([k, v]) => `${k}: ${v ?? 'Not found'}`),
+		],
+	};
+});
+const manualSymbols = computed(() => result.value?.symbols.filter((s) => s.origin === 'manual') ?? []);
+const corrections = computed(
+	() => (result.value?.rejected_symbols?.length ?? 0) + (result.value?.rejected_tags?.length ?? 0) + manualSymbols.value.length,
+);
 const loading = ref(false);
 const side = ref(true);
 
@@ -51,13 +81,14 @@ async function load() {
 	try {
 		const [bmp, res, ovs] = await Promise.all([
 			sym.pageImage(props.docId, props.page),
-			sym.pageResult(props.docId, props.page),
+			props.runId ? sym.runPageResult(props.runId, props.docId, props.page) : sym.pageResult(props.docId, props.page),
 			sym.overrides(props.docId, props.page),
 		]);
 		img.value = bmp;
 		result.value = res;
 		overrides.value = Object.fromEntries(ovs.map((o) => [o.template_id, o]));
 		words.value = show.value.words ? await sym.pageWords(props.docId, props.page) : [];
+		if (props.runId && !sheets.value.length) sheets.value = await sym.runSheets(props.runId);
 		fit();
 	} catch (err) {
 		sym.error = err instanceof Error ? err.message : String(err);
@@ -163,9 +194,26 @@ function draw() {
 		for (const s of res.symbols) {
 			const col = colorOf(s.template_id);
 			ctx.strokeStyle = col;
+			ctx.lineWidth = s.origin === 'manual' ? 3 : 2;
 			rect(ctx, s.box);
-			if (scale > 0.25) label(ctx, s.box, s.tag ?? s.template_desc, col);
+			if (scale > 0.25) label(ctx, s.box, `${s.origin === 'manual' ? '+ ' : ''}${s.tag ?? s.template_desc}`, col);
 		}
+	}
+	if (res && show.value.rejected && !testHere.value) {
+		// False positives: grey, dashed and crossed out (click one to restore it)
+		ctx.lineWidth = 2;
+		ctx.strokeStyle = '#6b7280';
+		ctx.setLineDash([5, 4]);
+		for (const b of [...(res.rejected_symbols ?? []), ...(res.rejected_tags ?? [])].map((x) => x.box)) {
+			rect(ctx, b);
+			ctx.beginPath();
+			ctx.moveTo(b[0] * scale + ox, b[1] * scale + oy);
+			ctx.lineTo(b[2] * scale + ox, b[3] * scale + oy);
+			ctx.moveTo(b[2] * scale + ox, b[1] * scale + oy);
+			ctx.lineTo(b[0] * scale + ox, b[3] * scale + oy);
+			ctx.stroke();
+		}
+		ctx.setLineDash([]);
 	}
 	if (res && show.value.tags && !testHere.value) {
 		ctx.lineWidth = 2;
@@ -185,10 +233,10 @@ function draw() {
 			if (scale > 0.25) label(ctx, s.box, `${s.score.toFixed(2)}${s.tag ? ' ' + s.tag : ''}`, '#ea580c');
 		}
 	}
-	if (picked.value) {
+	if (pickedInfo.value) {
 		ctx.lineWidth = 3;
 		ctx.strokeStyle = '#facc15';
-		rect(ctx, picked.value.box.map((v, i) => v + (i < 2 ? -4 : 4)) as Box);
+		rect(ctx, pickedInfo.value.box.map((v, i) => v + (i < 2 ? -4 : 4)) as Box);
 	}
 	if (selection.value) {
 		ctx.lineWidth = 2;
@@ -211,7 +259,7 @@ function onDown(e: PointerEvent) {
 	canvas.value!.setPointerCapture(e.pointerId);
 	drag = { x: e.clientX, y: e.clientY, ox, oy, moved: false };
 	dragging.value = true;
-	if (mode.value !== 'pan' && e.button === 0) {
+	if ((mode.value === 'template' || mode.value === 'exclude') && e.button === 0) {
 		drag.start = toImage(e);
 		selection.value = null;
 	}
@@ -237,7 +285,10 @@ function onUp(e: PointerEvent) {
 	drag = null;
 	dragging.value = false;
 	if (!d) return;
-	if (!d.moved && !d.start) pick(e);
+	if (!d.moved && !d.start) {
+		if (mode.value === 'add') void addAt(toImage(e));
+		else pick(toImage(e));
+	}
 	if (d.start && selection.value && selection.value[2] - selection.value[0] < 6) selection.value = null;
 	draw();
 }
@@ -251,25 +302,80 @@ function inside(p: [number, number], b: Box) {
 	return p[0] >= b[0] && p[0] <= b[2] && p[1] >= b[1] && p[1] <= b[3];
 }
 
-function pick(e: PointerEvent) {
-	const p = toImage(e);
+function pick(p: [number, number]) {
 	const res = result.value;
 	picked.value = null;
-	const s = (testHere.value?.result.symbols ?? res?.symbols ?? []).find((x) => inside(p, x.box));
-	if (s) {
-		picked.value = {
-			box: s.box,
-			title: s.tag ?? '(no tag)',
-			lines: [
-				`${s.template_desc} · score ${s.score.toFixed(3)}${s.variant !== '0' ? ` · variant ${s.variant}` : ''}`,
-				...Object.entries(s.parts).map(([k, v]) => `${k}: ${v ?? 'Not found'}`),
-			],
-		};
-	} else {
-		const t = res?.tags.find((x) => inside(p, x.box));
-		if (t) picked.value = { box: t.box, title: t.tag, lines: [`Found by the ${t.source} scan`] };
+	typedTag.value = '';
+	const at = <T extends { box: Box }>(xs: T[] | undefined) => (xs ?? []).find((x) => inside(p, x.box));
+	if (testHere.value) {
+		const s = at(testHere.value.result.symbols);
+		if (s) picked.value = { kind: 'test', rejected: false, item: s };
+	} else if (res) {
+		const s = show.value.symbols ? at(res.symbols) : undefined;
+		const t = show.value.tags ? at(res.tags.filter((x) => x.source === 'pattern')) : undefined;
+		const rs = show.value.rejected ? at(res.rejected_symbols) : undefined;
+		const rt = show.value.rejected ? at(res.rejected_tags) : undefined;
+		if (s) picked.value = { kind: 'symbol', rejected: false, item: s };
+		else if (t) picked.value = { kind: 'tag', rejected: false, item: t };
+		else if (rs) picked.value = { kind: 'symbol', rejected: true, item: rs };
+		else if (rt) picked.value = { kind: 'tag', rejected: true, item: rt };
+		if (picked.value?.kind === 'symbol') typedTag.value = picked.value.item.tag_override ?? '';
 	}
 	draw();
+}
+
+// -- review: false positives and missed symbols ---------------------------------
+const centre = (b: Box): [number, number] => [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+
+/** Send one correction; show the corrected result and re-pick what was clicked. */
+async function correct(body: ReviewAction, reselect: [number, number] | null) {
+	const r = await sym.review(props.docId, props.page, body, props.runId ?? null);
+	if (!r) return;
+	result.value = r.result;
+	if (r.symbol) {
+		const s = r.result.symbols.find((x) => inside(centre(x.box), r.symbol!.box)) ?? r.symbol;
+		picked.value = { kind: 'symbol', rejected: false, item: s };
+		typedTag.value = s.tag_override ?? '';
+		sym.message = s.tag ? `Added ${s.tag}.` : 'Added. No tag text was read for that symbol: type it in the side panel.';
+	} else if (reselect) pick(reselect);
+	else picked.value = null;
+	if (props.runId) sheets.value = await sym.runSheets(props.runId);
+	draw();
+}
+
+function reject() {
+	const p = picked.value;
+	if (!p || p.kind === 'test' || p.rejected) return;
+	if (p.kind === 'symbol') {
+		void correct({ action: 'reject', kind: 'symbol', box: p.item.box, template_id: p.item.template_id },
+			p.item.origin === 'manual' ? null : centre(p.item.box));
+	} else void correct({ action: 'reject', kind: 'tag', box: p.item.box, tag: p.item.tag }, centre(p.item.box));
+}
+
+function restore(kind: 'symbol' | 'tag', box: Box) {
+	void correct({ action: 'restore', kind, box }, centre(box));
+}
+
+function removeManual(s: Symbol) {
+	void correct({ action: 'reject', kind: 'symbol', box: s.box, template_id: s.template_id }, null);
+}
+
+function saveTag() {
+	const p = picked.value;
+	if (p?.kind !== 'symbol' || p.item.origin !== 'manual') return;
+	void correct({ action: 'tag', box: p.item.box, tag: typedTag.value.trim() || null }, centre(p.item.box));
+}
+
+async function addAt(pt: [number, number]) {
+	if (!addTemplate.value) sym.error = 'Pick the template of the missed symbol first.';
+	else if (!result.value) sym.error = 'Analyse the page first.';
+	else await correct({ action: 'add', template_id: addTemplate.value, x: pt[0], y: pt[1] }, null);
+}
+
+function select(kind: 'symbol' | 'tag', rejected: boolean, item: Symbol | FoundTag) {
+	picked.value = (kind === 'symbol' ? { kind, rejected, item } : { kind, rejected, item }) as Pick;
+	typedTag.value = kind === 'symbol' ? (item as Symbol).tag_override ?? '' : '';
+	zoomTo(item.box);
 }
 
 // -- actions -------------------------------------------------------------------
@@ -323,6 +429,11 @@ function goPage(n: number) {
 	sym.show({ kind: 'drawing', id: props.docId, page: n });
 }
 
+function goSheet(i: number) {
+	const sh = sheets.value[i];
+	if (sh?.doc_id) emit('navigate', sh.doc_id, sh.page);
+}
+
 watch(() => [props.docId, props.page, drawing.value?.status], load);
 watch(() => show.value.words, async (on) => {
 	words.value = on ? await sym.pageWords(props.docId, props.page) : [];
@@ -330,6 +441,9 @@ watch(() => show.value.words, async (on) => {
 });
 watch([show, exclusion, testHere, () => sym.templates], draw, { deep: true });
 watch(mode, () => { selection.value = null; draw(); });
+watch(libTemplates, (ts) => {
+	if (!ts.some((t) => t.id === addTemplate.value)) addTemplate.value = ts[0]?.id ?? '';
+}, { immediate: true });
 
 let ro: ResizeObserver | null = null;
 onMounted(() => {
@@ -344,13 +458,23 @@ onBeforeUnmount(() => ro?.disconnect());
 	<section class="card sym-main sym-viewer">
 		<div class="sym-toolbar">
 			<strong class="name" :title="drawing?.file_name">{{ drawing?.file_name }}</strong>
-			<span class="row tight">
+			<span v-if="runId" class="row tight">
+				<button type="button" class="secondary small" :disabled="sheetIndex <= 0" title="Previous page of this analysis" @click="goSheet(sheetIndex - 1)">‹</button>
+				<select class="small" aria-label="Page of this analysis" :value="sheetIndex" @change="goSheet(Number(($event.target as HTMLSelectElement).value))">
+					<option v-for="(sh, i) in sheets" :key="`${sh.doc_id}/${sh.page}`" :value="i" :disabled="!sh.doc_id">
+						{{ sh.file_name }} p{{ sh.page }} · {{ sh.symbols }} symbols{{ sh.rejected || sh.added ? ` · ${sh.rejected + sh.added} corrected` : '' }}
+					</option>
+				</select>
+				<button type="button" class="secondary small" :disabled="sheetIndex < 0 || sheetIndex >= sheets.length - 1" title="Next page of this analysis" @click="goSheet(sheetIndex + 1)">›</button>
+			</span>
+			<span v-else class="row tight">
 				<button type="button" class="secondary small" :disabled="page <= 1" @click="goPage(page - 1)">‹</button>
 				<span class="small">Page {{ page }} / {{ drawing?.pages.length ?? '?' }}</span>
 				<button type="button" class="secondary small" :disabled="!drawing || page >= drawing.pages.length" @click="goPage(page + 1)">›</button>
 			</span>
 			<span class="seg">
-				<button type="button" class="small" :class="mode === 'pan' ? '' : 'secondary'" title="Drag to pan, wheel to zoom, click a box for details" @click="mode = 'pan'">Pan</button>
+				<button type="button" class="small" :class="mode === 'pan' ? '' : 'secondary'" title="Drag to pan, wheel to zoom, click a box to review it (reject a false positive)" @click="mode = 'pan'">Select</button>
+				<button type="button" class="small" :class="mode === 'add' ? '' : 'secondary'" :disabled="!libTemplates.length || !result" title="Click on a symbol the analysis missed to add it" @click="mode = 'add'">Add missed</button>
 				<button type="button" class="small" :class="mode === 'template' ? '' : 'secondary'" title="Drag a box around one symbol to make a template" @click="mode = 'template'">New template</button>
 				<button type="button" class="small" :class="mode === 'exclude' ? '' : 'secondary'" title="Drag a box over the title block or notes: text there is ignored" @click="mode = 'exclude'">Ignore area</button>
 			</span>
@@ -359,8 +483,11 @@ onBeforeUnmount(() => ro?.disconnect());
 				<button type="button" class="secondary small" title="Zoom in" @click="zoomBy(1.4)">+</button>
 				<button type="button" class="secondary small" @click="fit">Fit</button>
 			</span>
+			<select v-if="mode === 'add'" v-model="addTemplate" class="small" aria-label="Template of the missed symbol" title="The symbol you'll click on">
+				<option v-for="t in libTemplates" :key="t.id" :value="t.id">{{ t.desc }}</option>
+			</select>
 			<span class="spacer" />
-			<button type="button" :disabled="sym.busy || drawing?.status !== 'ready'" @click="analyse">Analyse page</button>
+			<button v-if="!runId" type="button" :disabled="sym.busy || drawing?.status !== 'ready'" @click="analyse">Analyse page</button>
 			<button type="button" class="secondary small" :title="side ? 'Hide the side panel' : 'Show the side panel'" @click="side = !side">{{ side ? '⇥' : '⇤' }}</button>
 		</div>
 
@@ -400,11 +527,45 @@ onBeforeUnmount(() => ro?.disconnect());
 					<label class="check"><input v-model="show.tags" type="checkbox" /> Text tags</label>
 					<label class="check"><input v-model="show.words" type="checkbox" /> Words</label>
 					<label class="check"><input v-model="show.excluded" type="checkbox" /> Ignored areas</label>
+					<label class="check" title="Detections marked as false positives (grey, crossed out)"><input v-model="show.rejected" type="checkbox" /> Rejected</label>
 				</div>
-				<div v-if="picked" class="sym-picked">
-					<strong>{{ picked.title }}</strong>
-					<div v-for="l in picked.lines" :key="l" class="small">{{ l }}</div>
+				<p v-if="mode === 'add'" class="hint small sym-modehint">Click on a missed <strong>{{ libTemplates.find((t) => t.id === addTemplate)?.desc }}</strong>: the box snaps to the symbol and its tag is read.</p>
+				<p v-else-if="result && !picked" class="hint small sym-modehint">Click a highlighted box to review it, or <strong>Add missed</strong> to add a symbol the analysis didn't find.</p>
+				<div v-if="pickedInfo && picked" class="sym-picked" :class="{ rejected: picked.rejected }">
+					<strong>{{ pickedInfo.title }}</strong>
+					<span v-if="picked.rejected" class="chip small">false positive</span>
+					<div v-for="l in pickedInfo.lines" :key="l" class="small">{{ l }}</div>
+					<template v-if="picked.kind === 'symbol' && picked.item.origin === 'manual'">
+						<div class="row tight">
+							<input v-model="typedTag" class="grow" placeholder="Type the tag" aria-label="Tag" @keydown.enter="saveTag" />
+							<button type="button" class="small" :disabled="sym.busy" @click="saveTag">Set tag</button>
+						</div>
+						<button type="button" class="secondary small" :disabled="sym.busy" @click="removeManual(picked.item)">Remove this symbol</button>
+					</template>
+					<button v-else-if="picked.kind !== 'test' && !picked.rejected" type="button" class="secondary small" :disabled="sym.busy" @click="reject">✕ Not a {{ picked.kind === 'tag' ? 'tag' : 'symbol' }} (false positive)</button>
+					<button v-else-if="picked.kind !== 'test'" type="button" class="small" :disabled="sym.busy" @click="restore(picked.kind, picked.item.box)">Restore</button>
 				</div>
+				<template v-if="corrections">
+					<h4>Corrections on this page</h4>
+					<p class="hint small">Kept with the drawing: later analyses of this page apply them again.</p>
+					<ul class="sym-taglist sym-corrections">
+						<li v-for="(s, i) in result?.rejected_symbols ?? []" :key="`rs${i}`" @click="select('symbol', true, s)">
+							<span class="tag strike">{{ s.tag ?? s.template_desc }}</span>
+							<span class="src">rejected {{ s.template_desc }}</span>
+							<button type="button" class="link small" title="Restore" @click.stop="restore('symbol', s.box)">undo</button>
+						</li>
+						<li v-for="(t, i) in result?.rejected_tags ?? []" :key="`rt${i}`" @click="select('tag', true, t)">
+							<span class="tag strike">{{ t.tag }}</span>
+							<span class="src">rejected text</span>
+							<button type="button" class="link small" title="Restore" @click.stop="restore('tag', t.box)">undo</button>
+						</li>
+						<li v-for="(s, i) in manualSymbols" :key="`m${i}`" @click="select('symbol', false, s)">
+							<span class="tag">+ {{ s.tag ?? '(no tag)' }}</span>
+							<span class="src">added {{ s.template_desc }}</span>
+							<button type="button" class="link small" title="Remove" @click.stop="removeManual(s)">undo</button>
+						</li>
+					</ul>
+				</template>
 				<h4>Drawing</h4>
 				<div v-if="drawing" class="row tight wrap">
 					<select :value="drawing.library_id" title="Which symbol library to use for this drawing" aria-label="Library"
