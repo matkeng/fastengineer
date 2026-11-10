@@ -255,3 +255,28 @@ def test_auto_match_is_exact_and_unambiguous() -> None:
     assert (moved.plant_area_id, moved.plant_area_by) == ("b", "auto")
     mine = row.model_copy(update={"plant_area_id": None, "plant_area_by": "user"})
     assert apply_auto(mine, index, {}).plant_area_id is None
+
+
+def test_panels_and_supply() -> None:
+    from workbench_core.keylists import LoadListRow, apply_auto, apply_auto_supply, panel_index, supply_loop
+
+    def row(key: str, **values) -> LoadListRow:
+        return LoadListRow(recipe_id="r", key=key, source="EEL", target="EEL", values={"tag": key} | values)
+
+    mcc = apply_auto(row("MCC-1", is_a_loadcentre=True), {}, {})
+    assert (mcc.is_panel, mcc.is_panel_by) == (True, "auto")
+    pump = apply_auto(row("P-1", is_a_loadcentre=False, supplied_from="mcc-1"), {}, {})
+    assert (pump.is_panel, pump.is_panel_by) == (False, "auto")
+    assert apply_auto(row("X"), {}, {}).is_panel_by is None  # not mapped: nothing filled in
+    panels = panel_index([mcc, pump])
+    assert apply_auto_supply(pump, panels).supplied_from == "r/MCC-1"
+    assert apply_auto_supply(mcc.model_copy(update={"values": {"supplied_from": "MCC-1"}}), panels).supplied_from is None  # not itself
+    mine = pump.model_copy(update={"supplied_from": "primary", "supplied_from_by": "user"})
+    assert apply_auto_supply(mine, panels).supplied_from == "primary"
+
+    a = row("A").model_copy(update={"supplied_from": "r/B"})
+    b = row("B").model_copy(update={"supplied_from": "r/C"})
+    c = row("C").model_copy(update={"supplied_from": "r/A"})
+    d = row("D").model_copy(update={"supplied_from": "r/A"})
+    assert supply_loop({r.ref(): r for r in (a, b, c, d)}) == ["r/A", "r/B", "r/C"]
+    assert supply_loop({r.ref(): r for r in (a, b, d)}) == []

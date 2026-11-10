@@ -466,8 +466,9 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
 - **Load List**: the rows of every **MEL and EEL** import in the project,
   combined and always live (each import's latest file through its saved rules
   and mapping), with the mapped fields as read-only, sortable, filterable
-  columns plus Status and Source. Two columns are edited here and saved as soon
-  as they are chosen: the row's **Plant area** and **Load type**. **Set plant
+  columns plus Status and Source. Four columns are edited here and saved as soon
+  as they are chosen: the row's **Plant area**, **Load type**, **Distribution
+  panel** and **Supplied from**. **Set plant
   area… / Set load type…** give every row the filters show the same value.
   - Rows are remembered by import and key: a row that leaves its import (or
     whose import is deleted, or whose file marks it deleted) stays in the list,
@@ -478,6 +479,13 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
     until a person chooses a value, which is then never changed automatically.
   - A plant area or load type that a person allocated can't be deleted from its
     list until those rows are changed.
+  - **Distribution panel** (a tick box) and **Supplied from** (Primary Supply,
+    or one of the list's active distribution panels) are edited the same way;
+    **Set supplied from…** sets it for every row the filters show. Filled in
+    automatically from the import's mapped "is a load centre" and "supplied
+    from" (a panel's tag), and kept once a person chooses. A row can't be
+    supplied from itself, panels can't feed each other in a loop, and a panel
+    can't stop being one while rows a person pointed at it are supplied from it.
   - Every allocation change is in the change log, with the row's tag.
 - Plant Areas and Equipment Packages each keep their own unsaved draft when you
   switch between lists.

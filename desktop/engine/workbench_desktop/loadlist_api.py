@@ -114,26 +114,32 @@ class RowRef(BaseModel):
 
 
 class Allocation(BaseModel):
-    """Rows, and the plant area and/or load type to give them (null = not allocated).
-    A field left out is not changed."""
+    """Rows, and what to give them: a plant area and/or load type (null = not allocated),
+    whether they are distribution panels, and what supplies them ("primary" = the primary
+    supply, a panel row's "<import id>/<key>", or null = not set). A field left out is not changed."""
     rows: list[RowRef]
     plant_area_id: str | None = None
     load_type_id: str | None = None
+    is_panel: bool = False
+    supplied_from: str | None = None
 
 
 @router.put("/allocations", response_model=list[LoadListRow])
 def allocate(body: Allocation):
-    change = {f: getattr(body, f) for f in ("plant_area_id", "load_type_id") if f in body.model_fields_set}
+    change = {f: getattr(body, f) for f in ("plant_area_id", "load_type_id", "is_panel", "supplied_from")
+              if f in body.model_fields_set}
     if not change or not body.rows:
-        return invalid(RefValidationError("Choose rows and a plant area or load type."))
+        return invalid(RefValidationError("Choose rows and what to change."))
     areas, types = _choices()
     known = {"plant_area_id": {a.id for a in areas}, "load_type_id": {t.id for t in types}}
     for field, value in change.items():
-        if value is not None and value not in known[field]:
+        if field in known and value is not None and value not in known[field]:
             what = "plant area" if field == "plant_area_id" else "load type"
             return invalid(RefValidationError(f"That {what} no longer exists. Open the Load List again.", {field: "Not found"}))
     labels = {c.id: c.label for c in areas + types}
     try:
         return get_loadlist().allocate([(r.recipe_id, r.key) for r in body.rows], change, labels)
+    except RefValidationError as exc:
+        return invalid(exc)
     except NotFound as exc:
         raise HTTPException(404, "A row is no longer in the Load List. Open it again.") from exc

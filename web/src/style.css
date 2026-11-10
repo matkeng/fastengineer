@@ -747,6 +747,9 @@ dialog.modal.pdf-viewer { width: min(1100px, calc(100vw - 32px)); }
 .key-loadlist .result-table td { white-space: nowrap; }
 .key-loadlist select.alloc { min-width: 170px; max-width: 260px; height: 24px; padding: 0 4px; font-size: 12px; }
 .key-loadlist select.alloc.auto { font-style: italic; color: var(--muted); }
+.key-loadlist select.alloc.broken { border-color: var(--warn); color: var(--warn); }
+.key-loadlist .panel-flag { display: inline-flex; padding: 2px 6px; border-radius: 2px; cursor: pointer; }
+.key-loadlist .panel-flag.auto { outline: 1px dashed var(--border-strong); }
 .key-loadlist tr.row-deleted > td { opacity: 0.55; }
 .key-loadlist tr.row-deleted > td:not(.alloc-col) { text-decoration: line-through; text-decoration-color: var(--muted); }
 .deleted-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--danger); border: 1px solid currentColor; border-radius: 2px; padding: 0 4px; text-decoration: none; display: inline-block; }

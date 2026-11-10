@@ -47,15 +47,23 @@ export interface LoadListRow {
 	status: 'active' | 'deleted'; deleted_reason: string;
 	plant_area_id: string | null; plant_area_by: 'auto' | 'user' | null;
 	load_type_id: string | null; load_type_by: 'auto' | 'user' | null;
+	/** A distribution panel: other rows can be supplied from it. */
+	is_panel: boolean; is_panel_by: 'auto' | 'user' | null;
+	/** PRIMARY_SUPPLY, a panel row's rowRef(), or null (not set). */
+	supplied_from: string | null; supplied_from_by: 'auto' | 'user' | null;
 	updated_at: string | null;
 }
+export const PRIMARY_SUPPLY = 'primary';
+/** How rows refer to each other (import ids have no "/"). */
+export const rowRef = (r: Pick<LoadListRow, 'recipe_id' | 'key'>) => `${r.recipe_id}/${r.key}`;
+export const rowTag = (r: LoadListRow) => (r.values.tag != null && r.values.tag !== '' ? String(r.values.tag) : r.key);
 export interface LoadListChoice { id: string; label: string; depth: number }
 export interface LoadListView {
 	fields: string[]; rows: LoadListRow[];
 	sources: { id: string; name: string; target: string; rows: number; has_file: boolean }[];
 	plant_areas: LoadListChoice[]; load_types: LoadListChoice[]; warnings: string[];
 }
-export type Allocation = { plant_area_id?: string | null; load_type_id?: string | null };
+export type Allocation = { plant_area_id?: string | null; load_type_id?: string | null; is_panel?: boolean; supplied_from?: string | null };
 export interface KeyListOverview {
 	plant_areas: { items: number; depth: number };
 	area_types: string[];

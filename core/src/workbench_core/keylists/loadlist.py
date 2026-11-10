@@ -11,6 +11,11 @@ An allocation is either chosen by a person ("user"), which nothing else changes,
 filled in automatically ("auto") from the row's mapped area / load type text when that
 text equals exactly one Plant Area tag number / Load Type code (ignoring case and extra
 spaces). Automatic allocations follow the text when it changes.
+
+Each row can also be a distribution panel, and is supplied from a distribution panel of
+the list or from the primary supply. Both are filled in automatically the same way, from
+the mapped `is_a_loadcentre` (yes/no) and `supplied_from` (a panel's tag) fields. A row
+can't be supplied from itself, and panels can't feed each other in a loop.
 """
 
 from __future__ import annotations
@@ -24,6 +29,8 @@ from ..refdata.validate import name_key
 
 #: The import targets whose rows make up the Load List.
 LOAD_LIST_TARGETS = ("MEL", "EEL")
+#: `supplied_from` for a row fed straight from the primary supply (else a row's ref()).
+PRIMARY_SUPPLY = "primary"
 
 CellValue = str | float | int | bool | None
 AllocatedBy = Literal["auto", "user"]
@@ -41,7 +48,19 @@ class LoadListRow(BaseModel):
     plant_area_by: AllocatedBy | None = None
     load_type_id: str | None = None
     load_type_by: AllocatedBy | None = None
+    is_panel: bool = False  # a distribution panel: other rows can be supplied from it
+    is_panel_by: AllocatedBy | None = None
+    supplied_from: str | None = None  # PRIMARY_SUPPLY or a panel row's ref()
+    supplied_from_by: AllocatedBy | None = None
     updated_at: datetime | None = None  # when a person last changed its allocations
+
+    def ref(self) -> str:
+        """How other rows refer to this one (import ids have no "/")."""
+        return f"{self.recipe_id}/{self.key}"
+
+    def tag(self) -> str:
+        tag = self.values.get("tag")
+        return str(tag).strip() if tag not in (None, "") else self.key
 
 
 def match_index(pairs: list[tuple[str, str]]) -> dict[str, str | None]:
@@ -62,7 +81,8 @@ def auto_match(text: CellValue, index: dict[str, str | None]) -> str | None:
 
 
 def apply_auto(row: LoadListRow, areas: dict[str, str | None], types: dict[str, str | None]) -> LoadListRow:
-    """Fill in (or follow) the automatic allocations of a row; a person's choice is kept."""
+    """Fill in (or follow) the automatic plant area, load type and distribution-panel flag of a
+    row; a person's choice is kept. (Supplied from comes after, see apply_auto_supply.)"""
     update: dict[str, object] = {}
     for kind, field, index in (("plant_area", "area", areas), ("load_type", "load_type", types)):
         if getattr(row, f"{kind}_by") == "user":
@@ -70,4 +90,37 @@ def apply_auto(row: LoadListRow, areas: dict[str, str | None], types: dict[str, 
         found = auto_match(row.values.get(field), index)
         update[f"{kind}_id"] = found
         update[f"{kind}_by"] = "auto" if found else None
+    if row.is_panel_by != "user":
+        flag = row.values.get("is_a_loadcentre")
+        update["is_panel"] = flag is True
+        update["is_panel_by"] = "auto" if isinstance(flag, bool) else None
     return row.model_copy(update=update)
+
+
+def panel_index(rows: list[LoadListRow]) -> dict[str, str | None]:
+    """name_key(tag) -> ref() of the active distribution panel with that tag (None if several)."""
+    return match_index([(r.ref(), r.tag()) for r in rows if r.is_panel and r.status == "active"])
+
+
+def apply_auto_supply(row: LoadListRow, panels: dict[str, str | None]) -> LoadListRow:
+    """Fill in (or follow) the automatic supplied-from of a row from its `supplied_from` text."""
+    if row.supplied_from_by == "user":
+        return row
+    found = auto_match(row.values.get("supplied_from"), panels)
+    if found == row.ref():
+        found = None
+    return row.model_copy(update={"supplied_from": found, "supplied_from_by": "auto" if found else None})
+
+
+def supply_loop(rows: dict[str, LoadListRow]) -> list[str]:
+    """Refs of rows that are part of a supply loop (A fed from B fed from ... A)."""
+    looped: set[str] = set()
+    for start in rows:
+        seen: list[str] = []
+        ref: str | None = start
+        while ref in rows and ref not in seen:
+            seen.append(ref)
+            ref = rows[ref].supplied_from
+        if ref in seen:
+            looped.update(seen[seen.index(ref):])
+    return sorted(looped)

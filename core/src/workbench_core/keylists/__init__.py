@@ -27,11 +27,22 @@ from .models import (
     PlantArea,
     PlantAreaList,
 )
-from .loadlist import LOAD_LIST_TARGETS, LoadListRow, apply_auto, auto_match, match_index
+from .loadlist import (
+    LOAD_LIST_TARGETS,
+    PRIMARY_SUPPLY,
+    LoadListRow,
+    apply_auto,
+    apply_auto_supply,
+    auto_match,
+    match_index,
+    panel_index,
+    supply_loop,
+)
 from .validate import check_equipment_packages, check_load_types, check_plant_areas, plant_area_depth
 
 __all__ = [
-    "LOAD_LIST_TARGETS", "LoadListRow", "apply_auto", "auto_match", "match_index",
+    "LOAD_LIST_TARGETS", "PRIMARY_SUPPLY", "LoadListRow", "apply_auto", "apply_auto_supply", "auto_match", "match_index",
+    "panel_index", "supply_loop",
     "AREA_TYPES", "AttachedFile", "PACKAGE_TYPES", "AreaType", "EquipmentPackage", "EquipmentPackageList", "EquipmentType", "PackageType",
     "PlantArea", "PlantAreaList", "LoadType", "LoadTypeList", "PHASES", "RATING_UNITS", "check_load_types",
     "check_equipment_packages", "check_plant_areas", "plant_area_depth",

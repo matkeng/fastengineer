@@ -5,7 +5,7 @@ import type { ColumnsConfig } from 'datatables.net';
 import { computed, onBeforeUnmount, ref, toRaw, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, type SelectFilter, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
-import type { Allocation, LoadListChoice, LoadListRow } from '../../lib/keyListTypes';
+import { type Allocation, type LoadListChoice, type LoadListRow, PRIMARY_SUPPLY, rowRef, rowTag } from '../../lib/keyListTypes';
 import { LOAD_FIELD_LABELS } from '../../lib/melTypes';
 import { useKeyLists } from '../../stores/keylists';
 import { useUi } from '../../stores/ui';
@@ -26,6 +26,30 @@ const KINDS: { kind: Kind; title: string; empty: string }[] = [
 	{ kind: 'load_type', title: 'Load type', empty: 'Not allocated' },
 ];
 const choices = (kind: Kind): LoadListChoice[] => (kind === 'plant_area' ? view.value?.plant_areas : view.value?.load_types) ?? [];
+type SelectKind = Kind | 'supplied_from';
+
+// Supplied from: the primary supply or one of the list's (active) distribution panels.
+function panels(): LoadListRow[] {
+	void version.value;
+	return (view.value?.rows ?? []).filter((r) => r.is_panel && r.status === 'active')
+		.sort((a, b) => rowTag(a).localeCompare(rowTag(b), undefined, { numeric: true }));
+}
+const panelLabel = (r: LoadListRow) => (r.values.desc ? `${rowTag(r)} – ${r.values.desc}` : rowTag(r));
+function supplyLabel(ref: string | null): string {
+	if (!ref) return '';
+	if (ref === PRIMARY_SUPPLY) return 'Primary Supply';
+	const r = view.value?.rows.find((x) => rowRef(x) === ref);
+	if (!r) return '⚠ removed row';
+	return r.is_panel && r.status === 'active' ? rowTag(r) : `⚠ ${rowTag(r)} (not an active panel)`;
+}
+/** Bulk and per-row choices; `except` = the row itself (it can't supply itself). */
+const supplyChoices = (except?: string): LoadListChoice[] => [
+	{ id: PRIMARY_SUPPLY, label: 'Primary Supply', depth: 0 },
+	...panels().filter((r) => rowRef(r) !== except).map((r) => ({ id: rowRef(r), label: panelLabel(r), depth: 0 })),
+];
+const bulkChoices = (kind: SelectKind) => (kind === 'supplied_from' ? supplyChoices() : choices(kind));
+const FROM_IMPORT = new Set(['area', 'load_type', 'is_a_loadcentre', 'supplied_from']);
+const autoTip = 'Filled in automatically from the import (it follows the import until you choose)';
 const labelOf = (kind: Kind, id: string | null) => (id ? choices(kind).find((c) => c.id === id)?.label ?? '⚠ deleted item' : '');
 
 const counts = computed(() => {
@@ -37,6 +61,8 @@ const counts = computed(() => {
 		deleted: rows.length - active.length,
 		noArea: active.filter((r) => !r.plant_area_id).length,
 		noType: active.filter((r) => !r.load_type_id).length,
+		noSupply: active.filter((r) => !r.supplied_from).length,
+		panels: active.filter((r) => r.is_panel).length,
 	};
 });
 const noFile = computed(() => view.value?.sources.filter((s) => !s.has_file) ?? []);
@@ -83,8 +109,31 @@ function build() {
 		{ title: 'Key', data: 'key', className: 'key-col', render: (t: string, type: string) => (type === 'display' ? escapeHtml(t) : t) },
 		allocColumn('plant_area', 'Plant area'),
 		allocColumn('load_type', 'Load type'),
+		{
+			title: 'Distribution panel', data: (row: LoadListRow) => row.is_panel, className: 'alloc-col center',
+			render: (on: boolean, type: string, row: LoadListRow) => {
+				if (type !== 'display') return on ? 'Yes' : 'No';
+				const tip = row.is_panel_by === 'auto' ? autoTip : 'Other rows can be supplied from a distribution panel';
+				return `<label class="panel-flag${row.is_panel_by === 'auto' ? ' auto' : ''}" title="${tip}"><input type="checkbox" class="alloc-check" data-row="${rows.indexOf(row)}" aria-label="Distribution panel"${on ? ' checked' : ''} /></label>`;
+			},
+		},
+		{
+			title: 'Supplied from', data: (row: LoadListRow) => row.supplied_from ?? '', className: 'alloc-col',
+			render: (ref: string, type: string, row: LoadListRow) => {
+				const label = supplyLabel(ref || null);
+				if (type !== 'display') return label;
+				const own = rowRef(row);
+				const options = supplyChoices(own);
+				let html = '<option value="">— not set —</option>'
+					+ options.map((c) => `<option value="${escapeHtml(c.id)}"${c.id === ref ? ' selected' : ''}>${escapeHtml(c.label)}</option>`).join('');
+				if (ref && !options.some((c) => c.id === ref)) html += `<option value="${escapeHtml(ref)}" selected>${escapeHtml(label)}</option>`;
+				const cls = `alloc${row.supplied_from_by === 'auto' ? ' auto' : ''}${label.startsWith('⚠') ? ' broken' : ''}`;
+				return `<select class="${cls}" data-kind="supplied_from" data-row="${rows.indexOf(row)}" aria-label="Supplied from" title="${row.supplied_from_by === 'auto' ? autoTip : ''}">${html}</select>`;
+			},
+		},
 		...v.fields.map((f): ColumnsConfig => ({
-			title: escapeHtml(LOAD_FIELD_LABELS[f] ?? f),
+			// The import's own text for what is edited here is marked, so the two can't be mixed up.
+			title: escapeHtml(LOAD_FIELD_LABELS[f] ?? f) + (FROM_IMPORT.has(f) ? ' (import)' : ''),
 			data: (row: LoadListRow) => row.values[f] ?? null,
 			className: typeof v.rows.find((r) => r.values[f] != null)?.values[f] === 'number' ? 'dt-right' : '',
 			render: (x: string | number | boolean | null, type: string) => {
@@ -112,6 +161,11 @@ function build() {
 		},
 		3: allocFilter('plant_area'),
 		4: allocFilter('load_type'),
+		5: {
+			options: [{ value: '', label: 'All' }, { value: 'y', label: 'Panels' }, { value: 'n', label: 'Not panels' }],
+			test: (val, r) => val === '' || r.is_panel === (val === 'y'),
+		},
+		// 6 (supplied from): a text filter, so it matches a panel's tag, "Primary Supply" or "⚠".
 	};
 
 	table = createFilteredTable<LoadListRow>(host.value, columns.length, {
@@ -145,12 +199,16 @@ function merge(saved: LoadListRow[]) {
 }
 
 async function onChange(e: Event) {
-	const sel = e.target as HTMLSelectElement;
-	if (!sel.classList.contains('alloc')) return;
-	const row = toRaw(view.value!.rows)[Number(sel.dataset.row)];
-	const kind = sel.dataset.kind as Kind;
+	const el = e.target as HTMLSelectElement | HTMLInputElement;
+	let change: Allocation;
+	if (el.classList.contains('alloc-check')) change = { is_panel: (el as HTMLInputElement).checked };
+	else if (el.classList.contains('alloc')) {
+		const kind = el.dataset.kind as SelectKind;
+		change = kind === 'supplied_from' ? { supplied_from: el.value || null } : { [`${kind}_id`]: el.value || null };
+	} else return;
+	const row = toRaw(view.value!.rows)[Number(el.dataset.row)];
 	if (!row) return;
-	const saved = await kl.allocate([row], { [`${kind}_id`]: sel.value || null } as Allocation);
+	const saved = await kl.allocate([row], change);
 	if (saved) {
 		merge(saved);
 		kl.message = `Saved ${row.values.tag ?? row.key}`;
@@ -160,9 +218,10 @@ async function onChange(e: Event) {
 }
 
 // -- set an allocation for every row the filters show ---------------------------------------
-const bulk = ref<{ kind: Kind; value: string; rows: LoadListRow[] } | null>(null);
+const bulk = ref<{ kind: SelectKind; value: string; rows: LoadListRow[] } | null>(null);
+const BULK_TITLE: Record<SelectKind, string> = { plant_area: 'plant area', load_type: 'load type', supplied_from: 'supplied from' };
 
-function openBulk(kind: Kind) {
+function openBulk(kind: SelectKind) {
 	if (!table) return;
 	const rows = table.api.rows({ search: 'applied' }).data().toArray() as LoadListRow[];
 	bulk.value = { kind, value: '', rows };
@@ -171,7 +230,8 @@ function openBulk(kind: Kind) {
 async function applyBulk() {
 	const b = bulk.value;
 	if (!b || !b.rows.length) return;
-	const saved = await kl.allocate(b.rows, { [`${b.kind}_id`]: b.value || null } as Allocation);
+	const change: Allocation = b.kind === 'supplied_from' ? { supplied_from: b.value || null } : { [`${b.kind}_id`]: b.value || null };
+	const saved = await kl.allocate(b.rows, change);
 	if (saved) {
 		merge(saved);
 		kl.message = `Saved ${saved.length} row(s)`;
@@ -192,6 +252,8 @@ onBeforeUnmount(() => table?.api.destroy());
 				{{ counts.active }} row(s)<template v-if="counts.deleted"> · {{ counts.deleted }} deleted</template>
 				· <span :class="{ warnText: counts.noArea }">{{ counts.noArea }} without a plant area</span>
 				· <span :class="{ warnText: counts.noType }">{{ counts.noType }} without a load type</span>
+				· <span :class="{ warnText: counts.noSupply }">{{ counts.noSupply }} without a supply</span>
+				· {{ counts.panels }} distribution panel(s)
 			</span>
 			<span class="spacer" />
 			<span v-if="kl.message" class="saved">✓ {{ kl.message }}</span>
@@ -199,9 +261,10 @@ onBeforeUnmount(() => table?.api.destroy());
 		</div>
 		<p v-if="kl.error && !bulk" class="error">{{ kl.error }}</p>
 		<p class="hint small">
-			The rows of every MEL and EEL import (latest file, saved rules and mapping). Only the plant area and load type are edited
-			here, and each is saved as soon as you choose it. <em>Italic</em> ones were filled in automatically because the import's
-			area or load type equals a plant area's tag number or a load type's code.
+			The rows of every MEL and EEL import (latest file, saved rules and mapping). The plant area, load type, distribution
+			panel and supplied from are edited here, each saved as soon as you choose it. <em>Italic</em> ones were filled in
+			automatically from the import: its area / load type equals a plant area's tag number / a load type's code, its
+			"is a load centre" marks a panel, and its "supplied from" equals a panel's tag.
 		</p>
 		<div v-if="view && (view.warnings.length || noFile.length)" class="chips">
 			<span v-for="s in noFile" :key="s.id" class="chip warn-chip">⚠ {{ s.name }} ({{ s.target }}) has no file yet</span>
@@ -218,21 +281,22 @@ onBeforeUnmount(() => table?.api.destroy());
 				<span class="hint small">For every row the filters show:</span>
 				<button type="button" class="secondary small" :disabled="kl.busy" @click="openBulk('plant_area')">Set plant area…</button>
 				<button type="button" class="secondary small" :disabled="kl.busy" @click="openBulk('load_type')">Set load type…</button>
+				<button type="button" class="secondary small" :disabled="kl.busy" @click="openBulk('supplied_from')">Set supplied from…</button>
 			</div>
 			<div ref="host" class="result-table" @change="onChange" />
 		</div>
 
-		<AppModal :open="!!bulk" :title="bulk?.kind === 'plant_area' ? 'Set plant area' : 'Set load type'" @close="bulk = null">
+		<AppModal :open="!!bulk" :title="`Set ${bulk ? BULK_TITLE[bulk.kind] : ''}`" @close="bulk = null">
 			<template v-if="bulk">
 				<p>
-					This sets the {{ bulk.kind === 'plant_area' ? 'plant area' : 'load type' }} of the
+					This sets the {{ BULK_TITLE[bulk.kind] }} of the
 					<strong>{{ bulk.rows.length }}</strong> row(s) the filters show, replacing what they have now.
 				</p>
 				<label class="field">
-					<span>{{ bulk.kind === 'plant_area' ? 'Plant area' : 'Load type' }}</span>
+					<span>{{ BULK_TITLE[bulk.kind][0].toUpperCase() + BULK_TITLE[bulk.kind].slice(1) }}</span>
 					<select v-model="bulk.value">
-						<option value="">— not allocated —</option>
-						<option v-for="c in choices(bulk.kind)" :key="c.id" :value="c.id">{{ '   '.repeat(c.depth) }}{{ c.label }}</option>
+						<option value="">{{ bulk.kind === 'supplied_from' ? '— not set —' : '— not allocated —' }}</option>
+						<option v-for="c in bulkChoices(bulk.kind)" :key="c.id" :value="c.id">{{ '   '.repeat(c.depth) }}{{ c.label }}</option>
 					</select>
 				</label>
 				<p v-if="kl.error" class="error">{{ kl.error }}</p>

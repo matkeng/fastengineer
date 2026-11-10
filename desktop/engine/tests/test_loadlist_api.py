@@ -159,3 +159,48 @@ def test_bulk_allocation_and_stale_edits() -> None:
     stale = _alloc([p101], {**BOB, **seen}, plant_area_id=None)
     assert stale.status_code == 409 and stale.json()["changed_by"] == "ACME\\ann"
     assert _rows()["Plant MEL:P-101"]["plant_area_id"] == "a2"
+
+
+def test_distribution_panels_and_supplied_from() -> None:
+    _import("Plant MEL", "MEL", "mel-sample.csv", mapping=MAPPING + [{"field": "supplied_from", "manual": "mcc-1"}])
+    _import("Switchroom EEL", "EEL", b"Tag,Load centre,Fed from\nMCC-1,yes,\nMCC-2,yes,MCC-1\nDB-1,no,\n", key="Tag",
+            mapping=[{"field": "tag", "column": "Tag"}, {"field": "is_a_loadcentre", "column": "Load centre"},
+                     {"field": "supplied_from", "column": "Fed from"}])
+    rows = _rows()
+    mcc1, mcc2, db1, p101 = (rows[k] for k in ("Switchroom EEL:MCC-1", "Switchroom EEL:MCC-2", "Switchroom EEL:DB-1",
+                                              "Plant MEL:P-101"))
+    ref = lambda r: f"{r['recipe_id']}/{r['key']}"  # noqa: E731
+    # Filled in from the imports: panels from "Load centre", supply from a panel's tag.
+    assert (mcc1["is_panel"], mcc1["is_panel_by"], mcc2["is_panel"], db1["is_panel"]) == (True, "auto", True, False)
+    assert (mcc2["supplied_from"], mcc2["supplied_from_by"]) == (ref(mcc1), "auto")
+    assert p101["supplied_from"] == ref(mcc1) and mcc1["supplied_from"] is None
+
+    # A person's choices: primary supply, or a distribution panel of the list.
+    assert _alloc([mcc1], supplied_from="primary").json()[0]["supplied_from"] == "primary"
+    m204 = rows["Plant MEL:M-204"]
+    assert _alloc([m204], supplied_from=ref(mcc2)).status_code == 200
+    # The rules: a panel, not itself, no loops.
+    bad = _alloc([m204], supplied_from=ref(db1))
+    assert bad.status_code == 422 and "DB-1 is not an active distribution panel" in bad.json()["detail"]
+    assert "itself" in _alloc([mcc2], supplied_from=ref(mcc2)).json()["detail"]
+    loop = _alloc([mcc1], supplied_from=ref(mcc2))
+    assert loop.status_code == 422 and "supply loop: MCC-1 → MCC-2" in loop.json()["detail"]
+    assert _alloc([m204], supplied_from="nope/x").status_code == 422
+
+    # A panel that supplies rows a person chose can't stop being one ...
+    no = _alloc([mcc2], is_panel=False)
+    assert no.status_code == 422 and "MCC-2 (1 row)" in no.json()["detail"]
+    # ... but rows only filled in automatically just lose their supply.
+    assert _alloc([mcc1], is_panel=False).status_code == 200
+    rows = _rows()
+    assert rows["Plant MEL:P-101"]["supplied_from"] is None and rows["Switchroom EEL:MCC-2"]["supplied_from"] is None
+    assert rows["Switchroom EEL:MCC-1"]["is_panel"] is False  # a person's choice beats the import's "yes"
+    # Making a row a panel, and supplying many rows from it at once.
+    assert _alloc([db1], is_panel=True).status_code == 200
+    mel_rows = [r for k, r in rows.items() if k.startswith("Plant MEL:") and r["status"] == "active"]
+    r = _alloc(mel_rows, supplied_from=ref(db1))
+    assert r.status_code == 200 and {x["supplied_from"] for x in r.json()} == {ref(db1)}
+
+    log = client.get("/api/audit", params={"entity": "load_list_row", "record_id": ref(m204)}).json()
+    entries = log["entries"] if isinstance(log, dict) else log
+    assert [{c["path"]: c["new"] for c in e["changes"]} for e in entries] == [{"supplied from": "DB-1"}, {"supplied from": "MCC-2"}]

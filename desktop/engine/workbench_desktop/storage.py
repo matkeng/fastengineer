@@ -17,7 +17,18 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from workbench_core.keylists import AttachedFile, EquipmentPackageList, LoadListRow, LoadTypeList, PlantAreaList, apply_auto
+from workbench_core.keylists import (
+    PRIMARY_SUPPLY,
+    AttachedFile,
+    EquipmentPackageList,
+    LoadListRow,
+    LoadTypeList,
+    PlantAreaList,
+    apply_auto,
+    apply_auto_supply,
+    panel_index,
+    supply_loop,
+)
 from workbench_core.mel import Recipe, Revision
 from workbench_core.refdata import EnumList, RefRow, RefTable, RefTree, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
@@ -626,6 +637,10 @@ class LoadListStore:
         self._db.execute("INSERT INTO load_list VALUES (?, ?, ?) ON CONFLICT(recipe_id, row_key) DO UPDATE SET "
                          "data = excluded.data", (row.recipe_id, row.key, row.model_dump_json()))
 
+    #: What a person can set on a row, and the field that says who set it.
+    EDITABLE = {"plant_area_id": "plant_area_by", "load_type_id": "load_type_by", "is_panel": "is_panel_by",
+                "supplied_from": "supplied_from_by"}
+
     def sync(self, live: list[LoadListRow], gone: dict[str, str], areas: dict[str, str | None],
              types: dict[str, str | None]) -> list[LoadListRow]:
         """Bring the remembered rows up to date with the imports and return them all.
@@ -638,51 +653,108 @@ class LoadListStore:
         with self._lock, self._db:
             stored = self._rows()
             out: dict[tuple[str, str], LoadListRow] = {}
-            filled = 0
             for row in live:
                 old = stored.get((row.recipe_id, row.key))
                 base = old or LoadListRow(recipe_id=row.recipe_id, key=row.key, source=row.source, target=row.target)
-                new = apply_auto(base.model_copy(update={
+                out[(row.recipe_id, row.key)] = apply_auto(base.model_copy(update={
                     "source": row.source, "target": row.target, "values": row.values, "status": row.status,
                     "deleted_reason": row.deleted_reason}), areas, types)
-                filled += sum(getattr(new, f"{k}_by") == "auto" and getattr(new, f"{k}_id") != getattr(base, f"{k}_id")
-                              for k in ("plant_area", "load_type"))
-                out[(row.recipe_id, row.key)] = new
             for k, old in stored.items():
                 if k in out:
                     continue
                 reason = gone.get(old.recipe_id)
                 out[k] = old if reason is None else old.model_copy(update={"status": "deleted", "deleted_reason": reason})
+            # Supplied from: once every row's panel flag is known. Automatic links that close a loop are dropped.
+            panels = panel_index(list(out.values()))
+            for row in live:
+                k = (row.recipe_id, row.key)
+                out[k] = apply_auto_supply(out[k], panels)
+            by_ref = {r.ref(): r for r in out.values()}
+            for ref in supply_loop(by_ref):
+                r = by_ref[ref]
+                if r.supplied_from_by == "auto":
+                    out[(r.recipe_id, r.key)] = r.model_copy(update={"supplied_from": None, "supplied_from_by": None})
+            filled = 0
             for k, row in out.items():
+                old = stored.get(k) or LoadListRow(recipe_id=row.recipe_id, key=row.key, source=row.source, target=row.target)
+                filled += sum(getattr(row, by) == "auto" and getattr(row, f) != getattr(old, f) for f, by in self.EDITABLE.items())
                 if stored.get(k) != row:
                     self._put(row)
             if filled:
                 audit.log(self._db, "load_list", "load-list", None, {"allocations filled in": filled}, label="Load List",
-                          note="Filled in automatically from the imports' area and load type")
+                          note="Filled in automatically from the imports")
         return list(out.values())
 
-    def allocate(self, keys: list[tuple[str, str]], change: dict[str, str | None], labels: dict[str, str]) -> list[LoadListRow]:
-        """Set the plant area and/or load type (`change`: "plant_area_id" / "load_type_id") of
-        rows, as a person's choice. `labels`: id -> text for the change log. One row's edit is
-        checked against the version the client last saw (see audit.check)."""
-        shown = lambda r: {"plant area": labels.get(r.plant_area_id or "", r.plant_area_id),  # noqa: E731
-                           "load type": labels.get(r.load_type_id or "", r.load_type_id)}
+    def allocate(self, keys: list[tuple[str, str]], change: dict[str, object], labels: dict[str, str]) -> list[LoadListRow]:
+        """Set the plant area, load type, distribution-panel flag and/or supplied-from of rows
+        (`change`: keys of EDITABLE), as a person's choice. `labels`: plant area / load type id
+        -> text for the change log. One row's edit is checked against the version the client
+        last saw (see audit.check). Raises RefValidationError for a choice that breaks a rule."""
         out = []
         with self._lock, self._db:
             stored = self._rows()
+            rows = []
             for k in keys:
-                row = stored.get(k)
-                if row is None:
+                if k not in stored:
                     raise NotFound(f"{k[0]}/{k[1]}")
+                rows.append(stored[k])
+            by_ref = {r.ref(): r for r in stored.values()}
+
+            def supply_label(ref: str | None) -> str | None:
+                if ref is None or ref == PRIMARY_SUPPLY:
+                    return "Primary Supply" if ref else None
+                return by_ref[ref].tag() if ref in by_ref else ref
+
+            def shown(r: LoadListRow) -> dict:
+                return {"plant area": labels.get(r.plant_area_id or "", r.plant_area_id),
+                        "load type": labels.get(r.load_type_id or "", r.load_type_id),
+                        "distribution panel": "yes" if r.is_panel else "no", "supplied from": supply_label(r.supplied_from)}
+
+            supply = change.get("supplied_from")
+            if supply is not None and supply != PRIMARY_SUPPLY:
+                panel = by_ref.get(str(supply))
+                if panel is None:
+                    raise RefValidationError("That distribution panel is no longer in the Load List. Open it again.",
+                                             {"supplied_from": "Not found"})
+                if not panel.is_panel or panel.status != "active":
+                    raise RefValidationError(f"{panel.tag()} is not an active distribution panel.", {"supplied_from": "Not a panel"})
+                if any(r.ref() == supply for r in rows):
+                    raise RefValidationError(f"{panel.tag()} can't be supplied from itself.", {"supplied_from": "Itself"})
+            if change.get("is_panel") is False:
+                changed = {r.ref() for r in rows}
+                fed = {}
+                for r in stored.values():
+                    if r.supplied_from in changed and r.supplied_from_by == "user" and r.ref() not in changed:
+                        fed[r.supplied_from] = fed.get(r.supplied_from, 0) + 1
+                if fed:
+                    raise RefValidationError(
+                        "These distribution panels supply other rows: "
+                        + ", ".join(f"{by_ref[ref].tag()} ({n} row{'s' if n > 1 else ''})" for ref, n in fed.items())
+                        + ". Change what those rows are supplied from first.", {"is_panel": "Supplies rows"})
+
+            new_rows: dict[str, LoadListRow] = {}
+            for row in rows:
                 update: dict[str, object] = {"updated_at": _now()}
                 for field, value in change.items():
                     update[field] = value
-                    update[field.replace("_id", "_by")] = "user"
-                new = row.model_copy(update=update)
+                    update[self.EDITABLE[field]] = "user"
+                new_rows[row.ref()] = row.model_copy(update=update)
+            graph = {**by_ref, **new_rows}
+            if change.get("is_panel") is False:  # automatic links to a panel that isn't one any more go
+                for ref, r in list(graph.items()):
+                    if r.supplied_from in new_rows and r.supplied_from_by == "auto":
+                        graph[ref] = r.model_copy(update={"supplied_from": None, "supplied_from_by": None})
+                        self._put(graph[ref])
+            loop = [ref for ref in supply_loop(graph) if ref in new_rows or graph[ref].supplied_from in new_rows]
+            if loop:
+                raise RefValidationError("That would make a supply loop: " + " → ".join(graph[r].tag() for r in loop)
+                                         + ". A panel can't be supplied, directly or through other panels, from a row it supplies.",
+                                         {"supplied_from": "Loop"})
+            for row in rows:
+                new = new_rows[row.ref()]
                 self._put(new)
-                audit.log(self._db, "load_list_row", f"{row.recipe_id}/{row.key}", shown(row), shown(new),
-                          parent_id=row.recipe_id, label=str(row.values.get("tag") or row.key),
-                          stored_time=row.updated_at.isoformat() if row.updated_at and len(keys) == 1 else None)
+                audit.log(self._db, "load_list_row", row.ref(), shown(row), shown(new), parent_id=row.recipe_id,
+                          label=row.tag(), stored_time=row.updated_at.isoformat() if row.updated_at and len(keys) == 1 else None)
                 out.append(new)
         return out
 
