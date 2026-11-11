@@ -301,10 +301,15 @@ imported only when used). API: `desktop/engine/workbench_desktop/symbols_api.py`
    - a **tag pattern**, a regular expression whose named groups become columns of the tags
      list (for P&IDs: `function`, `loop`, `suffix`);
    - a **tag format** that writes every tag the same way (`{function}-{loop}{suffix}`);
-   - a **text scan** option, which finds tags anywhere in the page text, as one word or as
+   - a **text scan** option (off in a new library, and in the example library, until you
+     switch it on in the library's Settings), which finds tags anywhere in the page text, as one word or as
      two words stacked as in a bubble;
    - the threshold for new templates, when to use OCR, and **ignored text** (words, and areas
      such as the title block, drawn once).
+
+   On a drawing's page, every piece of text that was read (from the PDF, or by OCR) is
+   marked with a light yellow see-through box, so you can see what the app can read. The
+   **Text** tick box beside the page turns the boxes off.
 
    Leave the pattern blank to take template tags exactly as written. Libraries can be
    created, copied, exported and imported as JSON.

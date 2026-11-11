@@ -49,6 +49,7 @@ def test_dashboard_counts_recent_and_runs(data_dir: Path) -> None:
     t = client.post("/api/ref/tables", json={"name": "Motors"}).json()
     tree = client.post("/api/ref/trees", json={"name": "Areas"}).json()
     lib = client.get("/api/symbols/libraries").json()[0]
+    lib = client.put(f"/api/symbols/libraries/{lib['id']}", json={**lib, "pattern_scan": True}).json()  # off in a new library
     dw = client.post("/api/symbols/drawings", params={"filename": "pid-sample.pdf", "library_id": lib["id"]},
                      content=(SAMPLES / "pid-sample.pdf").read_bytes()).json()
     dw = _wait(f"/api/symbols/drawings/{dw['id']}")

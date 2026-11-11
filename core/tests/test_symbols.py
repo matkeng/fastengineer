@@ -50,7 +50,8 @@ EXPECTED = {"FV-1023", "FV-1024", "FT-1023", "PT-1025", "TT-1026A", "LIC-1030", 
 
 
 def _starter():
-    lib = Library(id="L", **STARTER_LIBRARY["library"])
+    # with the text scan switched on (it is off in a new library): these tests are about what it finds
+    lib = Library(id="L", **(STARTER_LIBRARY["library"] | {"pattern_scan": True}))
     out = []
     for i, raw in enumerate(STARTER_LIBRARY["templates"]):
         raw = dict(raw)
@@ -248,7 +249,7 @@ def test_isa_text_scan_single_and_stacked() -> None:
 
 def test_a_non_pid_library_with_its_own_tag_rules() -> None:
     """Any drawing type: e.g. cable tags like C-0412 or W12, formatted with a prefix."""
-    lib = Library(id="C", name="Cables", tag_pattern=r"(?P<kind>C|W)-?(?P<num>\d{2,4})", tag_format="{kind}-{num:0>4}")
+    lib = Library(id="C", name="Cables", tag_pattern=r"(?P<kind>C|W)-?(?P<num>\d{2,4})", tag_format="{kind}-{num:0>4}", pattern_scan=True)
     assert group_names(lib) == ["kind", "num"]
     words = [Word(text="C412", box=[0, 0, 30, 10]), Word(text="W-12", box=[50, 0, 80, 10]),
              Word(text="FT-1023", box=[100, 0, 140, 10])]
@@ -398,7 +399,7 @@ def test_region_ocr_rereads_symbols_with_missing_tag_parts(pages) -> None:
 
 def test_apply_review_matches_by_overlap_and_is_repeatable() -> None:
     from workbench_core.symbols import PageResult, PageReview, Rejection, Symbol, Word, apply_review
-    lib = Library(id="l", name="L", tag_pattern=r"(?P<f>[A-Z]{2,3})-(?P<n>\d{3,4})")
+    lib = Library(id="l", name="L", tag_pattern=r"(?P<f>[A-Z]{2,3})-(?P<n>\d{3,4})", pattern_scan=True)
     t = Template(id="t", library_id="l", desc="Bubble", width=100, height=100)
     a = Symbol(template_id="t", template_desc="Bubble", box=[0, 0, 100, 100], score=0.9, tag="FT-101")
     b = Symbol(template_id="t", template_desc="Bubble", box=[300, 0, 400, 100], score=0.9, tag="PT-102")
@@ -428,3 +429,10 @@ def test_trim_box_matches_trim() -> None:
     assert crop(page, box).shape == trim(crop(page, [100, 50, 220, 160])).shape
     with pytest.raises(ValueError, match="no linework"):
         trim_box(page, [0, 0, 50, 50])
+
+
+def test_the_text_scan_is_off_in_a_new_library() -> None:
+    assert Library(id="n", name="New", tag_pattern=r"[A-Z]+-\d+").pattern_scan is False
+    assert STARTER_LIBRARY["library"]["pattern_scan"] is False
+    words = [Word(text="FT-1023", box=[0, 0, 40, 12])]
+    assert pattern_scan(words, TagRules(Library(id="n", name="New", tag_pattern=r"[A-Z]+-\d+"))) == []

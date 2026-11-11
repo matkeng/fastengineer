@@ -26,7 +26,8 @@ const img = ref<ImageBitmap | null>(null);
 const result = ref<PageResult | null>(null);
 const words = ref<Word[]>([]);
 const overrides = ref<Record<string, PageOverride>>({});
-const show = ref({ symbols: true, tags: true, words: false, excluded: true, rejected: true });
+// `words`: every piece of text read on the sheet (from the PDF, or by OCR), shown as a light yellow box
+const show = ref({ symbols: true, tags: true, words: true, excluded: true, rejected: true });
 const mode = ref<'pan' | 'add' | 'template' | 'exclude'>('pan');
 const addTemplate = ref(''); // "Add missed": the template placed on click
 const selection = ref<Box | null>(null); // dragged rectangle, image pixels
@@ -190,9 +191,12 @@ function draw() {
 		ctx.setLineDash([]);
 	}
 	if (show.value.words) {
-		ctx.strokeStyle = 'rgba(14, 165, 233, 0.8)';
-		ctx.lineWidth = 1;
-		for (const wd of words.value) rect(ctx, wd.box);
+		// a see-through highlighter over each word, so the drawing stays readable under it
+		ctx.fillStyle = 'rgba(255, 235, 59, 0.4)';
+		for (const wd of words.value) {
+			const [x1, y1, x2, y2] = wd.box;
+			ctx.fillRect(x1 * scale + ox, y1 * scale + oy, (x2 - x1) * scale, (y2 - y1) * scale);
+		}
 	}
 	const res = result.value;
 	if (res && show.value.symbols && !testHere.value) {
@@ -662,7 +666,7 @@ onBeforeUnmount(() => {
 				<div class="row tight wrap">
 					<label class="check"><input v-model="show.symbols" type="checkbox" /> Symbols</label>
 					<label class="check"><input v-model="show.tags" type="checkbox" /> Text tags</label>
-					<label class="check"><input v-model="show.words" type="checkbox" /> Words</label>
+					<label class="check" title="A light yellow box on every piece of text read on the drawing"><input v-model="show.words" type="checkbox" /> Text</label>
 					<label class="check"><input v-model="show.excluded" type="checkbox" /> Ignored areas</label>
 					<label class="check" title="Detections marked as false positives (grey, crossed out)"><input v-model="show.rejected" type="checkbox" /> Rejected</label>
 				</div>

@@ -42,9 +42,13 @@ def _wait(path: str, timeout=60):
 
 
 def _example() -> dict:
+    """The example library, with the text scan switched on (it is off in a new library)."""
     libs = client.get(f"{API}/libraries").json()
     assert len(libs) == 1, libs
-    return libs[0]
+    assert libs[0]["pattern_scan"] is False
+    res = client.put(f"{API}/libraries/{libs[0]['id']}", json={**libs[0], "pattern_scan": True})
+    assert res.status_code == 200, res.text
+    return client.get(f"{API}/libraries").json()[0]
 
 
 def _upload(library_id: str, name: str = "pid-sample.pdf") -> dict:

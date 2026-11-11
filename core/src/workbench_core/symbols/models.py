@@ -46,7 +46,7 @@ class Library(BaseModel):
     # How a tag is written in the output, from the pattern's groups, e.g. "{function}-{loop}".
     # Blank: the text as found.
     tag_format: str = ""
-    pattern_scan: bool = True    # also find tags anywhere in the page text
+    pattern_scan: bool = False   # also find tags anywhere in the page text (off unless switched on)
     scan_stacked: bool = True    # ... including two words stacked one above the other
     min_pdf_words: int = 5       # fewer words than this in the PDF text -> OCR the page
     default_threshold: float = 0.8
