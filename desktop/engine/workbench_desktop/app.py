@@ -30,7 +30,7 @@ from .eel_api import router as eel_router
 from .plc_api import router as plc_router
 from .distribution_panels_api import router as distribution_panels_router
 from .instrument_runsheet_api import router as instrument_runsheet_router
-from .master_api import router as master_router
+from .master_api import columns_router as master_columns_router, router as master_router
 from .drawing_list_api import document_router, enums_router, router as drawing_list_router
 from .keylist_workbooks_api import router as keylist_workbooks_router
 from .deliverables_api import router as deliverables_router
@@ -63,6 +63,7 @@ _RECORD_URLS = [(re.compile(p), entity) for p, entity in (
     (r"^/api/(distribution-panels)$", "distribution_panels"),
     (r"^/api/(instrument-runsheet)$", "instrument_runsheet"),
     (r"^/api/(enums)$", "enums"),
+    (r"^/api/(master-columns)$", "master_columns"),
     (r"^/api/(drawing-list)$", "drawing_list"),
     (r"^/api/(document-list)$", "document_list"),
     (r"^/api/deliverables/([^/]+)$", "deliverable"),
@@ -117,6 +118,7 @@ app.include_router(plc_router)
 app.include_router(distribution_panels_router)
 app.include_router(instrument_runsheet_router)
 app.include_router(master_router)
+app.include_router(master_columns_router)
 app.include_router(enums_router)
 app.include_router(drawing_list_router)
 app.include_router(document_router)

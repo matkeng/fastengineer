@@ -37,8 +37,10 @@ POWER, INSTRUMENT = "Power", "Instrument"
 _BLANK_NUMBERS = {f"#{n}": "" for n in range(1, MAX_NUMBERS + 1)}  # a number a row doesn't have fills in as nothing
 
 
-def master_columns(list_key: str) -> list[str]:
-    return list(LISTS[list_key].columns) + list(EXTRA_COLUMNS)
+def master_columns(list_key: str, columns: list[str] | None = None) -> list[str]:
+    """A master list's header: the list's own columns (`columns`, the project's; default the
+    built-in ones), then Generator and Confirmed."""
+    return list(LISTS[list_key].columns if columns is None else columns) + list(EXTRA_COLUMNS)
 
 
 def runsheet_tags(row, type_name: str, area_tag: str) -> dict[str, str]:
@@ -51,12 +53,12 @@ def runsheet_tags(row, type_name: str, area_tag: str) -> dict[str, str]:
 
 
 def instrument_rows(list_key: str, runsheet: InstrumentRunsheet, types: dict[str, EquipmentType], area_tags: dict[str, str],
-                    unresolved: dict[str, int] | None = None) -> list[tuple[OutputRow, bool]]:
+                    unresolved: dict[str, int] | None = None, columns: list[str] | None = None) -> list[tuple[OutputRow, bool]]:
     """What the Instrument generator adds to a list: for each runsheet row, in order, the rows
     its equipment type has for the list, filled in. Each comes with the runsheet row's
     Confirmed. `types`: equipment types by id; `area_tags`: plant area id -> tag number.
     A row whose equipment type is gone produces nothing."""
-    spec = LISTS[list_key]
+    cols = LISTS[list_key].columns if columns is None else columns
     unresolved = {} if unresolved is None else unresolved
     out: list[tuple[OutputRow, bool]] = []
     for row in runsheet.rows:
@@ -66,22 +68,23 @@ def instrument_rows(list_key: str, runsheet: InstrumentRunsheet, types: dict[str
         tags = runsheet_tags(row, kind.name, area_tags.get(row.plant_area_id, ""))
         for i, template in enumerate(kind.rows.get(list_key, []), start=1):
             tags["row"] = str(i)
-            cells = [_cell(expand(template.get(c, ""), tags, unresolved)) for c in spec.columns]
+            cells = [_cell(expand(template.get(c, ""), tags, unresolved)) for c in cols]
             out.append((OutputRow(cells=cells, run_row_id=f"runsheet/{row.id}", template_id=kind.name, template_seq=i), row.confirmed))
     return out
 
 
 def master_list(list_key: str, power: BuildResult, runsheet: InstrumentRunsheet, types: dict[str, EquipmentType],
-                area_tags: dict[str, str]) -> BuildResult:
+                area_tags: dict[str, str], columns: list[str] | None = None) -> BuildResult:
     """The project master of a list: the Power generator's rows (`power`: loadgen.generate for
-    the list), then the Instrument generator's, each with its Generator and Confirmed."""
+    the list, with the same `columns`), then the Instrument generator's, each with its
+    Generator and Confirmed. `columns`: the project's columns of the list."""
     unresolved: dict[str, int] = {}
     rows = [r.model_copy(update={"cells": [*r.cells, POWER, "TRUE"]}) for r in power.rows]
-    for r, confirmed in instrument_rows(list_key, runsheet, types, area_tags, unresolved):
+    for r, confirmed in instrument_rows(list_key, runsheet, types, area_tags, unresolved, columns):
         extra: list[Scalar] = [INSTRUMENT, "TRUE" if confirmed else "FALSE"]
         rows.append(r.model_copy(update={"cells": [*r.cells, *extra]}))
     tokens = sorted(set(power.unresolved_tokens) | set(unresolved))
-    return BuildResult(header=master_columns(list_key), rows=rows, stats=BuildStats(rows_written=len(rows), output_rows=len(rows)),
+    return BuildResult(header=master_columns(list_key, columns), rows=rows, stats=BuildStats(rows_written=len(rows), output_rows=len(rows)),
                        unresolved_tokens=tokens, unresolved_count=power.unresolved_count + sum(unresolved.values()),
                        engine_version="project master lists")
 

@@ -108,6 +108,16 @@ LOAD_TYPES = [
 ]
 
 
+def _project_cells(rows: dict[str, list[dict[str, str]]]) -> dict[str, list[dict[str, str]]]:
+    """Sample template rows with only the cells of columns the project's master lists have
+    (a project may have renamed or deleted some of the built-in ones)."""
+    from workbench_core.keylists.loadgen import ROW_SETTINGS
+
+    cols = get_keylists().master_columns()
+    return {k: [{c: v for c, v in r.items() if c in cols.of(k) or c in ROW_SETTINGS.get(k, {})} for r in rs]
+            for k, rs in rows.items()}
+
+
 class Added(BaseModel):
     added: dict[str, int]  # what was filled -> how many
     skipped: list[str]  # what already had data and was left alone
@@ -148,7 +158,8 @@ def load_sample_data() -> Added:
                                           "Signal": "4-20 mA", "IO Type": "AI"}],
                      "plc_io_list": [{"Tag": "<<MECH>>-PT<<SUF>>", "Description": "<<MECH>> discharge pressure", "Signal": "4-20 mA",
                                       "IO Type": "AI", "Rack": "<<Rack>>", "Channel": "<<#1>>", "Plant Area": "<<Area>>"}]})]
-        lists.save_equipment_packages(check_equipment_packages(EquipmentPackageList(items=items, types=types)))
+        types = [t.model_copy(update={"rows": _project_cells(t.rows)}) for t in types]
+        lists.save_equipment_packages(check_equipment_packages(EquipmentPackageList(items=items, types=types), lists.master_columns().all()))
         return len(items) + len(types)
 
     def codes(list_id: str, model, rows: list[dict]) -> int:
@@ -156,7 +167,8 @@ def load_sample_data() -> Added:
         return len(rows)
 
     def load_types() -> int:
-        lists.save_load_types(check_load_types(LOAD_TYPES))
+        lists.save_load_types(check_load_types([t | {"rows": _project_cells(t.get("rows") or {})} for t in LOAD_TYPES],
+                                                lists.master_columns().all()))
         return len(LOAD_TYPES)
 
     def eel() -> int:

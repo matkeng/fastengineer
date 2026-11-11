@@ -1193,3 +1193,12 @@ main.fill .auto-cols > .auto-edit > .grid-wrap { flex: 1 1 0; min-height: 160px;
 
 .func-allowed { margin: 0.25rem 0 0.5rem; line-height: 1.8; }
 .func-allowed code { margin-right: 0.35rem; }
+/* The columns of the Project Master lists */
+dialog.modal:has(.mcol) { width: min(720px, calc(100vw - 32px)); }
+.mcol-list li { gap: 8px; padding: 3px 8px; flex-wrap: wrap; }
+.mcol-list li.invalid { background: color-mix(in srgb, var(--danger, #c62828) 6%, transparent); }
+.mcol-list input { flex: 0 1 260px; min-width: 120px; }
+.mcol-list input[readonly] { color: var(--muted); background: var(--bg); }
+.mcol-lock { display: inline-block; width: 1.2em; text-align: center; }
+.mcol-confirm { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); }
+.mcol-confirm ul { margin: 4px 0 0; padding-left: 18px; }

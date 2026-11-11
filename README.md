@@ -999,6 +999,26 @@ lists** (`keylists/master.py`, API `/api/master`):
 - Besides the list's own columns each row has **Generator** (Power or
   Instrument) and **Confirmed** (the runsheet row's; a load's rows are always
   TRUE). Unconfirmed runsheet rows are in the master lists, marked FALSE.
+- **Each project has its own columns** (`keylists/master_columns.py`, API
+  `GET/PUT /api/master-columns`). **Edit columns…** on a master list renames,
+  adds, deletes and reorders the columns of all four; Generator and Confirmed
+  always come last. Save first shows what the change will do (`?dry_run=true`),
+  then makes it in one go:
+  - a **rename** moves the cells of load type and equipment type rows to the
+    new name, and renames the column in the column choices and filters of the
+    deliverables made from the list;
+  - a **delete** drops those cells and takes the column out of those
+    deliverables (a filter on it is cleared);
+  - the row editors, the Load Types and Equipment Packages workbooks and the
+    deliverables' column choices all use the project's columns.
+
+  Some columns can be moved but not renamed or deleted: **Tag** (**Cable
+  Number** on the Cable Schedule), which revisions are compared by, and the
+  Cable Schedule's **Cable Type**, **Cores** and **Cable Code**, which "Per
+  power cable" rows fill in. Generator, Confirmed and Repeat can't be used as
+  names. Issued revisions keep the columns they were issued with, so the first
+  revision after a rename shows the old column removed and the new one added.
+  The Load List and Distribution Panel columns are fixed.
 - The masters are under **Project master lists** in Project lists, each with
   filters and Excel / CSV export of the list as it is now. The Generators
   section shows, for each generator, how many rows it adds to each master

@@ -108,14 +108,15 @@ def plant_area_depth(areas: PlantAreaList) -> int:
     return best
 
 
-def check_equipment_packages(packages: EquipmentPackageList) -> EquipmentPackageList:
+def check_equipment_packages(packages: EquipmentPackageList, columns: dict[str, list[str]] | None = None) -> EquipmentPackageList:
     """Package numbers and descriptions are required and unique in the list (ignoring case
     and extra spaces). The vendor name is optional and may repeat. Row order is kept.
 
     Equipment types: the name is required and unique across all types; each belongs to a
     package of the list, so a package can't be removed while it has types. A type's predefined
     rows for the deliverable lists follow the same rules as a load type's. Returns the
-    types grouped by package, in package order, keeping their order within a package."""
+    types grouped by package, in package order, keeping their order within a package.
+    `columns`: the project's master list columns (default: the built-in ones)."""
     errors: dict[str, str] = {}
     items = []
     ids: set[str] = set()
@@ -132,7 +133,7 @@ def check_equipment_packages(packages: EquipmentPackageList) -> EquipmentPackage
     type_ids: set[str] = set()
     for t in packages.types:
         t = t.model_copy(update={"name": t.name.strip(), "description": t.description.strip(),
-                                 "rows": _template_rows(t.rows, t.id, errors, "equipment types")})
+                                 "rows": _template_rows(t.rows, t.id, errors, "equipment types", columns)})
         if t.id in type_ids:
             raise RefValidationError("Two equipment types have the same id.", {f"{t.id}.name": "Duplicate item"})
         type_ids.add(t.id)
@@ -147,10 +148,12 @@ def check_equipment_packages(packages: EquipmentPackageList) -> EquipmentPackage
     return packages.model_copy(update={"items": items, "types": types})
 
 
-def _template_rows(raw: object, rid: str, errors: dict[str, str], owners: str = "load types") -> dict[str, list[dict[str, str]]]:
+def _template_rows(raw: object, rid: str, errors: dict[str, str], owners: str = "load types",
+                   columns: dict[str, list[str]] | None = None) -> dict[str, list[dict[str, str]]]:
     """The predefined rows per deliverable list of a load type (or an equipment type, which has
     the same): known lists and columns only, text trimmed, blank cells and wholly blank rows
-    dropped. `owners`: what has the rows, for the messages."""
+    dropped. `owners`: what has the rows, for the messages; `columns`: the project's columns
+    of each list (default: the built-in ones)."""
     from .loadgen import LISTS, ROW_SETTINGS, TEMPLATE_LISTS
 
     out: dict[str, list[dict[str, str]]] = {}
@@ -165,11 +168,12 @@ def _template_rows(raw: object, rid: str, errors: dict[str, str], owners: str = 
             if not isinstance(row, dict):
                 continue
             settings = ROW_SETTINGS.get(key, {})
-            unknown = [c for c in row if c not in LISTS[key].columns and c not in settings]
+            known = (columns or {}).get(key) or LISTS[key].columns
+            unknown = [c for c in row if c not in known and c not in settings]
             if unknown:
                 errors[f"{rid}.rows.{key}"] = f"Not a column of the {LISTS[key].deliverable_type}: {', '.join(unknown)}"
             cells = {c: str(v).strip() for c, v in row.items()
-                     if (c in LISTS[key].columns or c in settings) and v is not None and str(v).strip()}
+                     if (c in known or c in settings) and v is not None and str(v).strip()}
             for name, allowed in settings.items():
                 if name in cells:
                     match = next((a for a in allowed if a.casefold() == cells[name].casefold()), None)
@@ -177,14 +181,14 @@ def _template_rows(raw: object, rid: str, errors: dict[str, str], owners: str = 
                         errors[f"{rid}.rows.{key}"] = f"{name} is blank or one of: {', '.join(allowed)}"
                     else:
                         cells[name] = match
-            if any(c in LISTS[key].columns for c in cells):
+            if any(c in known for c in cells):
                 kept.append(cells)
         if kept:
             out[key] = kept
     return out
 
 
-def check_load_types(rows: list[dict]) -> LoadTypeList:
+def check_load_types(rows: list[dict], columns: dict[str, list[str]] | None = None) -> LoadTypeList:
     """Check the rows of the Load Types list as they were typed in (numbers may be text).
 
     Code and name are required and unique (ignoring case and extra spaces); kW or Amps,
@@ -232,7 +236,7 @@ def check_load_types(rows: list[dict]) -> LoadTypeList:
         if text not in TRUE and text not in FALSE:
             problem("multi_load", "Not yes/no")
         r.multi_load = text in TRUE
-        r.rows = _template_rows(raw.get("rows"), r.id, errors)
+        r.rows = _template_rows(raw.get("rows"), r.id, errors, columns=columns)
         out.append(r)
     _check_unique(out, _LOAD_FIELDS, errors)
     if errors:

@@ -50,6 +50,7 @@ ENTITIES = {
     "distribution_panels": "distribution panels list",
     "instrument_runsheet": "instrument runsheet",
     "enums": "enums",
+    "master_columns": "master list columns",
     "drawing_list": "drawing list",
     "document_list": "document list",
     "deliverable": "deliverable",

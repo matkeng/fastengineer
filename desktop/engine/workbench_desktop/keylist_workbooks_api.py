@@ -62,9 +62,9 @@ def _sheets(list_id: str) -> wbk.Sheets:
     if list_id == "plant-areas":
         return wbk.export_plant_areas(lists.plant_areas())
     if list_id == "equipment-packages":
-        return wbk.export_equipment_packages(lists.equipment_packages())
+        return wbk.export_equipment_packages(lists.equipment_packages(), lists.master_columns().all())
     if list_id == "load-types":
-        return wbk.export_load_types(lists.load_types())
+        return wbk.export_load_types(lists.load_types(), lists.master_columns().all())
     if list_id in wbk.CODE_HEADS:
         return wbk.export_code_list(list_id, lists.code_list(list_id).items)
     if list_id == "cable-types":
@@ -121,10 +121,10 @@ def _parse(list_id: str, data: bytes) -> tuple[wbk.Parsed, list[str]]:
         return wbk.import_plant_areas(sheets, old), [n.tag for n in old.nodes]
     if list_id == "equipment-packages":
         old = lists.equipment_packages()
-        return wbk.import_equipment_packages(sheets, old), [p.number for p in old.items]
+        return wbk.import_equipment_packages(sheets, old, lists.master_columns().all()), [p.number for p in old.items]
     if list_id == "load-types":
         old = lists.load_types()
-        return wbk.import_load_types(sheets, old), [t.code for t in old.items]
+        return wbk.import_load_types(sheets, old, lists.master_columns().all()), [t.code for t in old.items]
     if list_id in wbk.CODE_HEADS:
         old = lists.code_list(list_id).items
         return wbk.import_code_list(sheets, list_id, old, lists.disciplines()), [c.code for c in old]
@@ -166,9 +166,9 @@ def _check(list_id: str, parsed: wbk.Parsed) -> None:
     if list_id == "plant-areas":
         check_plant_areas(PlantAreaList.model_validate(p))
     elif list_id == "equipment-packages":
-        check_equipment_packages(EquipmentPackageList.model_validate(p))
+        check_equipment_packages(EquipmentPackageList.model_validate(p), get_keylists().master_columns().all())
     elif list_id == "load-types":
-        check_load_types(p["items"])  # type: ignore[index]
+        check_load_types(p["items"], get_keylists().master_columns().all())  # type: ignore[index]
     elif list_id in wbk.CODE_HEADS:
         check_code_list(p["items"], EquipmentCode if list_id == "equipment-codes" else InstrumentCode, LISTS[list_id][0],  # type: ignore[index]
                         get_keylists().disciplines())

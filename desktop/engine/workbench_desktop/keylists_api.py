@@ -172,7 +172,7 @@ def update_equipment_packages(body: EquipmentPackagesUpdate):
     lists = get_keylists()
     types = lists.equipment_packages().types if body.types is None else body.types
     try:
-        packages = check_equipment_packages(EquipmentPackageList(items=body.items, types=types))
+        packages = check_equipment_packages(EquipmentPackageList(items=body.items, types=types), lists.master_columns().all())
         kept = {p.id for p in packages.items}
         _refuse_eel(("vendor_package_id", "supplied_by_id", "installed_by_id", "terminated_by_id"),
                     {p.id: p.number for p in lists.equipment_packages().items if p.id not in kept}, "packages")
@@ -199,7 +199,8 @@ def load_type_lists() -> dict:
     from workbench_core.keylists.instrument_runsheet import number_count
     from workbench_core.keylists.instrument_runsheet import tags as instrument_tags
     from workbench_core.keylists.loadgen import LISTS, ROW_SETTINGS, TAGS, TEMPLATE_LISTS
-    return {"lists": [{"key": k, "name": LISTS[k].deliverable_type, "columns": list(LISTS[k].columns),
+    cols = get_keylists().master_columns()
+    return {"lists": [{"key": k, "name": LISTS[k].deliverable_type, "columns": cols.of(k),
                        "settings": [{"name": n, "values": list(v)} for n, v in ROW_SETTINGS.get(k, {}).items()]}
                       for k in TEMPLATE_LISTS],
             "tags": [{"tag": f"<<{t}>>", "meaning": m} for t, m in TAGS],
@@ -212,7 +213,7 @@ def load_type_lists() -> dict:
 @router.put("/load-types", response_model=LoadTypeList)
 def update_load_types(body: LoadTypesUpdate):
     try:
-        loads = check_load_types(body.items)
+        loads = check_load_types(body.items, get_keylists().master_columns().all())
         kept = {r.id for r in loads.items}
         _refuse_in_use("load_type", {r.id: r.code for r in get_keylists().load_types().items if r.id not in kept},
                        "load types")

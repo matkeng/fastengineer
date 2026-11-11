@@ -163,7 +163,7 @@ def _project(d: Deliverable) -> tuple[BuildResult, str, list[str], str | None]:
 def _content_columns(d: Deliverable) -> tuple[list[str], str]:
     """(the columns of a project-source deliverable's content, the column revisions are compared by)."""
     spec = BY_TYPE[d.type]
-    return (master_columns(spec.key) if spec.templated else list(spec.columns)), spec.diff_key
+    return (master_columns(spec.key, get_keylists().master_columns().of(spec.key)) if spec.templated else list(spec.columns)), spec.diff_key
 
 
 def _checked(d: Deliverable) -> Deliverable:
@@ -187,13 +187,14 @@ def overview() -> Overview:
         revs.setdefault(r.deliverable_id, []).append(r)  # newest first
     panels = get_keylists().distribution_panels().panels
     tags = {p.id: p.tag for p in panels}
+    cols = get_keylists().master_columns()
     items = [Summary(deliverable=d, generator=_source_name(d, names, tags),
                      latest=(revs.get(d.id) or [None])[0],
                      revisions=len(revs.get(d.id, []))) for d in store.list()]
     items.sort(key=lambda s: (DELIVERABLE_TYPES.index(s.deliverable.type), s.deliverable.name.casefold()))
     return Overview(types=DELIVERABLE_TYPES, deliverables=items, generators=[
         GeneratorChoice(id=g.id, name=g.name, columns=_columns(g.id), builds=len(gens.list_builds(g.id))) for g in gens.list()],
-        project_columns={t: (master_columns(x.key) if x.templated else list(x.columns)) for t, x in BY_TYPE.items()}
+        project_columns={t: (master_columns(x.key, cols.of(x.key)) if x.templated else list(x.columns)) for t, x in BY_TYPE.items()}
         | {PANEL_TYPE: list(PANEL_COLUMNS)},
         panels=[PanelChoice(id=p.id, tag=p.tag, title=p.title) for p in panels])
 

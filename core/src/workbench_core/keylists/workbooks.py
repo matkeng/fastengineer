@@ -200,8 +200,10 @@ def import_plant_areas(sheets: dict[str, Rows], old: PlantAreaList) -> Parsed:
 
 
 
-def _rows_columns(key: str) -> list[str]:
-    return list(LISTS[key].columns) + list(ROW_SETTINGS.get(key, {}))
+def _rows_columns(key: str, columns: dict[str, list[str]] | None = None) -> list[str]:
+    """The headers of a list's rows sheet: the project's columns of the list (`columns`;
+    default the built-in ones), then its row settings."""
+    return list((columns or {}).get(key) or LISTS[key].columns) + list(ROW_SETTINGS.get(key, {}))
 
 
 #: The Equipment Packages sheet: one row per equipment type, with its package's columns; a package
@@ -209,7 +211,7 @@ def _rows_columns(key: str) -> list[str]:
 PACKAGES_HEAD = ["Package number", "Package description", "Vendor", "Package type", "Equipment type", "Equipment type description"]
 
 
-def export_equipment_packages(p: EquipmentPackageList) -> Sheets:
+def export_equipment_packages(p: EquipmentPackageList, columns: dict[str, list[str]] | None = None) -> Sheets:
     grid: Grid = [list(PACKAGES_HEAD)]
     for item in p.items:
         package = [item.number, item.description, item.vendor or None, item.package_type]
@@ -217,13 +219,14 @@ def export_equipment_packages(p: EquipmentPackageList) -> Sheets:
         grid += [package + [t.name, t.description or None] for t in types] or [package + [None, None]]
     out: Sheets = [("Equipment Packages", grid)]
     for key in TEMPLATE_LISTS:  # the rows an equipment type has for a list, one sheet per list
-        columns = _rows_columns(key)
-        out.append((_rows_sheet(key), [["Equipment type"] + columns] + [
-            [t.name] + [row.get(c) or None for c in columns] for t in p.types for row in t.rows.get(key, [])]))
+        heads = _rows_columns(key, columns)
+        out.append((_rows_sheet(key), [["Equipment type"] + heads] + [
+            [t.name] + [row.get(c) or None for c in heads] for t in p.types for row in t.rows.get(key, [])]))
     return out
 
 
-def import_equipment_packages(sheets: dict[str, Rows], old: EquipmentPackageList) -> Parsed:
+def import_equipment_packages(sheets: dict[str, Rows], old: EquipmentPackageList,
+                              columns: dict[str, list[str]] | None = None) -> Parsed:
     """Reads the Equipment Packages sheet (packages and their equipment types together), or a
     workbook of before, with a Packages sheet and an Equipment types sheet."""
     keep = _keep([(i.id, i.number) for i in old.items])
@@ -290,7 +293,7 @@ def import_equipment_packages(sheets: dict[str, Rows], old: EquipmentPackageList
                 if owner is None:
                     unknown.add(_get(r, "Equipment type"))
                     continue
-                owner["rows"][key].append({c: _get(r, c) for c in _rows_columns(key) if _get(r, c)})
+                owner["rows"][key].append({c: _get(r, c) for c in _rows_columns(key, columns) if _get(r, c)})
             if unknown:
                 notes.append(f"{title}: rows of equipment type(s) that are not in the file's equipment types are left out: "
                              + ", ".join(sorted(unknown)))
@@ -310,18 +313,18 @@ def _rows_sheet(key: str) -> str:
     return f"{LISTS[key].deliverable_type} rows".replace("/", "-")
 
 
-def export_load_types(types: LoadTypeList) -> Sheets:
+def export_load_types(types: LoadTypeList, columns: dict[str, list[str]] | None = None) -> Sheets:
     out: Sheets = [("Load Types", [LOAD_TYPE_HEAD] + [
         [getattr(t, f) if f != "multi_load" else ("Yes" if t.multi_load else None) for f in _LT_FIELDS]
         + [t.pdf.file_name if t.pdf else None] for t in types.items])]
     for key in TEMPLATE_LISTS:  # the rows each load of the type adds to a list, one sheet per list
-        columns = list(LISTS[key].columns) + list(ROW_SETTINGS.get(key, {}))
-        out.append((_rows_sheet(key), [["Load type"] + columns] + [
-            [t.code] + [row.get(c) or None for c in columns] for t in types.items for row in t.rows.get(key, [])]))
+        heads = _rows_columns(key, columns)
+        out.append((_rows_sheet(key), [["Load type"] + heads] + [
+            [t.code] + [row.get(c) or None for c in heads] for t in types.items for row in t.rows.get(key, [])]))
     return out
 
 
-def import_load_types(sheets: dict[str, Rows], old: LoadTypeList) -> Parsed:
+def import_load_types(sheets: dict[str, Rows], old: LoadTypeList, columns: dict[str, list[str]] | None = None) -> Parsed:
     rows = _sheet(sheets, "Load Types", ("Code", "Name", "Rating unit", "Voltage", "Phases"))
     keep = _keep([(t.id, t.code) for t in old.items])
     before = {t.id: t for t in old.items}
@@ -338,7 +341,7 @@ def import_load_types(sheets: dict[str, Rows], old: LoadTypeList) -> Parsed:
         if title.casefold() not in sheets:
             notes.append(f'No "{title}" sheet: those rows stay as they are.')
             continue
-        columns = list(LISTS[key].columns) + list(ROW_SETTINGS.get(key, {}))
+        heads = _rows_columns(key, columns)
         for i in items:
             i["rows"][key] = []
         unknown: set[str] = set()
@@ -347,7 +350,7 @@ def import_load_types(sheets: dict[str, Rows], old: LoadTypeList) -> Parsed:
             if item is None:
                 unknown.add(_get(r, "Load type"))
                 continue
-            item["rows"][key].append({c: _get(r, c) for c in columns if _get(r, c)})
+            item["rows"][key].append({c: _get(r, c) for c in heads if _get(r, c)})
         if unknown:
             notes.append(f"{title}: rows of load type(s) not in the Load Types sheet are left out: {', '.join(sorted(unknown))}")
     if any(before[i["id"]].pdf for i in items if i["id"] in before):

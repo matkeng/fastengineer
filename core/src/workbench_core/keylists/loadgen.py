@@ -233,12 +233,14 @@ def cables_for(load: LoadListRow, kind: str, cores: str, tags: dict[str, str], c
 
 def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, LoadType],
              areas: dict[str, tuple[str, str]], cables: list[CableType] | None = None,
-             notes: list[str] | None = None) -> BuildResult:
+             notes: list[str] | None = None, columns: list[str] | None = None) -> BuildResult:
     """The rows of one list for the active loads. `load_types` by id; `areas`: plant area id ->
     (tag, description). Loads without a load type produce nothing in a templated list (the
     caller reports them: see missing_load_types). `cables`: the Cable Types list, for rows
-    that use the cable tags; `notes` collects the loads whose cable could not be found."""
+    that use the cable tags; `notes` collects the loads whose cable could not be found.
+    `columns`: the project's columns for a templated list (default: the built-in ones)."""
     spec = LISTS[list_key]
+    cols = tuple(columns) if columns is not None and spec.templated else spec.columns
     cables = cables or []
     unmatched: dict[str, list[str]] = {}  # problem -> load tags
     by_ref = {r.ref(): r for r in loads}
@@ -268,17 +270,17 @@ def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, Load
                     unmatched.setdefault(p, []).append(load.tag())
             for cable in found:
                 row_tags = tags | cable
-                cells = {c: expand(template.get(c, ""), row_tags, unresolved) for c in spec.columns}
+                cells = {c: expand(template.get(c, ""), row_tags, unresolved) for c in cols}
                 if every:  # what was matched, whatever the template's cells say
                     cells |= {"Cable Type": cable["cabletype"], "Cores": cable["cablecores"]}
-                    cells["Cable Code"] = cells["Cable Code"] or cable["cablecode"]
-                rows.append(OutputRow(cells=[_cell(cells[c]) for c in spec.columns], run_row_id=load.ref(),
+                    cells["Cable Code"] = cells.get("Cable Code") or cable["cablecode"]
+                rows.append(OutputRow(cells=[_cell(cells.get(c, "")) for c in cols], run_row_id=load.ref(),
                                       template_id=lt.code, template_seq=i))
     if notes is not None:
         for problem, tags_ in unmatched.items():
             names = list(dict.fromkeys(tags_))
             notes.append(f"No cable for {len(names)} load(s) ({problem}): " + ", ".join(names[:12])
                          + (f" and {len(names) - 12} more" if len(names) > 12 else ""))
-    return BuildResult(header=list(spec.columns), rows=rows, stats=BuildStats(rows_written=len(rows), output_rows=len(rows)),
+    return BuildResult(header=list(cols), rows=rows, stats=BuildStats(rows_written=len(rows), output_rows=len(rows)),
                        unresolved_tokens=sorted(unresolved), unresolved_count=sum(unresolved.values()),
                        engine_version="load types")

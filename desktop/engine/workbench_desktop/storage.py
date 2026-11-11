@@ -26,6 +26,8 @@ from workbench_core.keylists.distribution_panels import DistributionPanelList
 from workbench_core.keylists.instrument_runsheet import InstrumentRunsheet
 from workbench_core.keylists.drawing_list import DocumentList, DrawingList
 from workbench_core.keylists.enums import ProjectEnums, default_enums
+from workbench_core.keylists.loadgen import LISTS
+from workbench_core.keylists.master_columns import ColumnChange, MasterColumns, default_master_columns, rename_in, rewrite_rows
 from workbench_core.keylists import (
     EEL_SOURCE,
     KEPT,
@@ -586,6 +588,61 @@ class KeyListStore:
                       before or EquipmentPackageList().model_dump_json(), packages.model_dump_json(),
                       label="Equipment Packages")
         return packages
+
+    MASTER_COLUMNS = "master-columns"
+
+    def master_columns(self) -> MasterColumns:
+        """The project's columns of the master lists; the built-in ones until first saved."""
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.MASTER_COLUMNS,)).fetchone()
+        return MasterColumns.model_validate_json(row[0]) if row else default_master_columns()
+
+    def save_master_columns(self, changes: dict[str, ColumnChange]) -> MasterColumns:
+        """Save edited master list columns and, in the same transaction, follow them in the
+        load types' and equipment types' rows (renamed cells move, deleted ones are dropped)
+        and in the column choices and filters of the deliverables made from those masters.
+        Issued revisions are not touched."""
+        with self._lock, self._db:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.MASTER_COLUMNS,)).fetchone()
+            before = row[0] if row else None
+            cols = MasterColumns.model_validate_json(before) if before else default_master_columns()
+            cols = MasterColumns(lists=cols.all() | {k: ch.columns for k, ch in changes.items()})
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.MASTER_COLUMNS, cols.model_dump_json()))
+            audit.log(self._db, "master_columns", self.MASTER_COLUMNS, before or default_master_columns().model_dump_json(),
+                      cols.model_dump_json(), label="Master list columns")
+            if not any(ch.renames or ch.deletes for ch in changes.values()):
+                return cols
+            note = "Master list columns changed"
+            lt_before = audit.data_of(self._db, "key_lists", "id = ?", (self.LOAD_TYPES,))
+            if lt_before:
+                loads = LoadTypeList.model_validate_json(lt_before)
+                new = loads.model_copy(update={"items": [t.model_copy(update={"rows": rewrite_rows(t.rows, changes)[0]})
+                                                         for t in loads.items]})
+                if new != loads:
+                    self._write_load_types(lt_before, new, note)
+            ep_before = audit.data_of(self._db, "key_lists", "id = ?", (self.EQUIPMENT_PACKAGES,))
+            if ep_before:
+                packages = EquipmentPackageList.model_validate_json(ep_before)
+                new_p = packages.model_copy(update={"types": [t.model_copy(update={"rows": rewrite_rows(t.rows, changes)[0]})
+                                                              for t in packages.types]})
+                if new_p != packages:
+                    self._db.execute("UPDATE key_lists SET data = ? WHERE id = ?", (new_p.model_dump_json(), self.EQUIPMENT_PACKAGES))
+                    audit.log(self._db, "equipment_packages", self.EQUIPMENT_PACKAGES, ep_before, new_p.model_dump_json(),
+                              label="Equipment Packages", note=note)
+            by_type = {LISTS[k].deliverable_type: ch for k, ch in changes.items()}
+            for (data,) in self._db.execute("SELECT data FROM deliverables").fetchall():
+                d = Deliverable.model_validate_json(data)
+                ch = by_type.get(d.type)
+                if d.source != "project" or ch is None:
+                    continue
+                f = rename_in([d.filter_column], ch) if d.filter_column else []
+                nd = d.model_copy(update={"columns": rename_in(d.columns, ch), "filter_column": f[0] if f else "",
+                                          "filter_values": d.filter_values if f else []})
+                if nd != d:
+                    self._db.execute("UPDATE deliverables SET data = ? WHERE id = ?", (nd.model_dump_json(), d.id))
+                    audit.log(self._db, "deliverable", d.id, data, nd.model_dump_json(), note=note)
+        return cols
 
     PLC = "plc"
     CABLE_TYPES = "cable-types"

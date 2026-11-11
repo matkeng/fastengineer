@@ -13,6 +13,7 @@ import { cellText } from '../../lib/genTypes';
 import { useDeliverables } from '../../stores/deliverables';
 import { useKeyLists } from '../../stores/keylists';
 import { useUi } from '../../stores/ui';
+import MasterColumnsEditor from './MasterColumnsEditor.vue';
 
 type Row = { cells: (string | number | boolean | null)[] };
 const kl = useKeyLists();
@@ -23,6 +24,15 @@ let table: FilteredTable<Row> | null = null;
 const m = computed(() => kl.master!);
 const summary = computed(() => kl.masters.find((x) => x.key === m.value.key));
 const note = ref('');
+const editing = ref(false);
+
+/** The columns changed: the row editors, this list and the deliverables pick them up. */
+async function columnsSaved() {
+	kl.templateLists = null;
+	await kl.loadMaster();
+	void dl.refresh();
+	note.value = 'Columns saved';
+}
 
 function build() {
 	if (!host.value || !kl.master) return;
@@ -91,6 +101,7 @@ onBeforeUnmount(() => table?.api.destroy());
 			</span>
 			<span class="spacer" />
 			<span v-if="note" class="saved" :title="note">{{ note }}</span>
+			<button type="button" class="secondary" title="Rename, add, delete or reorder the columns of the master lists" @click="editing = true">Edit columns…</button>
 			<button type="button" class="secondary" @click="exportList('xlsx')">Export .xlsx</button>
 			<button type="button" class="secondary" @click="exportList('csv')">CSV</button>
 			<button type="button" class="secondary" :disabled="kl.busy" title="Work it out again" @click="kl.loadMaster()">Refresh</button>
@@ -100,7 +111,8 @@ onBeforeUnmount(() => table?.api.destroy());
 		<p class="hint small">
 			Every row the generators make for this list, worked out now: <strong>Power</strong> adds the rows of each load's load type,
 			<strong>Instrument</strong> the rows of each Instrument Runsheet row's equipment type. It can't be edited here: change the Load
-			List, Load Types, Equipment Packages or Instrument Runsheet and it follows. A <strong>{{ m.deliverable_type }}</strong> deliverable
+			List, Load Types, Equipment Packages or Instrument Runsheet and it follows. Its columns are the project's: <strong>Edit columns…</strong>
+			renames, adds, deletes or reorders them. A <strong>{{ m.deliverable_type }}</strong> deliverable
 			takes its rows from it, through a filter and a choice of columns, and is what gets issued in revisions.
 		</p>
 		<p v-if="m.missing_load_types.length" class="warn small">
@@ -108,5 +120,6 @@ onBeforeUnmount(() => table?.api.destroy());
 		</p>
 		<p v-for="w in m.warnings" :key="w" class="warn small">{{ w }}</p>
 		<div class="results mel-grid"><div ref="host" class="result-table" /></div>
+		<MasterColumnsEditor :open="editing" :list-key="m.key" @close="editing = false" @saved="columnsSaved" />
 	</section>
 </template>
