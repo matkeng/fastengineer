@@ -83,6 +83,7 @@ interface Starter { title: string; desc: string; icon: IconName; run: () => unkn
 const starters = computed<Starter[]>(() => [
 	{ title: 'Try the P&ID example', desc: 'Sample drawing + ready-made library', icon: 'play', run: tryExample, featured: empty.value },
 	{ title: 'Load sample data', desc: 'A small invented plant in every empty list', icon: 'database', run: loadSample, featured: empty.value },
+	{ title: 'Compare tables', desc: 'Old and new: added, deleted, struck and changed', icon: 'compare', run: () => ui.go('compare') },
 	{ title: 'Analyse drawings', desc: 'Find symbols and read their tags', icon: 'symbol', run: () => ui.go('symbols') },
 	{ title: 'New list import', desc: 'MEL → load list, tags → instruments', icon: 'recipe', run: newImport },
 ]);

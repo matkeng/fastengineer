@@ -5,12 +5,10 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { clientIdentity, runningInTauri } from '../../lib/engine';
 import { type ProjectDetail, useProjects } from '../../stores/projects';
 import MemberList from './MemberList.vue';
-import { useUi } from '../../stores/ui';
 import LoadListReset from '../keylists/LoadListReset.vue';
 
 // Administrators: create projects, choose who may open each one, rename and archive.
 const pr = useProjects();
-const ui = useUi();
 const selectedId = ref<string | null>(null);
 const selected = computed(() => pr.all.find((p) => p.id === selectedId.value) ?? null);
 const edit = reactive({ name: '', members: [] as string[] });
@@ -118,18 +116,6 @@ watch(() => pr.all, () => { if (selectedId.value && !selected.value) pick(null);
 					</tr>
 				</tbody>
 			</table>
-		</section>
-
-		<section class="card tool-card">
-			<h2>Compare tables</h2>
-			<div class="row">
-				<p class="hint">
-					Pick an old and a new table from Excel (two revisions of a list, say) and see what was added, deleted, struck
-					out and changed between them. Nothing is saved in the project.
-				</p>
-				<span class="spacer" />
-				<button type="button" :disabled="!pr.current" :title="pr.current ? '' : 'Open a project first'" @click="ui.go('compare')">Open Compare tables</button>
-			</div>
 		</section>
 
 		<section v-if="selected" class="card">

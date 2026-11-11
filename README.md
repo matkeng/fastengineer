@@ -26,7 +26,7 @@ What it demonstrates:
 The app's tabs:
 
 - **Compare tables** is not a tab of its own: it is opened from its card on the
-  **Projects** tab (and has a **← Projects** button to go back). Pick an old and
+  **Dashboard**, which everyone sees (and has a **← Dashboard** button to go back). Pick an old and
   a new table with the Excel wizard and see what changed between them (see below).
 - **Symbol detection**: find any symbol on PDF drawings (templates matched with
   OpenCV, tags read from the PDF text or with Windows OCR) and produce a tags

@@ -1116,5 +1116,3 @@ dialog.modal.type-lists { width: min(1080px, calc(100vw - 32px)); }
 .back-bar { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-bottom: 8px; }
 .back-bar .hint { margin: 0; }
 main:not(.fill) > .back-bar { max-width: 1280px; }
-.tool-card .row { align-items: center; flex-wrap: nowrap; gap: 16px; }
-.tool-card .row .hint { margin: 0; }

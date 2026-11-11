@@ -54,8 +54,8 @@ const dirty: Partial<Record<string, () => boolean>> = {
 	deliverables: () => dl.dirty,
 };
 const sections = computed(() => SECTIONS.filter((s) => s.menu !== false && (s.id !== 'projects' || projects.isAdmin)));
-// Compare tables is opened from the Projects tab, so that tab stays lit while it shows.
-const menuTab = computed(() => (ui.tab === 'compare' ? 'projects' : ui.tab));
+// Compare tables is opened from the Dashboard, so that tab stays lit while it shows.
+const menuTab = computed(() => (ui.tab === 'compare' ? 'dashboard' : ui.tab));
 // Sections that work without a project: the engine's own page and project administration.
 const noProjectNeeded = computed(() => ui.tab === 'engine' || ui.tab === 'projects');
 
@@ -139,7 +139,7 @@ onMounted(() => wb.connect());
 			<template v-if="wb.status === 'ready' && projects.current">
 				<DashboardView v-if="ui.tab === 'dashboard'" />
 				<div v-show="ui.tab === 'compare'" class="back-bar">
-					<button type="button" class="secondary small" @click="ui.go('projects')">← Projects</button>
+					<button type="button" class="secondary small" @click="ui.go('dashboard')">← Dashboard</button>
 					<strong>Compare tables</strong>
 					<span class="hint">Pick an old and a new table and see what was added, deleted, struck out and changed.</span>
 				</div>
