@@ -27,6 +27,7 @@ from workbench_core.mel import (
     unique_keys,
 )
 from workbench_core.mel.export import combined_csv, combined_xlsx, load_list_csv, load_list_xlsx
+from workbench_core.mel.ingest import STRIKE_COLUMN, add_blank_strike_column
 from workbench_core.mel.models import RevisionInfo, TargetList
 from workbench_core.mel.pipeline import LoadListResult, Stage
 
@@ -289,6 +290,10 @@ async def upload_csv(recipe_id: str, request: Request, filename: str = Query(...
         original, headers, rows, warnings = await run_in_threadpool(parse_csv, data)
     except IngestError as exc:
         raise HTTPException(400, str(exc)) from exc
+    if _recipe(recipe_id).target == "MEL":  # a MEL always has the Strike through column; a CSV has no formatting to fill it
+        original, headers = add_blank_strike_column(original, rows)
+        warnings = [*warnings, f"A CSV file has no formatting, so the {STRIKE_COLUMN} column is blank: "
+                               "upload the Excel file to see which rows are struck through."]
     return _add(recipe_id, filename, "csv", key, original, headers, rows, warnings)
 
 
@@ -304,7 +309,7 @@ def upload_excel(recipe_id: str, body: ExcelSource) -> RevisionInfo:
                         header_rows=body.header_rows, skip_blank_keys=body.skip_blank_keys)
     except ExcelError as exc:
         raise HTTPException(400, str(exc)) from exc
-    original, headers, rows = rows_from_extract(ex)
+    original, headers, rows = rows_from_extract(ex, strike=_recipe(recipe_id).target == "MEL")  # a MEL: + Strike through
     key = headers[body.key_column]
     return _add(recipe_id, wb.filename, f"excel: {ex.source.name}", key, original, headers, rows, list(ex.warnings))
 

@@ -36,7 +36,8 @@ def test_mel_flow_persists_and_reapplies(data_dir: Path) -> None:
     insp = client.post("/api/mel/csv/inspect", content=(SAMPLES / "mel-sample.csv").read_bytes()).json()
     assert insp["suggested_key"] == "Equipment Tag" and insp["num_rows"] == 8
     rev1 = _upload(rid, "mel-sample.csv")
-    assert rev1["rev"] == 1 and "made unique" in rev1["warnings"][0]
+    assert rev1["rev"] == 1 and any("made unique" in w for w in rev1["warnings"])
+    assert any("Strike through column is blank" in w for w in rev1["warnings"])  # a CSV has no formatting
 
     recipe = client.get(f"/api/mel/recipes/{rid}").json()["recipe"]
     recipe["columns"] = [{"header": "Notes_1", "visible": False}, {"header": "Blank", "visible": False}]
@@ -162,3 +163,41 @@ def test_calculated_columns_that_use_anything_not_allowed_are_refused() -> None:
     assert refused.status_code == 422 and "'__import__' is not an allowed function" in refused.json()["detail"]
     help_ = client.get("/api/mel/functions").json()
     assert "round" in help_["functions"] and "open" not in help_["functions"] and "upper" in help_["text_functions"]
+
+
+def test_a_mel_from_excel_gets_its_strike_through_column(tmp_path: Path) -> None:
+    from openpyxl import Workbook
+    from openpyxl.cell.rich_text import CellRichText, TextBlock
+    from openpyxl.cell.text import InlineFont
+    from openpyxl.styles import Font
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "MEL"
+    ws.append(["Tag", "Description", "kW"])
+    for row in (["P-1", "Pump", 5], ["P-2", "Old pump", 7], ["P-3", "Fan", 4], ["P-4", "Mixer", 3], ["P-5", "Heater", 9], ["P-6", "Tank", None]):
+        ws.append(row)
+    struck = Font(strike=True)
+    for c in ws[3]:  # P-2: the whole row
+        c.font = struck
+    ws["B4"].font = ws["C4"].font = struck  # P-3: two cells
+    ws["C5"].font = struck  # P-4: one cell
+    ws["B6"] = CellRichText(["Heater ", TextBlock(InlineFont(strike=True), "(old)")])  # P-5: part of a cell
+    ws["A7"].font = ws["B7"].font = struck  # P-6: every filled cell
+    path = tmp_path / "mel.xlsx"
+    wb.save(path)
+
+    rid = client.post("/api/mel/recipes", json={"name": "Plant MEL", "target": "MEL"}).json()["id"]
+    up = client.post("/api/excel/workbooks", params={"filename": "mel.xlsx"}, content=path.read_bytes()).json()
+    res = client.post(f"/api/mel/recipes/{rid}/revisions/excel", json={
+        "workbook_id": up["id"], "source": "sheet:MEL", "header_row": 1, "key_column": 0})
+    assert res.status_code == 200, res.text
+    run = client.post(f"/api/mel/recipes/{rid}/run", json={"stage": "source"}).json()
+    assert run["headers"] == ["Tag", "Description", "kW", "Strike through"]
+    assert {r["key"]: r["values"]["Strike through"] for r in run["rows"]} == {
+        "P-1": "", "P-2": "Full Row", "P-3": "Multiple Cells", "P-4": "One Cell", "P-5": "Partial Cell/s", "P-6": "Full Row"}
+    # another list type doesn't get it
+    other = client.post("/api/mel/recipes", json={"name": "Instruments", "target": "PIL"}).json()["id"]
+    assert client.post(f"/api/mel/recipes/{other}/revisions/excel", json={
+        "workbook_id": up["id"], "source": "sheet:MEL", "header_row": 1, "key_column": 0}).status_code == 200
+    assert "Strike through" not in client.post(f"/api/mel/recipes/{other}/run", json={"stage": "source"}).json()["headers"]

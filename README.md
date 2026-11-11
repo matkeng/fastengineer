@@ -481,6 +481,27 @@ in another project or on another PC.
 - Rules that name a key or column the receiving file doesn't have are listed
   under "rules not applied" on the import's overview, as for any revised file.
 
+### Strike-through rows
+
+A row struck through in the MEL is a deleted row, so a **MEL** import always
+gets one more column, **Strike through**, after the file's own
+(`mel/ingest.py`, `strike_status`), saying how much of each row is struck
+through in Excel:
+
+| Value | When |
+|---|---|
+| Full Row | every filled cell of the row is wholly struck through |
+| Multiple Cells | two or more cells are struck through (wholly, or one wholly and others in part) |
+| One Cell | one cell is wholly struck through |
+| Partial Cell/s | only part of the text of one or more cells is struck through |
+| (blank) | nothing is struck through |
+
+Only an Excel file has the formatting: a CSV upload gets the column blank,
+with a warning saying so. The column is like any other: filter on it in Rows
+to untick struck-through rows, or use it in a calculated column (e.g.
+`<<Strike through>> == 'Full Row'`) mapped to the load list's **Deleted**
+field, so struck-through rows are marked deleted in the Load List.
+
 ### Edits report for the file's owner
 
 **Edits report .xlsx** (on an import's header; `POST
