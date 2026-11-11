@@ -11,7 +11,7 @@ import type {
 	Allocation, CableTypeForm, CableTypeList, CodeList, EelForm, EelView, PlcImportPreview, PlcList, PlcView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList, TemplateLists,
 } from '../lib/keyListTypes';
 import type { DistributionPanelList, PanelsView } from '../lib/panelTypes';
-import type { MelList, RunsheetView, TypedRow } from '../lib/runsheetTypes';
+import type { MasterSummary, MasterView, MelList, RunsheetView, TypedRow } from '../lib/runsheetTypes';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const PLANT_AREAS = '/api/keylists/plant-areas';
@@ -64,6 +64,10 @@ export const useKeyLists = defineStore('keylists', () => {
 	const runsheetDraft = ref<TypedRow[] | null>(null);
 	const runsheetDirty = computed(() => !!runsheetView.value && differ(runsheetDraft.value, runsheetView.value.rows));
 	const melList = ref<MelList | null>(null);
+	// The Project Master lists (read only): all four in brief, and the one that is showing.
+	const masters = ref<MasterSummary[]>([]);
+	const masterKey = ref('cable_schedule');
+	const master = ref<MasterView | null>(null);
 	const dirty = computed(() => areasDirty.value || packagesDirty.value || plcDirty.value || catDirty.value || panelsDirty.value || runsheetDirty.value);
 
 	async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -101,6 +105,7 @@ export const useKeyLists = defineStore('keylists', () => {
 		if (id === 'distribution-panels') void (panelsDirty.value ? checkPanels() : loadPanels());
 		if (id === 'instrument-runsheet') void loadRunsheet(); // what its rows can refer to may have changed
 		if (id === 'mel') void loadMel();
+		if (id === 'master') void loadMaster();
 	}
 
 	async function loadLoadList() {
@@ -135,6 +140,8 @@ export const useKeyLists = defineStore('keylists', () => {
 		if (!panelsDirty.value) await loadPanels();
 		await loadRunsheet();
 		if (selected.value === 'mel') await loadMel();
+		if (selected.value === 'master') await loadMaster();
+		await loadMasters();
 		const ct = await run(() => apiGet<CableTypeList>('/api/keylists/cable-types'));
 		if (ct) cableTypes.value = ct;
 		const e = await run(() => apiGet<EelView>('/api/eel'));
@@ -388,6 +395,20 @@ export const useKeyLists = defineStore('keylists', () => {
 		}
 	}
 
+	async function loadMasters() {
+		const m = await apiGet<MasterSummary[]>('/api/master').catch(() => null);
+		if (m) masters.value = m;
+	}
+
+	/** Work out a master list as it is now (the one that is showing, or `key`). */
+	async function loadMaster(key?: string) {
+		if (key) masterKey.value = key;
+		if (master.value?.key !== masterKey.value) master.value = null;
+		const m = await run(() => apiGet<MasterView>(`/api/master/${masterKey.value}`));
+		if (m) master.value = m;
+		void loadMasters();
+	}
+
 	async function loadMel() {
 		const m = await run(() => apiGet<MelList>('/api/mel-list'));
 		if (m) melList.value = m;
@@ -465,6 +486,7 @@ export const useKeyLists = defineStore('keylists', () => {
 		saveLoadType, deleteLoadType, templateLists, loadTemplateLists, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem, cableTypes, saveCableType, deleteCableType, addDefaultCableTypes,
 		plcSaved, plcDraft, plcView, catSaved, catDraft, plcDirty, catDirty, loadPlc, savePlc, checkPlc, saveCatalogue,
 		addDefaultTypes, exportPlc, importPlc,
+		masters, masterKey, master, loadMasters, loadMaster,
 		runsheetView, runsheetDraft, runsheetDirty, loadRunsheet, saveRunsheet, melList, loadMel,
 		panelsSaved, panelsDraft, panelsView, panelSelected, panelsDirty, loadPanels, savePanels, checkPanels, placePanelLoads,
 		discardCatalogue: () => { if (catSaved.value) catDraft.value = clone(catSaved.value); },

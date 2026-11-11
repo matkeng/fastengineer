@@ -51,8 +51,8 @@ class EquipmentType(BaseModel):
     name: str
     description: str = ""
     #: Predefined rows per deliverable list, exactly as a load type has them (list key -> rows,
-    #: each {column name: text with <<tags>>}). They are for the Instrument generator, which is
-    #: to come: nothing produces lists from them yet.
+    #: each {column name: text with <<tags>>}). The Instrument generator adds them to the
+    #: Project Master lists for every Instrument Runsheet row of this type (keylists.master).
     rows: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
 
 

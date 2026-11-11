@@ -1122,3 +1122,17 @@ main.fill .key-runsheet, main.fill .key-mel { overflow: hidden; }
 .key-runsheet .egrid td.bad-cell { background: color-mix(in srgb, var(--danger) 16%, transparent); box-shadow: inset 0 -2px 0 var(--danger); }
 .key-runsheet .runsheet-here, .key-runsheet .warn-list { flex-shrink: 0; margin: 4px 0 0; }
 .key-mel .result-table td { white-space: nowrap; }
+/* Project master lists; a deliverable's columns */
+main.fill .key-master { overflow: hidden; }
+.key-master .key-title { margin: 0; font-size: 1rem; }
+.key-master .result-table td { white-space: nowrap; }
+.dl-columns .row.tight { flex-wrap: nowrap; gap: 6px; }
+.dl-columns-summary { flex: 1; min-width: 0; height: 28px; line-height: 26px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 3px;
+	background: var(--bg); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-columns-summary.invalid { border-color: var(--danger); }
+.dl-column-list { list-style: decimal inside; margin: 8px 0 0; padding: 0; max-height: 50vh; overflow: auto; border: 1px solid var(--border); }
+.dl-column-list li { display: flex; align-items: center; gap: 6px; padding: 2px 8px; border-bottom: 1px solid var(--border); }
+.dl-column-list li:last-child { border-bottom: 0; }
+.dl-column-list li.off { color: var(--muted); background: var(--bg); }
+.dl-column-list li label.check { display: inline-flex; align-items: center; gap: 6px; }
+.gen-type-lists tbody tr { cursor: pointer; }

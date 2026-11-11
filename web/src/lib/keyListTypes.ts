@@ -14,7 +14,7 @@ export interface EquipmentPackage { id: string; number: string; description: str
 /** A kind of equipment supplied in a package; package_id is the id of its EquipmentPackage. */
 export interface EquipmentType {
 	id: string; package_id: string; name: string; description: string;
-	/** Predefined rows per deliverable list, as a load type has them (for the Instrument generator, to come). */
+	/** Predefined rows per deliverable list, as a load type has them: what the Instrument generator adds for each runsheet row of the type. */
 	rows: TemplateRows;
 }
 export interface EquipmentPackageList { items: EquipmentPackage[]; types: EquipmentType[]; updated_at: string | null }
@@ -50,7 +50,7 @@ export interface LoadTypeForm {
 }
 export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id' | 'rows'>;
 
-export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | 'cable-types' | 'distribution-panels' | 'instrument-runsheet' | 'mel' | CodeListId;
+export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | 'cable-types' | 'distribution-panels' | 'instrument-runsheet' | 'mel' | 'master' | CodeListId;
 
 /** A cable type; every project starts with a default set. `sort` orders the list. */
 export interface CableType {

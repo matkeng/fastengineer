@@ -97,8 +97,8 @@ function removeRows(idx: number[]) {
 		</div>
 		<p v-if="kl.error" class="error">{{ kl.error }}</p>
 		<p class="hint small">
-			The runsheet of the <strong>Instrument generator</strong> (not available yet): each row is an instrument assembly, and the
-			tags under the headings are what its equipment type's rows are filled in with. Type in the grid or paste from Excel.
+			The runsheet of the <strong>Instrument generator</strong>: each row is an instrument assembly, which adds its equipment type's
+			rows to the Project Master lists, with the tags under the headings filled in from the row. Type in the grid or paste from Excel.
 			The three <strong>ref</strong> columns must match before it can be saved: an <strong>equipment type</strong> of Equipment
 			Packages, a <strong>plant area</strong> tag number, and a tag in the <strong>Electrical Equipment List</strong> or the
 			<strong>MEL</strong>. There are 35 number columns (#1 to #35) to start with: <strong>+ 5 # columns</strong> adds more, and so

@@ -9,7 +9,10 @@ export interface Deliverable {
 	source: 'generator' | 'project' | 'panel'; generator_id: string;
 	/** 'panel': the schedule of this panel of the Distribution Panels list. */
 	panel_id: string;
-	filter_column: string; filter_values: string[]; updated_at: string | null;
+	filter_column: string; filter_values: string[];
+	/** The columns to keep, in the order to show them. Empty: every column, in the content's order. */
+	columns: string[];
+	updated_at: string | null;
 }
 export interface RevisionInfo {
 	id: string; deliverable_id: string; letter: string; issued_at: string; issued_by: string; description: string;

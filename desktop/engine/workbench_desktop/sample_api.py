@@ -214,7 +214,7 @@ def load_sample_data() -> Added:
         return done
 
     def runsheet() -> int:
-        """A few rows for the Instrument generator (to come): a pressure transmitter set on each pump."""
+        """A few rows for the Instrument generator: a pressure transmitter set on each pump."""
         from workbench_core.keylists.instrument_runsheet import TypedRow
 
         from .instrument_runsheet_api import checked, known

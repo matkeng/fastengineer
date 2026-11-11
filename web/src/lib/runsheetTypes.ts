@@ -20,6 +20,13 @@ export const numberColumn = (n: number): RunsheetColumn => ({ key: String(n), he
 export interface MelRow { source: string; recipe_id: string; key: string; tag: string; in_load_list: boolean; values: Record<string, string> }
 export interface MelList { headers: string[]; rows: MelRow[]; sources: { id: string; name: string; rows: number; has_file: boolean }[]; warnings: string[] }
 
+/** A Project Master list in brief, and in full (mirrors master_api). */
+export interface MasterSummary { key: string; name: string; deliverable_type: string; columns: string[]; rows: number; power_rows: number; instrument_rows: number }
+export interface MasterView {
+	key: string; name: string; deliverable_type: string; warnings: string[]; missing_load_types: string[];
+	result: { header: string[]; rows: { cells: (string | number | boolean | null)[]; run_row_id: string | null }[] };
+}
+
 /** As the engine compares names: case and extra spaces don't count. */
 export const nameKey = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
 const TRUE = ['true', 'yes', 'y', '1', 'x'];

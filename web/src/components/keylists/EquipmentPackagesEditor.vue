@@ -206,16 +206,16 @@ const label = (p: EquipmentPackage) => [p.number, p.description].filter(Boolean)
 		<div class="nav">
 			<button type="button" @click="add">Add package</button>
 			<span class="hint">Package numbers and descriptions are required and unique. Equipment type names are required and unique across all
-				packages. A package with equipment types can't be deleted. <strong>Lists</strong> on an equipment type holds its rows for the
-				deliverable lists, for the Instrument generator.</span>
+				packages. A package with equipment types can't be deleted. <strong>Lists</strong> on an equipment type holds the rows the
+				Instrument generator adds to the Project Master lists for each Instrument Runsheet row of that type.</span>
 		</div>
 
 		<AppModal class="type-lists" :open="!!listsOf" :title="`Lists of ${listsOf?.name || 'the equipment type'}`" @close="closeLists">
 			<TemplateRows v-if="listsOf" :key="listsOf.id" :rows="listsOf.rows" :errors="rowErrors" :tags="kl.templateLists?.instrument_tags">
 				<template #default="{ list }">
 					The rows this equipment type has for the <strong>{{ list.name }}</strong>, set out as a load type's are.
-					The tags are the columns of the <strong>Instrument Runsheet</strong>: each of its rows that names this equipment type will
-					fill them in. That is for the <strong>Instrument generator</strong>, which is not available yet, so nothing is produced today.
+					The tags are the columns of the <strong>Instrument Runsheet</strong>: the <strong>Instrument generator</strong> adds these rows
+					to the Project Master {{ list.name }} once for each runsheet row that names this equipment type, filled in from that row.
 				</template>
 			</TemplateRows>
 			<template #footer>

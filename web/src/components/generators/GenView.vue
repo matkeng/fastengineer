@@ -23,15 +23,14 @@ const dl = useDeliverables();
 const ui = useUi();
 
 // The two types of generator, built into the app. (Generators are no longer made from a workbook.)
-interface PowerList { type: string; rows: number; deliverables: number }
+interface GeneratorList { key: string; type: string; master: string; rows: number; master_rows: number; deliverables: number }
 interface GeneratorType {
 	id: 'power' | 'instrument'; name: string; available: boolean; description: string;
-	loads: number; load_types: number; missing_load_types: string[]; lists: PowerList[];
+	/** Power: loads and load types. Instrument: runsheet rows and equipment types that have rows. */
+	runs: number; templates: number; missing: string[]; unconfirmed: number; lists: GeneratorList[];
 }
 const types = ref<GeneratorType[]>([]);
 const typesError = ref('');
-const power = computed(() => types.value.find((t) => t.id === 'power') ?? null);
-const instrument = computed(() => types.value.find((t) => t.id === 'instrument') ?? null);
 async function loadTypes() {
 	try {
 		types.value = await apiGet<GeneratorType[]>('/api/generators/types');
@@ -40,8 +39,13 @@ async function loadTypes() {
 		typesError.value = err instanceof Error ? err.message : String(err);
 	}
 }
-function openList(id: 'load-list' | 'load-types') {
+function openList(id: 'load-list' | 'load-types' | 'instrument-runsheet' | 'equipment-packages') {
 	void kl.select(id);
+	ui.go('keylists');
+}
+function openMaster(key: string) {
+	kl.masterKey = key;
+	void kl.select('master');
 	ui.go('keylists');
 }
 async function openDeliverables() {
@@ -94,38 +98,46 @@ watch(() => ui.tab, (tab) => { if (tab === 'generators' && !g.draft) { void g.re
 		<section v-if="!g.draft" class="card">
 			<h2>Generators</h2>
 			<p class="hint">
-				A generator makes a project's lists from its data. There are two types, built into the app. What a generator
-				produces is issued in revisions under <strong>Deliverables</strong>.
+				There are two generators, built into the app, and both fill the same four <strong>Project Master lists</strong>: the
+				Cable Schedule, Equipment List, Instrument List and IO List. <strong>Deliverables</strong> are made from a master list
+				(a filter, and a choice and order of columns) and are what gets issued in revisions.
 			</p>
 			<p v-if="typesError" class="error">{{ typesError }}</p>
 			<div class="gen-types">
-				<article v-if="power" class="gen-type">
-					<header><strong>{{ power.name }}</strong><span class="chip ok">Available</span></header>
-					<p class="hint">{{ power.description }} It is always up to date: there is nothing to import or build.</p>
-					<p>
-						<strong>{{ power.loads }}</strong> load(s) in the Load List · <strong>{{ power.load_types }}</strong> load type(s)
+				<article v-for="t in types" :key="t.id" class="gen-type">
+					<header><strong>{{ t.name }}</strong><span class="chip ok">Available</span></header>
+					<p class="hint">{{ t.description }} It is always up to date: there is nothing to import or build.</p>
+					<p v-if="t.id === 'power'">
+						<strong>{{ t.runs }}</strong> load(s) in the Load List · <strong>{{ t.templates }}</strong> load type(s)
 					</p>
-					<p v-if="power.missing_load_types.length" class="warn">
-						{{ power.missing_load_types.length }} load(s) have no load type and produce nothing yet:
-						{{ power.missing_load_types.slice(0, 8).join(', ') }}{{ power.missing_load_types.length > 8 ? '…' : '' }}
+					<p v-else>
+						<strong>{{ t.runs }}</strong> row(s) in the Instrument Runsheet<template v-if="t.unconfirmed"> ({{ t.unconfirmed }} not confirmed)</template>
+						· <strong>{{ t.templates }}</strong> equipment type(s) with rows
+					</p>
+					<p v-if="t.missing.length" class="warn">
+						{{ t.missing.length }} load(s) have no load type and add nothing yet:
+						{{ t.missing.slice(0, 8).join(', ') }}{{ t.missing.length > 8 ? '…' : '' }}
 					</p>
 					<table class="grid simple gen-type-lists">
-						<thead><tr><th>List</th><th>Rows now</th><th>Deliverables</th></tr></thead>
+						<thead><tr><th>Adds to</th><th>Rows from {{ t.name }}</th><th>Master list rows</th></tr></thead>
 						<tbody>
-							<tr v-for="l in power.lists" :key="l.type">
-								<td>{{ l.type }}</td><td class="n">{{ l.rows }}</td><td class="n">{{ l.deliverables || '–' }}</td>
+							<tr v-for="l in t.lists" :key="l.key" title="Open this master list" @click="openMaster(l.key)">
+								<td>{{ l.master }}</td><td class="n">{{ l.rows }}</td><td class="n">{{ l.master_rows }}</td>
 							</tr>
 						</tbody>
 					</table>
 					<div class="row">
+						<template v-if="t.id === 'power'">
+							<button type="button" class="secondary" @click="openList('load-list')">Load List</button>
+							<button type="button" class="secondary" @click="openList('load-types')">Load Types</button>
+						</template>
+						<template v-else>
+							<button type="button" class="secondary" @click="openList('instrument-runsheet')">Instrument Runsheet</button>
+							<button type="button" class="secondary" @click="openList('equipment-packages')">Equipment Types</button>
+						</template>
+						<span class="spacer" />
 						<button type="button" @click="openDeliverables">Deliverables</button>
-						<button type="button" class="secondary" @click="openList('load-list')">Load List</button>
-						<button type="button" class="secondary" @click="openList('load-types')">Load Types</button>
 					</div>
-				</article>
-				<article v-if="instrument" class="gen-type planned">
-					<header><strong>{{ instrument.name }}</strong><span class="chip">Planned</span></header>
-					<p class="hint">{{ instrument.description }}</p>
 				</article>
 			</div>
 

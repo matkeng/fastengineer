@@ -27,7 +27,11 @@ const generators = computed(() => dl.overview?.generators ?? []);
 const groups = computed(() => types.value.map((t) => ({ type: t, items: (dl.overview?.deliverables ?? []).filter((s) => s.deliverable.type === t) })));
 const d = computed(() => dl.detail);
 const cur = computed(() => d.value?.current ?? null);
-const PROJECT = '@project'; // the source drop-down's value for the Project Load List
+const PROJECT = '@project'; // the source drop-down's value for the project's own content
+// What a deliverable of a type is made from in the project: its Project Master list (both generators), or the Load List.
+const MASTERS: Record<string, string> = { 'Cable Schedule': 'Project Master Cable Schedule', 'Equipment List': 'Project Master Equipment List',
+	'Instrument List': 'Project Master Instrument List', 'PLC I/O List': 'Project Master IO List' };
+const projectName = (type: string | undefined) => MASTERS[type ?? ''] ?? 'Project Load List';
 const isProject = computed(() => d.value?.deliverable.source === 'project');
 const isPanel = computed(() => d.value?.deliverable.source === 'panel');
 const panels = computed(() => dl.overview?.panels ?? []);
@@ -45,8 +49,43 @@ const source = computed({
 		dl.form.source = v === PROJECT ? 'project' : 'generator';
 		dl.form.generator_id = v === PROJECT ? '' : v;
 		if (!columns.value.includes(dl.form.filter_column)) dl.form.filter_column = '';
+		dl.form.columns = dl.form.columns.filter((c) => columns.value.includes(c));
 	},
 });
+
+// -- which columns, in which order ------------------------------------------------------------
+// The dialog works on a copy: every column of the content, the kept ones first in their order.
+const picking = ref<{ name: string; on: boolean }[] | null>(null);
+const columnsSummary = computed(() => {
+	const f = dl.form;
+	if (!f || !f.columns.length) return `All ${columns.value.length} columns`;
+	return `${f.columns.length} of ${columns.value.length}: ${f.columns.join(', ')}`;
+});
+function startColumns() {
+	const f = dl.form;
+	if (!f) return;
+	const kept = f.columns.filter((c) => columns.value.includes(c));
+	picking.value = kept.length
+		? [...kept.map((name) => ({ name, on: true })), ...columns.value.filter((c) => !kept.includes(c)).map((name) => ({ name, on: false }))]
+		: columns.value.map((name) => ({ name, on: true }));
+}
+function moveColumn(i: number, by: -1 | 1) {
+	const list = picking.value;
+	if (!list || i + by < 0 || i + by >= list.length) return;
+	[list[i], list[i + by]] = [list[i + by], list[i]];
+}
+const setAllColumns = (on: boolean) => picking.value?.forEach((c) => { c.on = on; });
+function resetColumns() {
+	picking.value = columns.value.map((name) => ({ name, on: true }));
+}
+function applyColumns() {
+	const list = picking.value;
+	if (!list || !dl.form) return;
+	const chosen = list.filter((c) => c.on).map((c) => c.name);
+	// every column in the content's own order is the same as not choosing: new columns then show too
+	dl.form.columns = chosen.length === columns.value.length && chosen.every((c, i) => c === columns.value[i]) ? [] : chosen;
+	picking.value = null;
+}
 const when = (iso: string) => new Date(iso).toLocaleString();
 /** A distribution panel's header block: of the revision shown, else as it is now. */
 const summary = computed(() => (dl.shown ? dl.shown.summary ?? [] : cur.value?.summary ?? []).filter(([, v]) => v !== null && v !== ''));
@@ -102,6 +141,13 @@ async function withdraw() {
 async function amend(rev: RevisionInfo) {
 	const text = prompt(`Description of Rev ${rev.letter}:`, rev.description);
 	if (text !== null && text !== rev.description) await dl.amend(rev, text);
+}
+
+function openMaster() {
+	const key = { 'Cable Schedule': 'cable_schedule', 'Equipment List': 'equipment_list', 'Instrument List': 'instrument_list', 'PLC I/O List': 'plc_io_list' }[d.value?.deliverable.type ?? ''];
+	if (key) kl.masterKey = key;
+	void kl.select('master');
+	ui.go('keylists');
 }
 
 function openKeyList(id: 'load-list' | 'load-types' | 'distribution-panels') {
@@ -233,8 +279,8 @@ onBeforeUnmount(() => table?.api.destroy());
 						<span v-if="dl.fieldErrors.panel_id" class="warn small">{{ dl.fieldErrors.panel_id }}</span></label>
 					<label v-else class="field"><span>Content from<span class="req"> *</span></span>
 						<select v-model="source" :class="{ invalid: dl.fieldErrors.generator_id }">
-							<option :value="PROJECT">Project Load List</option>
-							<optgroup v-if="generators.length" label="Generators">
+							<option :value="PROJECT">{{ projectName(dl.form.type) }}</option>
+							<optgroup v-if="generators.length" label="Generators from imported workbooks">
 								<option v-for="g in generators" :key="g.id" :value="g.id">{{ g.name }}</option>
 							</optgroup>
 						</select></label>
@@ -247,6 +293,12 @@ onBeforeUnmount(() => table?.api.destroy());
 					<label v-if="dl.form.filter_column" class="field"><span>is one of (separate with commas)</span>
 						<input v-model="dl.form.filter_text" placeholder="e.g. 100, 200" :class="{ invalid: dl.fieldErrors.filter_values }" />
 						<span v-if="dl.fieldErrors.filter_values" class="warn small">{{ dl.fieldErrors.filter_values }}</span></label>
+					<div class="field dl-columns"><span>Columns</span>
+						<span class="row tight">
+							<span class="dl-columns-summary" :class="{ invalid: dl.fieldErrors.columns }" :title="columnsSummary">{{ columnsSummary }}</span>
+							<button type="button" class="secondary small" :disabled="!columns.length" @click="startColumns">Choose and order…</button>
+						</span>
+						<span v-if="dl.fieldErrors.columns" class="warn small">{{ dl.fieldErrors.columns }}</span></div>
 				</div>
 
 				<div class="dl-current" :class="{ problem: cur?.problem }">
@@ -269,13 +321,13 @@ onBeforeUnmount(() => table?.api.destroy());
 					</template>
 					<template v-else-if="isProject && cur">
 						<span>
-							<strong>Current content:</strong> {{ cur.rows }} row(s), generated now from the Project Load List and its load types' rows.
+							<strong>Current content:</strong> {{ cur.rows }} row(s), from the {{ projectName(d.deliverable.type) }} as it is now{{ d.deliverable.filter_column ? ', filtered' : '' }}{{ d.deliverable.columns?.length ? `, ${d.deliverable.columns.length} column(s)` : '' }}.
 							<template v-if="cur.changes">Since Rev {{ d.revisions[0]?.letter }}: {{ pending(cur.changes) }}.</template>
 							<span v-for="w in cur.warnings" :key="w" class="warnText"> {{ w }}</span>
 						</span>
 						<span class="spacer" />
-						<button type="button" class="secondary" @click="openKeyList('load-list')">Load List</button>
-						<button type="button" class="secondary" @click="openKeyList('load-types')">Load Types</button>
+						<button v-if="MASTERS[d.deliverable.type]" type="button" class="secondary" @click="openMaster">Open the master list</button>
+						<button v-else type="button" class="secondary" @click="openKeyList('load-list')">Load List</button>
 						<button type="button" :disabled="dl.busy || dl.dirty" :title="dl.dirty ? 'Save the deliverable first' : ''" @click="startIssue">Issue Rev {{ cur.next_letter }}…</button>
 					</template>
 					<template v-else-if="cur?.build">
@@ -340,13 +392,36 @@ onBeforeUnmount(() => table?.api.destroy());
 				<h2>Deliverables</h2>
 				<p class="hint">
 					The lists this project issues: cable schedules, instrument lists, PLC I/O lists, equipment lists and load lists.
-					Each takes its content from the Project Load List (every load adds its load type's rows) or from a generator's builds, and is issued in revisions A, B, C… when you say so. An issued
+					Each takes its content from its Project Master list (which the Power and Instrument generators fill), through a filter and a choice and order of columns, and is issued in revisions A, B, C… when you say so. An issued
 					revision is a frozen copy you can view, compare with the one before, and export at any time.
 				</p>
 				<button type="button" @click="startAdd()">New deliverable</button>
 				<p v-if="dl.error && !adding" class="error">{{ dl.error }}</p>
 			</section>
 		</div>
+
+		<AppModal :open="!!picking" title="Columns of this deliverable" @close="picking = null">
+			<p class="hint small">Tick the columns to keep and put them in the order you want them. The column revisions are compared by has to stay.</p>
+			<div class="row tight">
+				<button type="button" class="secondary small" @click="setAllColumns(true)">Tick all</button>
+				<button type="button" class="secondary small" @click="setAllColumns(false)">Untick all</button>
+				<button type="button" class="secondary small" title="Every column, in the content's own order" @click="resetColumns">Back to all, in the list's order</button>
+			</div>
+			<ol v-if="picking" class="dl-column-list">
+				<li v-for="(c, i) in picking" :key="c.name" :class="{ off: !c.on }">
+					<label class="check"><input v-model="c.on" type="checkbox" /> {{ c.name }}</label>
+					<span class="spacer" />
+					<button type="button" class="secondary small" :disabled="i === 0" :title="`Move ${c.name} up`" @click="moveColumn(i, -1)">↑</button>
+					<button type="button" class="secondary small" :disabled="i === picking.length - 1" :title="`Move ${c.name} down`" @click="moveColumn(i, 1)">↓</button>
+				</li>
+			</ol>
+			<template #footer>
+				<span v-if="picking" class="hint small">{{ picking.filter((c) => c.on).length }} of {{ picking.length }} kept</span>
+				<span class="spacer" />
+				<button type="button" class="secondary" @click="picking = null">Cancel</button>
+				<button type="button" :disabled="!picking?.some((c) => c.on)" @click="applyColumns">OK</button>
+			</template>
+		</AppModal>
 
 		<AppModal :open="!!adding" title="New deliverable" @close="adding = null">
 			<form v-if="adding" class="form-grid" @submit.prevent="add">
@@ -363,13 +438,14 @@ onBeforeUnmount(() => table?.api.destroy());
 					<span v-else-if="dl.fieldErrors.panel_id" class="warn small">{{ dl.fieldErrors.panel_id }}</span></label>
 				<label v-else class="field"><span>Content from<span class="req"> *</span></span>
 					<select v-model="adding.generator_id" :class="{ invalid: dl.fieldErrors.generator_id }">
-						<option :value="PROJECT">Project Load List</option>
-						<optgroup v-if="generators.length" label="Generators">
+						<option :value="PROJECT">{{ projectName(adding.type) }}</option>
+						<optgroup v-if="generators.length" label="Generators from imported workbooks">
 							<option v-for="g in generators" :key="g.id" :value="g.id">{{ g.name }}</option>
 						</optgroup>
 					</select>
 					<span v-if="dl.fieldErrors.generator_id" class="warn small">{{ dl.fieldErrors.generator_id }}</span></label>
 				<p v-if="adding.type === PANEL_TYPE" class="hint small">The panel's schedule as it is when you issue it: one row for each pole of each way, with the panel's ratings and totals.</p>
+				<p v-else-if="adding.generator_id === PROJECT && MASTERS[adding.type]" class="hint small">The {{ projectName(adding.type) }} holds every row the Power and Instrument generators make. After creating the deliverable you can keep only some rows (a filter) and choose and order its columns. It is always up to date until you issue a revision, which freezes it.</p>
 				<p v-else-if="adding.generator_id === PROJECT" class="hint small">Every load in the Load List adds the rows its load type has for this type of list. Nothing to build: it is always up to date.</p>
 				<button type="submit" hidden />
 			</form>

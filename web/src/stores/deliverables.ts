@@ -11,11 +11,12 @@ const API = '/api/deliverables';
 const toForm = (d: Deliverable): DeliverableForm => ({
 	id: d.id, type: d.type, name: d.name, doc_number: d.doc_number, doc_title: d.doc_title, source: d.source, generator_id: d.generator_id,
 	panel_id: d.panel_id,
-	filter_column: d.filter_column, filter_text: d.filter_values.join(', '),
+	filter_column: d.filter_column, filter_text: d.filter_values.join(', '), columns: [...(d.columns ?? [])],
 });
 const toBody = (f: DeliverableForm) => ({
 	type: f.type, name: f.name, doc_number: f.doc_number, doc_title: f.doc_title, source: f.source, generator_id: f.source === 'generator' ? f.generator_id : '',
 	panel_id: f.source === 'panel' ? f.panel_id : '',
+	columns: f.columns,
 	filter_column: f.filter_column, filter_values: f.filter_column ? f.filter_text.split(',').map((v) => v.trim()).filter(Boolean) : [],
 });
 

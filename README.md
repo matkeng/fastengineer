@@ -484,8 +484,9 @@ You don't create or name them: each project has one of each.
     List**: the same four lists, columns, `<<tags>>` and grid as a load type's
     rows (one tab per list; the button shows how many rows it has). They are
     kept with the type and saved with the packages.
-  - These rows are for the **Instrument generator**, which is not available
-    yet: nothing is produced from them today. The tags offered are the columns
+  - These are the rows the **Instrument generator** adds to the Project Master
+    lists, once for each Instrument Runsheet row that names the equipment type,
+    filled in from that row. The tags offered are the columns
     of the **Instrument Runsheet** (`<<STD>>`, `<<Area>>`, `<<MECH>>`, `<<SUF>>`,
     `<<PID>>`, `<<VIA_MB>>`, `<<CONF>>`, `<<Rack>>`, and `<<#1>>`, `<<#2>>`, … for
     as many numbers as the runsheet has).
@@ -629,7 +630,7 @@ You don't create or name them: each project has one of each.
     changed.
 - **Instrument Runsheet** (`keylists/instrument_runsheet.py`, API
   `/api/instrument-runsheet`): what the **Instrument generator** will run from
-  (that generator is not available yet, so nothing is produced from it today).
+  (see [Deliverable generators](#deliverable-generators)).
   One row is one instrument assembly, edited in a spreadsheet grid that takes
   rows pasted from Excel.
 
@@ -881,19 +882,47 @@ alone, so it is safe to run on a project in use.
 
 ## Deliverable generators
 
-The **Generators** section shows the two types of generator, both built into
-the app. Generators are no longer made by importing a workbook.
+There are two generators, both built into the app (generators are no longer
+made by importing a workbook), and both fill the same four **Project Master
+lists** (`keylists/master.py`, API `/api/master`):
 
-- **Power** (available): every load of the Project Load List adds the rows its
-  load type has for each list (see
+| Master list | Deliverable type made from it |
+|---|---|
+| Project Master Cable Schedule | Cable Schedule |
+| Project Master Equipment List | Equipment List |
+| Project Master Instrument List | Instrument List |
+| Project Master IO List | PLC I/O List |
+
+- **Power**: every load of the Project Load List adds the rows its load type has
+  for each list (see
   [Generated from the Project Load List](#generated-from-the-project-load-list-load-types-as-templates)).
-  It is always up to date, so there is nothing to import or build. The section
-  shows how many loads and load types there are, which loads have no load type
-  yet, and for each list (Cable Schedule, Equipment List, Instrument List, PLC
-  I/O List, Load List) how many rows it has now and how many deliverables take
-  their content from it (`GET /api/generators/types`).
-- **Instrument** (planned): instrument lists, instrument cable schedules and I/O
-  lists from the project's instruments. Shown, but not available yet.
+- **Instrument**: every row of the **Instrument Runsheet** adds the rows its
+  **equipment type** has for each list, with the tags (`<<STD>>`, `<<MECH>>`,
+  `<<#1>>` …) filled in from the runsheet row. A number the row doesn't have
+  fills in as nothing; text such as `**CV**-CPL1` is written as typed.
+- A master list is **worked out when it is opened**, so it is always up to date
+  and there is nothing to run. It is **read only**: to change a row, change the
+  Load List, Load Types, Equipment Packages or Instrument Runsheet.
+- Besides the list's own columns each row has **Generator** (Power or
+  Instrument) and **Confirmed** (the runsheet row's; a load's rows are always
+  TRUE). Unconfirmed runsheet rows are in the master lists, marked FALSE.
+- The masters are under **Project master lists** in Project lists, each with
+  filters and Excel / CSV export of the list as it is now. The Generators
+  section shows, for each generator, how many rows it adds to each master
+  (`GET /api/generators/types`).
+
+**Deliverables are made from a master list.** A deliverable of one of the four
+types takes its rows from its master through:
+
+- a **filter** (only the rows where one column is one of a list of values, for
+  example Confirmed is TRUE, or Plant Area is 100);
+- a choice and **order of columns** (**Choose and order…**; the column revisions
+  are compared by, Tag or Cable Number, has to stay).
+
+It follows the master until a revision is issued, which freezes exactly those
+rows and columns; revisions, comparison, withdrawal and export work as before.
+A **Load List** deliverable is still made from the Project Load List, and a
+**Distribution Panel** from its panel; both can choose and order columns too.
 
 A project that has generators from **imported workbooks** (made in an earlier
 version) keeps them, listed under the two types: they can still be opened,

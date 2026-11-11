@@ -14,6 +14,7 @@ import PlcEditor from './PlcEditor.vue';
 import DistributionPanelsEditor from './DistributionPanelsEditor.vue';
 import InstrumentRunsheetEditor from './InstrumentRunsheetEditor.vue';
 import MelListView from './MelListView.vue';
+import MasterListView from './MasterListView.vue';
 import LoadTypesEditor from './LoadTypesEditor.vue';
 import PlantAreasEditor from './PlantAreasEditor.vue';
 
@@ -22,10 +23,10 @@ const kl = useKeyLists();
 const ui = useUi();
 const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Load List',
 	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes', eel: 'Electrical Equipment List', plc: 'PLC List',
-	'cable-types': 'Cable Types', 'distribution-panels': 'Distribution Panels', 'instrument-runsheet': 'Instrument Runsheet', mel: 'MEL' };
+	'cable-types': 'Cable Types', 'distribution-panels': 'Distribution Panels', 'instrument-runsheet': 'Instrument Runsheet', mel: 'MEL', master: 'Project Master list' };
 const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true,
 	'equipment-codes': kl.codeLists['equipment-codes'], 'instrument-codes': kl.codeLists['instrument-codes'], eel: kl.eel, plc: kl.plcDraft,
-	'cable-types': kl.cableTypes, 'distribution-panels': kl.panelsDraft, 'instrument-runsheet': kl.runsheetView, mel: kl.melList }[kl.selected]);
+	'cable-types': kl.cableTypes, 'distribution-panels': kl.panelsDraft, 'instrument-runsheet': kl.runsheetView, mel: kl.melList, master: kl.master }[kl.selected]);
 
 onMounted(() => kl.load());
 
@@ -120,6 +121,17 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 					</ul>
 				</section>
 				<section>
+					<h3>Project master lists</h3>
+					<p class="hint">One of each list for the project, filled by the Power and Instrument generators together. Read only: deliverables are made from them.</p>
+					<ul class="ref-nav">
+						<li v-for="m in kl.masters" :key="m.key" :class="{ current: kl.selected === 'master' && kl.masterKey === m.key }"
+							@click="kl.masterKey = m.key; kl.select('master')">
+							<span class="name">{{ m.name.replace('Project Master ', '') }}</span>
+							<span class="count" :title="`${m.power_rows} from Power, ${m.instrument_rows} from Instrument`">{{ m.rows }}</span>
+						</li>
+					</ul>
+				</section>
+				<section>
 					<h3>Sample data</h3>
 					<p class="hint">Fills every list that is still empty with a small invented plant. Lists that already have data are left as they are.</p>
 					<button type="button" class="secondary small" :disabled="sampleBusy" @click="addSample">{{ sampleBusy ? 'Adding…' : 'Add sample data' }}</button>
@@ -139,6 +151,7 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 			<DistributionPanelsEditor v-if="kl.panelsDraft" v-show="kl.selected === 'distribution-panels'" />
 			<InstrumentRunsheetEditor v-if="kl.runsheetView" v-show="kl.selected === 'instrument-runsheet'" />
 			<MelListView v-if="kl.melList" v-show="kl.selected === 'mel'" />
+			<MasterListView v-if="kl.master && kl.selected === 'master'" />
 			<section v-if="!loaded" class="card wizard ref-empty">
 				<h2>{{ TITLES[kl.selected] }}</h2>
 				<p v-if="kl.error" class="error">{{ kl.error }}</p>
