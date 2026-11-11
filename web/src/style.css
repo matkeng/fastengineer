@@ -1258,3 +1258,34 @@ dialog.modal:has(.edits-check) { width: min(980px, calc(100vw - 32px)); }
 .edits-check tr.ec-partly .ec-state { color: #b26a00; }
 .edits-check tr.ec-needed .ec-state { color: var(--muted); }
 .chip.ok { border-color: #2e7d32; color: #2e7d32; }
+/* The Load List Summary Page */
+main.fill .key-summary { overflow: auto; }
+.key-summary .key-title { margin: 0; font-size: 1rem; }
+.sum-edit { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.sum-edit > button { align-self: flex-start; }
+.sum-table-edit h4 { margin: 6px 0 2px; font-size: 0.85rem; }
+.sum-table-edit .field.grow { flex: 1; }
+.sum-table-edit .field.grow input { width: 100%; }
+.sum-rows { width: 100%; }
+.sum-rows td input { width: 100%; }
+.sum-col { border-top: 1px solid var(--border); padding: 6px 0; display: flex; flex-direction: column; gap: 4px; }
+.sum-col .row { flex-wrap: wrap; }
+.sum-col input.grow { flex: 1; min-width: 220px; }
+.sum-col-name { width: 160px; }
+.sum-dp { width: 52px; }
+.sum-col-more { padding-left: 166px; }
+.sum-check input.mono { width: 200px; }
+.sum-out { margin: 12px 0; }
+.sum-out h3 { margin: 0 0 4px; font-size: 0.95rem; }
+.sum-out table td.num { text-align: right; }
+.sum-out tr.sum-total td { font-weight: 700; border-top: 2px solid var(--border); }
+.sum-col .row > * { flex: none; }
+.sum-col .row > input.grow { flex: 1 1 220px; }
+.sum-col-name { width: 170px !important; }
+.sum-dp { width: 56px !important; }
+.sum-col select { width: auto; max-width: 260px; }
+.sum-table-edit > .row > select { width: auto; max-width: 420px; }
+.sum-table-edit .comp-head { align-items: flex-end; }
+.sum-col .row > input.sum-col-name { flex: 0 0 170px !important; }
+.sum-col .row > label.check input.sum-dp { flex: 0 0 56px !important; width: 56px !important; }
+.sum-col .row > label.check { display: inline-flex; align-items: center; gap: 4px; }

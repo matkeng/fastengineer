@@ -52,6 +52,7 @@ ENTITIES = {
     "enums": "enums",
     "master_columns": "master list columns",
     "load_fields": "load list fields",
+    "load_summary": "load list summary page",
     "drawing_list": "drawing list",
     "document_list": "document list",
     "deliverable": "deliverable",

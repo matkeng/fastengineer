@@ -52,6 +52,9 @@ APP_REFS: list[tuple[str, str]] = [
     ("cable_length", "the power cable's length (m)"), ("cable_construction", "Multicore or Single core"),
     ("cable_parallel", "cables in parallel"), ("cable_insulation", "the cable insulation"), ("cable_size", "the cable size (mm²)"),
     ("earth_size", "the earth cable size (mm²)"),
+    ("ispanel", "True when it is a distribution panel (MCC, switchboard…)"),
+    ("supplychain", "the panels it is fed from, nearest first: 'TX-1' in <<supplychain>> is true for every load fed from TX-1, "
+                    "directly or through panels below it"),
 ]
 
 
@@ -188,6 +191,41 @@ def _round(x: object, decimals: int | None) -> object:
     return int(r) if decimals == 0 else r
 
 
+def supply_chain(row: LoadListRow, by_ref: dict[str, LoadListRow]) -> list[str]:
+    """The tags of the panels a load is fed from, nearest first, up to the top (a loop stops it):
+    ['MCC-1', 'TX-1', 'MSB-1']. A load fed from Primary Supply ends with 'Primary Supply'."""
+    from .loadlist import PRIMARY_SUPPLY
+
+    out: list[str] = []
+    seen = {row.ref()}
+    ref = row.supplied_from
+    while ref and len(out) < 50:
+        if ref == PRIMARY_SUPPLY:
+            out.append("Primary Supply")
+            break
+        up = by_ref.get(ref)
+        if up is None or up.ref() in seen:
+            break
+        seen.add(up.ref())
+        out.append(up.tag())
+        ref = up.supplied_from
+    return out
+
+
+def load_cells(row: LoadListRow, load_types: dict[str, LoadType], areas: dict[str, tuple[str, str]],
+               by_ref: dict[str, LoadListRow]) -> dict[str, object]:
+    """What an expression about a load can refer to, by lower-case name: the app's tags for it,
+    its own values (a number staying a number; a blank one leaves what the app works out), its
+    cable, and <<supplychain>>: the panels it is fed from, nearest first (see supply_chain)."""
+    cells: dict[str, object] = {k: _value(v) for k, v in tags_for(row, load_types, areas, by_ref).items()}
+    cells |= {k.casefold(): v for k, v in row.values.items() if v is not None and v != ""}
+    cells |= {k.casefold(): "" for k, v in row.values.items() if k.casefold() not in cells}
+    cells |= {c: ("" if getattr(row, c) is None else _value(getattr(row, c))) for c in CABLE_FIELDS}
+    cells["supplychain"] = supply_chain(row, by_ref)
+    cells["ispanel"] = row.is_panel
+    return cells
+
+
 def apply_calcs(rows: list[LoadListRow], fields: LoadFields, load_types: dict[str, LoadType],
                 areas: dict[str, tuple[str, str]], only: str | None = None) -> None:
     """Work out the calculated fields for every row, in place: each answer goes in the row's
@@ -213,11 +251,7 @@ def apply_calcs(rows: list[LoadListRow], fields: LoadFields, load_types: dict[st
     by_ref = {r.ref(): r for r in rows}
     ai = make_interpreter()
     for row in rows:
-        cells: dict[str, object] = {k: _value(v) for k, v in tags_for(row, load_types, areas, by_ref).items()}
-        # an import's own value as it is (a number stays a number); a blank one leaves what the app works out
-        cells |= {k.casefold(): v for k, v in row.values.items() if v is not None and v != ""}
-        cells |= {k.casefold(): "" for k, v in row.values.items() if k.casefold() not in cells}
-        cells |= {c: ("" if getattr(row, c) is None else _value(getattr(row, c))) for c in CABLE_FIELDS}
+        cells = load_cells(row, load_types, areas, by_ref)
         issues: list[CalcIssue] = []
         for k in keys:
             test, formula, otherwise, checks = compiled[k]

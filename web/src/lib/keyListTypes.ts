@@ -62,7 +62,7 @@ export interface LoadTypeForm {
 }
 export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id' | 'rows' | 'components'>;
 
-export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | 'cable-types' | 'distribution-panels' | 'instrument-runsheet' | 'mel' | 'master' | 'enums' | 'drawing-list' | 'document-list' | CodeListId;
+export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'load-summary' | 'eel' | 'plc' | 'cable-types' | 'distribution-panels' | 'instrument-runsheet' | 'mel' | 'master' | 'enums' | 'drawing-list' | 'document-list' | CodeListId;
 
 /** A cable type; every project starts with a default set. `sort` orders the list. */
 export interface CableType {

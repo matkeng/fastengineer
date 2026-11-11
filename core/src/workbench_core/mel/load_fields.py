@@ -47,7 +47,9 @@ _DERIVED = {"tag", "description", "area", "rating", "units", "voltage", "phases"
             "plantareadesc", "loadtype", "loadtypename", "suppliedfrom", "suppliedfromdesc", "stddrg", "buckettype", "source",
             "row", "cableno", "cabletype", "cablecode", "cablecores", "cablesize", "cableinsulation",
             # the links dot notation follows (keylists.tag_paths)
-            "suppliedfrom", "eel", "cable", "parent", "equipmenttype", "package", "system"}
+            "suppliedfrom", "eel", "cable", "parent", "equipmenttype", "package", "system",
+            # what a calculation or a summary can use about a load (keylists.load_calcs.load_cells)
+            "supplychain", "ispanel"}
 MAX_FIELDS = 80
 MAX_LABEL = 60
 

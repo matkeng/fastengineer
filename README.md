@@ -1216,6 +1216,35 @@ lists** (`keylists/master.py`, API `/api/master`):
   section shows, for each generator, how many rows it adds to each master
   (`GET /api/generators/types`).
 
+**Load List Summary Page** (under Project master lists; `keylists/load_summary.py`,
+`/api/load-summary`): tables that total up the Load List, worked out from it
+whenever they are shown (and exported as a sheet per table with **Export
+.xlsx**). **Edit tables** to add or change them, **▶ Preview** to work out
+the edited tables without saving, then **Save**. A table has:
+
+- a **filter**: which active loads it looks at (blank: all), e.g.
+  `not <<ispanel>> and <<loadtype>> != 'SPARE'`;
+- **rows**, each typed in: a name, a condition choosing its loads among the
+  filtered ones, and optionally a **reference load** (a tag) whose own values
+  its formulas can use as `<<Ref.load_rating>>`. A load's `<<supplychain>>`
+  lists the panels it is fed from, nearest first, so
+  `'TX-1' in <<supplychain>>` is every load fed from TX-1 directly or through
+  the MCCs below it, which is a transformer's loading; `<<suppliedfrom>> ==
+  'MCC-1'` is an MCC's own loads;
+- **columns**, in order: a **total of a field** (Sum, Count, Min, Max or
+  Average of any Load List field, calculated ones too, or the rating,
+  voltage, quantity or cable length, over the row's loads for which the
+  column's own condition holds; blanks and text are left out) or a
+  **formula** over the row's other columns by name (`<<Total kW>>`),
+  `<<Row>>`, `<<Loads>>` and `<<Ref.field>>`, with Applies when, Otherwise,
+  decimals and error/warning checks like a calculated field;
+- an optional **Total** row, over every load the filter lets in.
+
+The Loads column says how many loads a row has (hover for their tags). A
+cell whose formula can't be worked out, or that fails a check, is marked ⛔
+or ⚠. `<<ispanel>>` and `<<supplychain>>` can be used in the Load List's
+calculated fields too.
+
 **Deliverables are made from a master list.** A deliverable of one of the four
 types takes its rows from its master through:
 

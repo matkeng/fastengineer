@@ -609,6 +609,27 @@ class KeyListStore:
                       label="Equipment Packages")
         return packages
 
+    LOAD_SUMMARY = "load-summary"
+
+    def load_summary(self):
+        """The Load List Summary Page (keylists.load_summary); empty until first saved."""
+        from workbench_core.keylists.load_summary import SummaryPage
+
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.LOAD_SUMMARY,)).fetchone()
+        return SummaryPage.model_validate_json(row[0]) if row else SummaryPage()
+
+    def save_load_summary(self, page):
+        from workbench_core.keylists.load_summary import SummaryPage
+
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.LOAD_SUMMARY,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.LOAD_SUMMARY, page.model_dump_json()))
+            audit.log(self._db, "load_summary", self.LOAD_SUMMARY, before or SummaryPage().model_dump_json(), page.model_dump_json(),
+                      label="Load List Summary Page")
+        return page
+
     LOAD_FIELDS = "load-fields"
 
     def load_fields(self) -> LoadFields:
