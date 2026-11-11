@@ -5,6 +5,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { clientIdentity, runningInTauri } from '../../lib/engine';
 import { type ProjectDetail, useProjects } from '../../stores/projects';
 import MemberList from './MemberList.vue';
+import ListResets from '../keylists/ListResets.vue';
 
 // Administrators: create projects, choose who may open each one, rename and archive.
 const pr = useProjects();
@@ -140,6 +141,18 @@ watch(() => pr.all, () => { if (selectedId.value && !selected.value) pick(null);
 					<span v-if="saved" class="saved">✓ {{ saved }}</span>
 				</div>
 			</form>
+			<div class="project-resets">
+				<h3>Reset project lists</h3>
+				<template v-if="selected.id === pr.currentId">
+					<p class="hint">
+						Empty one of this project's lists and start it again. Resetting the <strong>Load List</strong> forgets its rows and
+						reads the MEL and EEL imports again. A list whose rows are used by another list can't be reset until that one is:
+						start from the top. You are asked to confirm each one.
+					</p>
+					<ListResets :project="selected.name" />
+				</template>
+				<p v-else class="hint">Open this project to reset its lists.</p>
+			</div>
 		</section>
 
 		<section class="card">

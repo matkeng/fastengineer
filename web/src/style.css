@@ -1082,3 +1082,14 @@ main.fill .key-dp { overflow: auto; }
 .sld .group rect { fill: color-mix(in srgb, var(--accent) 6%, transparent); stroke: var(--muted); stroke-width: 1; stroke-dasharray: 5 4; }
 .dl-summary { gap: 6px; flex-wrap: wrap; margin: 8px 0 0; }
 .list-workbook { display: inline-flex; align-items: center; gap: 6px; } .list-workbook > .saved, .list-workbook > .warn { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+/* Resetting project lists */
+.project-resets { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--border); }
+.project-resets h3 { margin: 0 0 6px; font-size: 0.95rem; }
+.list-resets { margin: 0; }
+.list-resets th { background: none; color: var(--text); white-space: nowrap; vertical-align: top; width: 1%; }
+.list-resets td { vertical-align: top; }
+.list-resets td.what { color: var(--muted); }
+.list-resets td.what .saved, .list-resets td.what .warn { max-width: none; white-space: normal; margin: 4px 0 0; }
+.list-resets td:last-child { width: 1%; text-align: right; }
+.list-reset-one { display: inline-flex; align-items: center; gap: 6px; }
+.list-reset-one .saved, .list-reset-one .warn { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }

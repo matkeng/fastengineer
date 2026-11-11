@@ -2,6 +2,8 @@
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
 import ListWorkbook from './ListWorkbook.vue';
+import ListResets from './ListResets.vue';
+import { useProjects } from '../../stores/projects';
 import type { ColumnsConfig } from 'datatables.net';
 import { computed, onBeforeUnmount, ref, toRaw, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
@@ -17,6 +19,7 @@ import AppModal from '../common/AppModal.vue';
 // The Load List: the MEL and EEL imports' rows, read-only, with a plant area and a load
 // type allocated to each row. An allocation is saved as soon as it is chosen.
 const kl = useKeyLists();
+const projects = useProjects();
 const ui = useUi();
 const host = ref<HTMLDivElement | null>(null);
 let table: FilteredTable<LoadListRow> | null = null;
@@ -343,6 +346,7 @@ onBeforeUnmount(() => table?.api.destroy());
 			<span class="spacer" />
 			<span v-if="kl.message" class="saved">✓ {{ kl.message }}</span>
 			<ListWorkbook list-id="load-list" name="Load List" />
+			<ListResets only="load-list" :project="projects.current?.name ?? 'this project'" />
 			<button type="button" class="secondary" :disabled="kl.busy" title="Read the imports again" @click="kl.loadLoadList()">Refresh</button>
 		</div>
 		<p v-if="kl.error && !bulk" class="error">{{ kl.error }}</p>

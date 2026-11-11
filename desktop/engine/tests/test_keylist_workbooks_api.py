@@ -197,3 +197,29 @@ def test_a_distribution_panel_typed_in_excel() -> None:
     assert by["QR3"]["section"] == "Lighting Contactor" and dp["totals"]["total_kw"] == 0.12
     mcc = view["schedules"]["sdp1"]
     assert [r["tag"] for r in mcc["rows"] if r["span"]] [:1] == ["C-401"] and len(mcc["unplaced"]) == 4
+
+
+def test_reset_the_load_list_reads_the_imports_again() -> None:
+    rows = client.get("/api/loadlist").json()["rows"]
+    p101 = next(r for r in rows if r["values"].get("tag") == "P-101")
+    ref = {"rows": [{"recipe_id": p101["recipe_id"], "key": p101["key"]}]}
+    assert client.put("/api/loadlist/allocations", json=ref | {"supplied_from": "eel/smcc2", "cable_size": "4"}).status_code == 200
+    res = client.post(f"{API}/load-list/reset")
+    assert res.status_code == 200 and res.json()["message"] == "12 remembered row(s) forgotten. The imports were read again: 12 row(s)."
+    after = next(r for r in client.get("/api/loadlist").json()["rows"] if r["values"].get("tag") == "P-101")
+    # back to what the import gives: fed from MCC-1 (filled in automatically), no cable details
+    assert (after["supplied_from"], after["supplied_from_by"], after["cable_size"], after["load_type_by"]) == ("eel/smcc1", "auto", "", "auto")
+    log = client.get("/api/audit", params={"entity": "load_list"}).json()["entries"]
+    assert "Reset: every row forgotten" in str(log)
+
+
+def test_reset_the_other_lists_obeys_their_rules() -> None:
+    refused = client.post(f"{API}/equipment-codes/reset")  # the Electrical Equipment List uses them
+    assert refused.status_code == 422 and "was not reset" in refused.json()["detail"]
+    assert client.get(LISTS["equipment-codes"]).json()["items"]
+    assert client.post(f"{API}/distribution-panels/reset").status_code == 422  # a deliverable issues the panel
+    assert client.post(f"{API}/instrument-codes/reset").json() == {"message": "Instrument Codes is empty."}
+    assert client.get(LISTS["instrument-codes"]).json()["items"] == []
+    assert "218 default" in client.post(f"{API}/cable-types/reset").json()["message"]
+    assert client.post(f"{API}/plc/reset").status_code == 200 and client.get("/api/plc").json()["plc"]["systems"] == []
+    assert client.post(f"{API}/nope/reset").status_code == 404

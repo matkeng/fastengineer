@@ -259,3 +259,45 @@ async def import_list(list_id: str, request: Request, filename: str = Query(...)
             "detail": _problems(body.get("fields") or {}, parsed.labels, f"{name} was not changed: {body.get('detail', '')}"),
             "fields": {}})
     return preview.model_copy(update={"applied": True})
+
+
+# -- reset -----------------------------------------------------------------------------------------
+
+class ResetResult(BaseModel):
+    message: str
+
+
+@router.post("/{list_id}/reset", response_model=ResetResult)
+def reset_list(list_id: str):
+    """Empty a project list (Cable Types: back to the default set). It goes through the list's
+    own save, so a list whose rows are in use elsewhere is refused, with the reason.
+
+    The Load List is different: its rows come from the imports. Resetting it forgets every
+    remembered row (allocations a person chose, cable details, rows kept as deleted) and reads
+    the imports again, so what is left is exactly what the latest files give, filled in
+    automatically where it can be."""
+    lists = get_keylists()
+    if list_id == "plc":
+        from workbench_core.keylists.plc import PlcList
+        lists.save_plc(PlcList(), note="Reset to empty")
+        return ResetResult(message="The PLC List is empty. The card and rack types are kept.")
+    name = _known(list_id)
+    if list_id == "load-list":
+        gone = get_loadlist().reset()
+        rows = [r for r in loadlist_api.current_rows()[0] if r.status == "active"]
+        return ResetResult(message=f"{gone} remembered row(s) forgotten. The imports were read again: {len(rows)} row(s).")
+    if list_id == "cable-types":
+        from workbench_core.keylists.cable_types import default_cable_types
+        items = lists.save_cable_types(default_cable_types(), note="Reset to the default cable types").items
+        return ResetResult(message=f"Cable Types is back to the {len(items)} default cable types.")
+    empty = {"plant-areas": {"nodes": []}, "equipment-packages": {"items": [], "types": []},
+             "distribution-panels": wbk.DistributionPanelList()}.get(list_id, {"items": []})
+    try:
+        result = _save(list_id, wbk.Parsed(empty, []))
+    except RefValidationError as exc:
+        return JSONResponse(status_code=422, content={"detail": f"{name} was not reset: {exc.message}", "fields": {}})
+    if isinstance(result, JSONResponse):
+        body = json.loads(bytes(result.body))
+        return JSONResponse(status_code=result.status_code, content={
+            "detail": _problems(body.get("fields") or {}, {}, f"{name} was not reset: {body.get('detail', '')}"), "fields": {}})
+    return ResetResult(message=f"{name} is empty.")

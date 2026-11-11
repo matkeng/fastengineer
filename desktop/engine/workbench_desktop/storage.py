@@ -787,6 +787,19 @@ class LoadListStore:
         self._db.execute("INSERT INTO load_list VALUES (?, ?, ?) ON CONFLICT(recipe_id, row_key) DO UPDATE SET "
                          "data = excluded.data", (row.recipe_id, row.key, row.model_dump_json()))
 
+    def reset(self) -> int:
+        """Forget every remembered row, with its allocations and cable details (the rows marked
+        deleted too). The next sync builds the list again from the imports. Returns how many went."""
+        with self._lock, self._db:
+            rows = self._rows()
+            chosen = sum(1 for r in rows.values() if any(getattr(r, by) == "user" for by in self.EDITABLE.values()))
+            self._db.execute("DELETE FROM load_list")
+            if rows:
+                audit.log(self._db, "load_list", "load-list", {"rows": len(rows), "rows with a person's choices": chosen},
+                          {"rows": 0, "rows with a person's choices": 0}, label="Load List",
+                          note="Reset: every row forgotten, then read again from the imports")
+        return len(rows)
+
     #: What a person can set on a row, and the field that says who set it.
     EDITABLE = {"plant_area_id": "plant_area_by", "load_type_id": "load_type_by", "is_panel": "is_panel_by",
                 "supplied_from": "supplied_from_by"}
