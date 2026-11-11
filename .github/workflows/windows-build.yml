@@ -148,6 +148,10 @@ jobs:
             $lib = (Invoke-RestMethod "$symApi/libraries") | Select-Object -First 1
             "Example library: $($lib.name), $($lib.templates) templates, columns $($lib.columns -join ', ')"
             if ($lib.templates -ne 3) { throw 'the P&ID example library was not added on first start' }
+            # The text scan is off in a new library; this check is about every tag, so switch it on.
+            if ($lib.pattern_scan) { throw 'the text scan should be off in a new library' }
+            $lib.pattern_scan = $true
+            $null = Invoke-RestMethod -Method Put -Uri "$symApi/libraries/$($lib.id)" -Body ($lib | ConvertTo-Json -Depth 8) -ContentType 'application/json'
             $q = "filename=pid-sample.pdf&library_id=$($lib.id)"
             $dw = Invoke-RestMethod -Method Post -Uri "$symApi/drawings?$q" -InFile samples/pid-sample.pdf -ContentType 'application/octet-stream'
             $dw = Wait-Job2 "$symApi/drawings/$($dw.id)"
@@ -211,19 +215,20 @@ jobs:
             $gout = Join-Path $env:RUNNER_TEMP 'generator-schedule.xlsx'
             $gsaved = Invoke-RestMethod -Method Post -Uri "$gapi/builds/$($b2.id)/export" -Body (@{ format = 'xlsx'; path = $gout } | ConvertTo-Json) -ContentType 'application/json'
             if (-not (Test-Path $gsaved.path) -or (Get-Item $gsaved.path).Length -lt 2000) { throw 'generator export not written' }
-            # PLC hardware register: one panel, a rack with a network adapter and two cards.
-            $hwBody = @{ panels = @(@{ tag = 'PCC-01'; racks = @(@{ number = 1; rack_type_id = 'rack';
-                         cards = @(@{ card_type_id = 'net' }, @{ card_type_id = 'di16' }, @{ card_type_id = 'ai8' }) }) }) } | ConvertTo-Json -Depth 8
-            $hw = Invoke-RestMethod -Method Put -Uri "$gapi/$gid/hardware" -Body $hwBody -ContentType 'application/json'
-            "PLC hardware: $($hw.summary.cards) cards, $($hw.schedule[2].card) $($hw.schedule[2].kind) $($hw.schedule[2].channels) ch"
-            if ($hw.summary.cards -ne 3 -or $hw.findings.Count -ne 0 -or $hw.schedule[2].card -ne 'PCC-01-R1-S3') { throw 'PLC hardware register wrong' }
+            # PLC List (it replaced the generators' hardware registers): a system, a rack with a network adapter and two cards.
+            $plcBody = @{ systems = @(@{ tag = 'PLC-1'; racks = @(@{ tag = 'PLC-1-RK1'; rack_type_id = 'rack';
+                          cards = @(@{ card_type_id = 'net' }, @{ card_type_id = 'di16' }, @{ card_type_id = 'ai8' }) }) }) } | ConvertTo-Json -Depth 8
+            $plc = Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:8799/api/plc' -Body $plcBody -ContentType 'application/json'
+            $plcCards = $plc.plc.systems[0].racks[0].cards
+            "PLC List: $($plc.summary.cards) cards, IO points $($plcCards[1].points.Count) + $($plcCards[2].points.Count)"
+            if ($plc.summary.cards -ne 3 -or $plcCards[1].points.Count -ne 16 -or $plcCards[2].points.Count -ne 8) { throw 'PLC List wrong' }
             # Bulk editing workbook: export every input table and re-import it unchanged (no differences).
             $inPath = Join-Path $env:RUNNER_TEMP 'generator-inputs.xlsx'
             $null = Invoke-RestMethod -Method Post -Uri "$gapi/$gid/inputs/export" -Body (@{ path = $inPath } | ConvertTo-Json) -ContentType 'application/json'
             $bulk = Invoke-RestMethod -Method Post -Uri "$gapi/$gid/inputs/import?filename=generator-inputs.xlsx" -InFile $inPath -ContentType 'application/octet-stream'
             $diffs = ($bulk.preview.sheets | ForEach-Object { $_.added + $_.removed + $_.changed + $_.errors.Count } | Measure-Object -Sum).Sum
             "Bulk inputs: $($bulk.preview.sheets.Count) sheets, $diffs differences after a round trip"
-            if ($bulk.preview.sheets.Count -lt 9 -or $diffs -ne 0) { throw 'inputs workbook round trip changed data' }
+            if ($bulk.preview.sheets.Count -lt 8 -or $diffs -ne 0) { throw 'inputs workbook round trip changed data' }
 
             # Dashboard summary across every feature.
             $dash = Invoke-RestMethod 'http://127.0.0.1:8799/api/dashboard'
@@ -237,7 +242,40 @@ jobs:
       - name: Smoke-test the portable app
         run: |
           $dir = Get-ChildItem dist -Directory -Filter '*-portable-x64' | Select-Object -First 1
-          $app = Start-Process (Join-Path $dir.FullName 'Drawing Workbench.exe') -PassThru
+          $exe = Join-Path $dir.FullName 'Drawing Workbench.exe'
+
+          # Closing the window the way a user does must end the engine too (both of its processes).
+          $app = Start-Process $exe -PassThru
+          try {
+            $engine = $null
+            for ($i = 0; $i -lt 60 -and -not $engine; $i++) {
+              Start-Sleep -Milliseconds 500
+              if ($app.HasExited) { throw "app exited early with code $($app.ExitCode)" }
+              $engine = Get-Process workbench-engine -ErrorAction SilentlyContinue
+            }
+            if (-not $engine) { throw 'portable app did not start its engine' }
+            Start-Sleep -Seconds 8   # let the engine finish starting, as it has when a user closes the app
+            for ($i = 0; $i -lt 60; $i++) { $app.Refresh(); if ($app.MainWindowHandle -ne 0) { break }; Start-Sleep -Milliseconds 500 }
+            if ($app.MainWindowHandle -eq 0) {
+              Write-Host '::warning::The app window was not found on this runner; the normal-close check was skipped.'
+            } else {
+              $null = $app.CloseMainWindow()
+              if (-not $app.WaitForExit(30000)) { throw 'the app did not exit after its window was closed' }
+              $t = [Diagnostics.Stopwatch]::StartNew()
+              do {
+                Start-Sleep -Milliseconds 500
+                $left = Get-Process workbench-engine -ErrorAction SilentlyContinue
+              } while ($left -and $t.Elapsed.TotalSeconds -lt 15)
+              if ($left) { throw "engine still running 15 s after the window was closed: $($left.Id -join ', ')" }
+              "Window closed normally; engine gone after $([math]::Round($t.Elapsed.TotalSeconds, 1)) s."
+            }
+          } finally {
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            Get-Process workbench-engine -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+          }
+
+          $app = Start-Process $exe -PassThru
           try {
             # The shell should find workbench-engine.exe beside it and start it.
             $engine = $null

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Matthew Kelly
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { ref } from 'vue';
 
 // In the desktop app the Rust shell picks a free port and tells us via the
 // `engine_url` command. In a plain browser (`npm run dev`) we fall back to a
@@ -18,6 +19,58 @@ export class ApiError extends Error {
 	}
 }
 
+/** A save refused because a colleague changed the record first. */
+export class ConflictError extends ApiError {
+	constructor(message: string, public changedBy: string, public changedAt: string) {
+		super(message);
+	}
+}
+
+/** The latest refused save, for the app-wide "changed by someone else" dialog. */
+export const lastConflict = ref<ConflictError | null>(null);
+
+/** Who is using the app, and whether the engine is a shared server on another machine. */
+export interface ClientIdentity {
+	user: string; // Windows login, e.g. ACME\jsmith; '' lets a local engine use its own login
+	machine: string;
+	remote: boolean;
+}
+
+let identity: Promise<ClientIdentity> | null = null;
+
+export function clientIdentity(): Promise<ClientIdentity> {
+	identity ??= runningInTauri
+		? invoke<ClientIdentity>('client_identity').catch(() => ({ user: '', machine: '', remote: false }))
+		: // Plain browser (development): ?user=NAME stands in for the Windows login.
+			Promise.resolve({ user: new URLSearchParams(location.search).get('user') ?? '', machine: 'browser', remote: false });
+	return identity;
+}
+
+// The project every request works in (each project has its own database); see stores/projects.
+let project: string | null = null;
+
+export function setProject(id: string | null) {
+	if (id !== project) versions.clear(); // record versions belong to the project they were read in
+	project = id;
+}
+
+// The version (ETag) of each record as last read or saved, by URL path. Sent back as
+// If-Match so the engine can refuse a save made over a colleague's newer version.
+const versions = new Map<string, string>();
+const pathOnly = (path: string) => path.split('?')[0];
+
+async function withIdentity(path: string, init?: RequestInit): Promise<RequestInit> {
+	const who = await clientIdentity();
+	const headers = new Headers(init?.headers);
+	if (who.user) headers.set('X-Workbench-User', who.user);
+	if (who.machine) headers.set('X-Workbench-Machine', who.machine);
+	if (project) headers.set('X-Workbench-Project', project);
+	const method = init?.method ?? 'GET';
+	const seen = versions.get(pathOnly(path));
+	if (seen && (method === 'PUT' || method === 'DELETE') && !headers.has('If-Match')) headers.set('If-Match', seen);
+	return { ...init, headers };
+}
+
 export function resolveEngineUrl(): Promise<string> {
 	engineUrl ??= (runningInTauri ? invoke<string>('engine_url') : Promise.resolve(DEV_ENGINE_URL)).catch(
 		(err) => {
@@ -30,21 +83,31 @@ export function resolveEngineUrl(): Promise<string> {
 
 async function request<T>(path: string, init?: RequestInit, baseUrl?: string, as: 'json' | 'blob' = 'json'): Promise<T> {
 	const base = baseUrl ?? (await resolveEngineUrl());
-	const res = await fetch(`${base}${path}`, init);
+	const res = await fetch(`${base}${path}`, await withIdentity(path, init));
 	if (!res.ok) {
 		// FastAPI errors look like {"detail": "..."}; show that to the user.
 		let detail = `${res.status} ${res.statusText}`;
 		let fields: Record<string, string> = {};
+		let body: Record<string, unknown> = {};
 		try {
-			const body = await res.json();
+			body = await res.json();
 			if (typeof body.detail === 'string') detail = body.detail;
 			else if (body.detail) detail = JSON.stringify(body.detail);
-			if (body.fields && typeof body.fields === 'object') fields = body.fields;
+			if (body.fields && typeof body.fields === 'object') fields = body.fields as Record<string, string>;
 		} catch {
 			/* not JSON */
 		}
+		if (res.status === 409 && body.conflict) {
+			const conflict = new ConflictError(detail, String(body.changed_by ?? ''), String(body.changed_at ?? ''));
+			lastConflict.value = conflict;
+			throw conflict;
+		}
 		throw new ApiError(detail, fields);
 	}
+	const method = init?.method ?? 'GET';
+	const etag = res.headers.get('ETag');
+	if (method === 'DELETE') versions.delete(pathOnly(path));
+	else if (etag && (method === 'GET' || method === 'PUT')) versions.set(pathOnly(path), etag);
 	return (as === 'blob' ? await res.blob() : await res.json()) as T;
 }
 
@@ -103,8 +166,29 @@ export function apiPutBytes<T>(path: string, body: Blob | ArrayBuffer): Promise<
 	});
 }
 
-export function apiDelete(path: string): Promise<unknown> {
-	return request(path, { method: 'DELETE' });
+export function apiDelete(path: string, headers?: Record<string, string>): Promise<unknown> {
+	return request(path, { method: 'DELETE', headers });
+}
+
+/** PUT with extra headers (e.g. the time a table row was last seen, for the conflict check). */
+export function apiPutWith<T>(path: string, body: unknown, headers: Record<string, string>): Promise<T> {
+	return request<T>(path, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json', ...headers },
+		body: JSON.stringify(body),
+	});
+}
+
+/**
+ * Export to the file the user picked in the Save As dialog (desktop app only).
+ * A local engine writes the file itself. A shared server can't see this PC's
+ * disks, so it sends the file back and the desktop shell writes it here.
+ */
+export async function exportToPath(url: string, body: object, path: string): Promise<{ path: string }> {
+	if (!(await clientIdentity()).remote) return apiPostJson<{ path: string }>(url, { ...body, path });
+	const blob = await apiPostJsonForBlob(url, body);
+	await invoke('save_bytes', { path, bytes: Array.from(new Uint8Array(await blob.arrayBuffer())) });
+	return { path };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

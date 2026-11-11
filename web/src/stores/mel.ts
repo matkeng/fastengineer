@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Matthew Kelly
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { apiDelete, apiGet, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, runningInTauri } from '../lib/engine';
+import { apiDelete, apiGet, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, exportToPath, runningInTauri } from '../lib/engine';
 import type {
 	CsvInspect, LoadListResult, PipelineResult, Recipe, RecipeDetail, RecipeSummary, RevisionInfo, Stage, TargetList,
 } from '../lib/melTypes';
@@ -152,7 +152,7 @@ export const useMel = defineStore('mel', () => {
 					filters: [format === 'csv' ? { name: 'CSV', extensions: ['csv'] } : { name: 'Excel workbook', extensions: ['xlsx'] }],
 				});
 				if (!path) return;
-				const res = await apiPostJson<{ path: string }>(`${base.value}/export`, { ...body, path });
+				const res = await exportToPath(`${base.value}/export`, body, path);
 				message.value = `Saved ${res.path}`;
 			} else {
 				const blob = await apiPostJsonForBlob(`${base.value}/export`, body);
@@ -164,7 +164,58 @@ export const useMel = defineStore('mel', () => {
 		});
 	}
 
+	// -- the settings as a JSON file, to pass between people --------------------------------
+
+	/** Save the import's saved settings (rules, hidden rows, overrides, mapping...) as a .json file. */
+	async function exportSettings() {
+		if (!saved.value) return;
+		const name = `${saved.value.name} settings.json`.replace(/[\\/:*?"<>|]+/g, '_');
+		message.value = null;
+		await run(async () => {
+			if (runningInTauri) {
+				const { save: saveDialog } = await import('@tauri-apps/plugin-dialog');
+				const path = await saveDialog({ defaultPath: name, filters: [{ name: 'List import settings', extensions: ['json'] }] });
+				if (!path) return;
+				message.value = `Saved ${(await exportToPath(`${base.value}/settings/export`, {}, path)).path}`;
+			} else {
+				const blob = await apiPostJsonForBlob(`${base.value}/settings/export`, {});
+				const url = URL.createObjectURL(blob);
+				Object.assign(document.createElement('a'), { href: url, download: name }).click();
+				setTimeout(() => URL.revokeObjectURL(url), 10_000);
+				message.value = `Downloaded ${name}`;
+			}
+		});
+	}
+
+	async function parse(file: File): Promise<unknown> {
+		try {
+			return JSON.parse(await file.text());
+		} catch {
+			throw new Error(`${file.name} is not a list import settings file (.json).`);
+		}
+	}
+
+	/** Put a settings file's settings in the open import, as unsaved changes (Save keeps them, Discard drops them). */
+	async function readSettings(file: File): Promise<boolean> {
+		if (!draft.value) return false;
+		const r = await run(async () => apiPostJson<Recipe>(`${base.value}/settings/read`, await parse(file)));
+		if (!r) return false;
+		draft.value = { ...r, name: draft.value.name, updated_at: draft.value.updated_at };
+		return true;
+	}
+
+	/** Make a new import from a settings file, and open it. */
+	async function createFromSettings(file: File) {
+		const r = await run(async () => apiPostJson<Recipe>('/api/mel/settings/new', await parse(file)));
+		if (r) {
+			await open(r.id);
+			await refreshList();
+			message.value = `Made from ${file.name}. Upload its file next.`;
+		}
+	}
+
 	return {
+		exportSettings, readSettings, createFromSettings,
 		tab, recipes, saved, draft, revisions, fields, outputName, busy, error, message, dirty, latest,
 		refreshList, open, create, close, save, discard, remove, inspectCsv, uploadCsv, uploadExcel, uploadSymbols,
 		deleteRevision, runStage, loadList, exportTable,

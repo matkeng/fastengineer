@@ -54,11 +54,14 @@ export function createFilteredTable<Row>(
 		titleRow: 0, // titles in the first header row; the second holds the filters
 		autoWidth: false, // no scrollX: see style.css (one table in a scrolling cell)
 		...options,
+		buttons: titlesOnlyInExports(options.buttons),
 	});
 
 	const cells = el.querySelectorAll<HTMLTableCellElement>('thead tr.filters th');
 	api.columns().every(function (idx) {
-		const cell = cells[idx];
+		// The column's own filter cell: a column hidden from the start isn't in the page yet.
+		const cell = (this.header(1) as HTMLTableCellElement | null) ?? cells[idx];
+		if (!cell) return;
 		// Typing or clicking in a filter must not sort the column.
 		for (const ev of ['click', 'keydown', 'mousedown']) cell.addEventListener(ev, (e) => e.stopPropagation());
 		const sel = selects[idx];
@@ -99,6 +102,30 @@ export function createFilteredTable<Row>(
 			select.dispatchEvent(new Event('change'));
 		},
 	};
+}
+
+/** Copy / CSV / Excel buttons export only the title row of the header, not the filter row,
+ *  and without the "*" that marks a required column. */
+function titlesOnlyInExports(buttons: Config['buttons']): Config['buttons'] {
+	if (!Array.isArray(buttons)) return buttons;
+	return buttons.map((b) => {
+		if (typeof b !== 'object' || b === null || !('extend' in b) || b.extend === 'colvis') return b;
+		const opts = (b as { exportOptions?: Record<string, unknown> }).exportOptions ?? {};
+		const own = opts.customizeData as ((d: { headerStructure: unknown[] }) => void) | undefined;
+		return {
+			...b,
+			exportOptions: {
+				...opts,
+				customizeData: (d: { headerStructure: unknown[] }) => {
+					d.headerStructure = d.headerStructure.slice(0, 1);
+					for (const cell of (d.headerStructure[0] ?? []) as ({ title: string } | null)[]) {
+						if (cell) cell.title = cell.title.replace(/\s*\*$/, '');
+					}
+					own?.(d);
+				},
+			},
+		};
+	}) as Config['buttons'];
 }
 
 /** Standard toolbar layout ('buttons' is a feature added by the Buttons extension). */

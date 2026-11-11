@@ -1,7 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Matthew Kelly
-"""Deliverable generators: import a generator workbook, edit its runsheet and templates,
-check, preview, build (with history and change reports) and export."""
+"""Deliverable generators. The app has two built-in types (see /types): Power, which makes its
+rows from the Project Load List and the load types, and Instrument, which makes its rows from
+the Instrument Runsheet and the equipment types. Both fill the Project Master lists.
+
+Generators made from a generator workbook belong to earlier versions: the app no longer offers
+the import, but the ones a project has can still be edited, checked, built and exported here.
+(The import endpoint stays for the command line and the tests.)"""
 
 from __future__ import annotations
 
@@ -20,8 +25,7 @@ from workbench_core.generators.check import CheckResult
 from workbench_core.generators.bulk import BulkPreview, Inputs, apply_inputs, read_inputs, write_inputs
 from workbench_core.generators.editable import BuildInfo, BuildRecord, GenRecord, GenSummary, input_hash, merge, split
 from workbench_core.generators.expand import discover_tags
-from workbench_core.generators.hardware import (Catalogue, Hardware, HardwareSummary, ScheduleRow, check_hardware,
-                                                default_catalogue, schedule, summarise)
+from workbench_core.generators.hardware import Catalogue, Hardware, HardwareSummary, ScheduleRow, schedule, summarise
 from workbench_core.generators.models import Finding, Generator, RefTable
 from workbench_core.generators.preview import PreviewResult, preview
 from workbench_core.generators.xlsx_export import csv_bytes, export_name, xlsx_bytes
@@ -63,58 +67,6 @@ def _full(rec: GenRecord, draft: Generator | None = None) -> Generator:
     return merge(draft or rec.generator, get_generators().tables(rec.id))
 
 
-# -- PLC hardware catalogue (shared by all generators) ------------------------------
-# Declared before "/{rid}" routes so "hardware" is never read as a generator id.
-
-def _types_in_use() -> tuple[set[str], set[str]]:
-    store = get_generators()
-    racks, cards = set(), set()
-    for g in store.list():
-        for p in store.hardware(g.id).panels:
-            for r in p.racks:
-                racks.add(r.rack_type_id)
-                cards.update(c.card_type_id for c in r.cards if c is not None)
-    return racks, cards
-
-
-def _check_catalogue(cat: Catalogue) -> JSONResponse | None:
-    ids = [t.id for t in cat.rack_types] + [t.id for t in cat.card_types]
-    dup = sorted({i for i in ids if ids.count(i) > 1})
-    if dup:
-        return _invalid(f"Type ids used twice: {', '.join(dup)}", "catalogue")
-    bad = [t for t in cat.card_types if t.channels < 0] + [t for t in cat.rack_types if t.max_slots is not None and t.max_slots < 1]
-    if bad:
-        return _invalid("Channels can't be negative and a rack needs at least one slot.", "catalogue")
-    racks, cards = _types_in_use()
-    gone = sorted((racks - {t.id for t in cat.rack_types}) | (cards - {t.id for t in cat.card_types}))
-    if gone:
-        return _invalid(f"{len(gone)} type(s) are used by racks or cards and can't be removed.", "catalogue")
-    return None
-
-
-@router.get("/hardware/catalogue", response_model=Catalogue)
-def get_catalogue():
-    return get_generators().catalogue()
-
-
-@router.put("/hardware/catalogue", response_model=Catalogue)
-def save_catalogue(body: Catalogue):
-    err = _check_catalogue(body)
-    return err or get_generators().save_catalogue(body)
-
-
-@router.post("/hardware/catalogue/defaults", response_model=Catalogue)
-def catalogue_defaults():
-    """Add any default types that are missing (existing types are kept)."""
-    store = get_generators()
-    cat = store.catalogue()
-    have = {t.id for t in cat.rack_types} | {t.id for t in cat.card_types}
-    d = default_catalogue()
-    cat.rack_types += [t for t in d.rack_types if t.id not in have]
-    cat.card_types += [t for t in d.card_types if t.id not in have]
-    return store.save_catalogue(cat)
-
-
 # -- generators ----------------------------------------------------------------
 
 class ImportResponse(BaseModel):
@@ -137,6 +89,68 @@ async def import_file(request: Request, filename: str = Query(...), name: str | 
     title = name or gen.config.doc_title or Path(filename).stem
     rec = get_generators().create(title, gen.id, filename, gen, tables, res.report)
     return ImportResponse(record=rec, report=res.report)
+
+
+# -- the built-in generators -----------------------------------------------------------------
+# Generators are not made from a workbook any more. There are two, built into the app, and both
+# write to the same four Project Master lists (see master_api): "power" (the Project Load List
+# through the load types' rows) and "instrument" (the Instrument Runsheet through the equipment
+# types' rows).
+
+class GeneratorList(BaseModel):
+    key: str
+    type: str  # the deliverable type made from the master list
+    master: str  # the project master list it writes to
+    rows: int  # rows this generator adds to it now
+    master_rows: int  # rows the master list has in all (both generators)
+    deliverables: int  # deliverables made from the master list
+
+
+class GeneratorType(BaseModel):
+    id: Literal["power", "instrument"]
+    name: str
+    available: bool
+    description: str
+    # Power: loads of the Load List and load types. Instrument: runsheet rows and equipment types that have rows.
+    runs: int = 0
+    templates: int = 0
+    missing: list[str] = []  # Power: tags of the loads with no load type, which add nothing yet
+    unconfirmed: int = 0  # Instrument: runsheet rows not confirmed (they generate, flagged)
+    lists: list[GeneratorList] = []
+
+
+@router.get("/types", response_model=list[GeneratorType])
+def generator_types() -> list[GeneratorType]:
+    """The two generators, with what each adds to the four Project Master lists right now."""
+    from workbench_core.keylists.loadgen import LISTS
+    from workbench_core.keylists.master import INSTRUMENT, MASTER_LISTS, MASTER_NAMES, POWER, generator_counts
+
+    from .master_api import inputs, master_of
+    from .storage import get_deliverables
+
+    src = inputs()
+    used: dict[str, int] = {}
+    for d in get_deliverables().list():
+        if d.source == "project":
+            used[d.type] = used.get(d.type, 0) + 1
+    rows: dict[str, list[GeneratorList]] = {POWER: [], INSTRUMENT: []}
+    missing: list[str] = []
+    for key in MASTER_LISTS:
+        result, _, missing = master_of(key, src)
+        counts = generator_counts(result)
+        for who in (POWER, INSTRUMENT):
+            rows[who].append(GeneratorList(key=key, type=LISTS[key].deliverable_type, master=MASTER_NAMES[key], rows=counts[who],
+                                           master_rows=len(result.rows), deliverables=used.get(LISTS[key].deliverable_type, 0)))
+    sheet = src.runsheet.rows  # type: ignore[attr-defined]
+    return [
+        GeneratorType(id="power", name="Power", available=True,
+                      description="Every load of the Project Load List adds the rows its load type has for each list.",
+                      runs=sum(1 for r in src.loads if r.status == "active"), templates=len(src.load_types), missing=missing,
+                      lists=rows[POWER]),
+        GeneratorType(id="instrument", name="Instrument", available=True,
+                      description="Every row of the Instrument Runsheet adds the rows its equipment type has for each list.",
+                      runs=len(sheet), templates=sum(1 for t in src.equipment_types.values() if any(t.rows.values())),
+                      unconfirmed=sum(1 for r in sheet if not r.confirmed), lists=rows[INSTRUMENT])]
 
 
 @router.get("", response_model=list[GenSummary])
@@ -167,8 +181,13 @@ def save_generator(rid: str, body: SaveBody):
 
 
 @router.delete("/{rid}")
-def delete_generator(rid: str) -> dict[str, bool]:
+def delete_generator(rid: str):
     _record(rid)
+    from .storage import get_deliverables
+    used = get_deliverables().using(rid)
+    if used:
+        return _invalid(f"This generator feeds the deliverable(s) {', '.join(used)} and can't be deleted. "
+                        "Point them at another generator, or delete them, first.")
     get_generators().delete(rid)
     return {"ok": True}
 
@@ -295,7 +314,7 @@ def export_file_name(bid: str, format: Literal["xlsx", "csv"] = "xlsx") -> dict[
     return {"name": export_name(rec.generator.config, rec.name, b.info.created_at, f".{format}")}
 
 
-# -- PLC hardware register (per generator) ------------------------------------------
+# -- PLC hardware: read-only, from the project's PLC List -------------------------------------
 
 class HardwareView(BaseModel):
     hardware: Hardware
@@ -305,59 +324,19 @@ class HardwareView(BaseModel):
     schedule: list[ScheduleRow]
 
 
-def _view(rid: str, hw: Hardware) -> HardwareView:
-    store = get_generators()
-    cat = store.catalogue()
-    latest = store.latest_build(rid)
-    return HardwareView(hardware=hw, catalogue=cat, findings=check_hardware(hw, cat),
-                        summary=summarise(hw, cat, latest.result if latest else None), schedule=schedule(hw, cat))
-
-
 @router.get("/{rid}/hardware", response_model=HardwareView)
 def get_hardware(rid: str):
+    """The PLC List's cards and channels against this generator's latest IO list build (the
+    register itself is edited in Project lists > PLC List)."""
     _record(rid)
-    return _view(rid, get_generators().hardware(rid))
+    from workbench_core.keylists.plc import as_hardware
 
-
-@router.put("/{rid}/hardware", response_model=HardwareView)
-def save_hardware(rid: str, body: Hardware):
-    _record(rid)
-    return _view(rid, get_generators().save_hardware(rid, body))
-
-
-@router.post("/{rid}/hardware/check", response_model=HardwareView)
-def check_hardware_draft(rid: str, body: Hardware):
-    """Findings and totals for unsaved edits."""
-    _record(rid)
-    return _view(rid, body)
-
-
-@router.post("/{rid}/hardware/export")
-def export_hardware(rid: str, body: ExportBody, request: Request):
-    """The card schedule (saved register) as .xlsx or .csv."""
-    _json_only(request)
-    rec = _record(rid)
-    store = get_generators()
-    rows = schedule(store.hardware(rid), store.catalogue())
-    header = ["Panel", "Rack", "Slot", "Card", "Kind", "Channels", "Part number", "Description", "Spare", "Notes"]
-    data_rows = [[r.panel, r.rack, r.slot, r.card, r.kind, r.channels, r.part_number, r.description,
-                  "Yes" if r.spare else "", r.notes] for r in rows]
-    from workbench_core.generators.models import BuildResult, BuildStats, OutputRow
-    res = BuildResult(header=header, rows=[OutputRow(cells=c, run_row_id="hw") for c in data_rows], stats=BuildStats())
-    cfg = rec.generator.config.model_copy(update={"doc_title": f"{rec.name} PLC cards", "doc_number": ""})
-    data = xlsx_bytes(res, cfg) if body.format == "xlsx" else csv_bytes(res, cfg.date_format)
-    name = f"{rec.name} PLC cards.{body.format}".replace("/", "_")
-    if body.path is None:
-        return Response(data, media_type=MEDIA[body.format],
-                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
-    target = Path(body.path)
-    if target.suffix.lower() != f".{body.format}":
-        target = target.with_suffix(f".{body.format}")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not write {target}: {exc.strerror or exc}. Is it open in another program?") from exc
-    return {"path": str(target)}
+    from .storage import get_keylists
+    lists = get_keylists()
+    hw, cat = as_hardware(lists.plc()), lists.catalogue()
+    latest = get_generators().latest_build(rid)
+    return HardwareView(hardware=hw, catalogue=cat, findings=[], summary=summarise(hw, cat, latest.result if latest else None),
+                        schedule=schedule(hw, cat))
 
 
 # -- bulk editing in Excel: every input table in one workbook -------------------------------
@@ -365,13 +344,13 @@ def export_hardware(rid: str, body: ExportBody, request: Request):
 def _inputs(rid: str) -> Inputs:
     store = get_generators()
     rec = _record(rid)
-    return Inputs(generator=merge(rec.generator, store.tables(rid)), hardware=store.hardware(rid), catalogue=store.catalogue())
+    return Inputs(generator=merge(rec.generator, store.tables(rid)))
 
 
 @router.post("/{rid}/inputs/export")
 def export_inputs(rid: str, body: ExportBody, request: Request):
-    """All input tables (runsheet, templates, parents, derived tags, routes, prefixes, PLC cards,
-    card and rack types, lookup tables) in one .xlsx for editing outside the app."""
+    """All input tables (runsheet, templates, parents, derived tags, routes, prefixes, lookup
+    tables) in one .xlsx for editing outside the app. (PLC cards are in the PLC List's workbook.)"""
     _json_only(request)
     rec = _record(rid)
     data = write_inputs(_inputs(rid), rec.name)
@@ -418,25 +397,9 @@ async def import_inputs(rid: str, request: Request, filename: str = Query(...), 
     except BuildError as exc:
         return _invalid(f"RunSheet: {exc}", "runsheet")
     store = get_generators()
-    if any(t in chosen for t in ("card_types", "rack_types")) or "hardware" in chosen:
-        # every rack and card (this generator's new register, and the others') must use a known type
-        racks, cards = set(), set()
-        for g in store.list():
-            hw = new.hardware if g.id == rid else store.hardware(g.id)
-            for p in hw.panels:
-                for r in p.racks:
-                    racks.add(r.rack_type_id)
-                    cards.update(c.card_type_id for c in r.cards if c is not None)
-        missing = (racks - {t.id for t in new.catalogue.rack_types}) | (cards - {t.id for t in new.catalogue.card_types})
-        if missing:
-            return _invalid(f"{len(missing)} card or rack type(s) used by racks are missing from the types sheets.", "catalogue")
     gen, tables = split(new.generator)
     rec = _record(rid)
-    store.save(rid, rec.name, gen)
-    if any(t.startswith("table:") for t in chosen):
-        store.replace_tables(rid, tables)
-    if "hardware" in chosen:
-        store.save_hardware(rid, new.hardware)
-    if any(t in chosen for t in ("card_types", "rack_types")):
-        store.save_catalogue(new.catalogue)
+    store.apply_import(
+        rid, rec.name, gen,
+        tables=tables if any(t.startswith("table:") for t in chosen) else None)
     return InputsImport(preview=preview, applied=chosen, record=_record(rid))

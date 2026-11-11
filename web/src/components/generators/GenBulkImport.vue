@@ -29,7 +29,6 @@ watch(() => props.file, async (f) => {
 
 const differs = (s: SheetPreview) => !!(s.added || s.removed || s.changed);
 const tables = computed(() => Object.entries(chosen.value).filter(([, v]) => v).map(([k]) => k));
-const shared = computed(() => tables.value.some((t) => t === 'card_types' || t === 'rack_types'));
 
 async function apply() {
 	if (!props.file || !tables.value.length) return;
@@ -80,7 +79,6 @@ async function apply() {
 				</tbody>
 			</table>
 			<p v-if="result.preview.ignored_sheets.length" class="hint">Sheets not recognised (ignored): {{ result.preview.ignored_sheets.join(', ') }}</p>
-			<p v-if="shared" class="warn">Card and rack types are shared by every generator.</p>
 		</template>
 		<p v-if="done" class="saved">✓ Applied {{ done.length }} sheet{{ done.length === 1 ? '' : 's' }}. Build again to see the effect on the output.</p>
 		<template #footer>

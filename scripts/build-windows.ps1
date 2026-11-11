@@ -62,6 +62,8 @@ Keep workbench-engine.exe in the same folder: it is the Python engine the app st
   the Excel query, Compare tables and MEL import tabs.
 - Saved MEL imports are kept in %APPDATA%\com.drawingworkbench.poc\workbench.db
 - If the engine does not start, see %TEMP%\workbench-engine.log
+- For a team: workbench-engine.exe can run on a server for several users at once,
+  with a log of who changed what. See "Multi-user" in the project README.
 "@ | Set-Content (Join-Path $portable 'README.txt') -Encoding utf8
 Compress-Archive -Path "$portable/*" -DestinationPath "$portable.zip" -Force
 Write-Host "Built: $portable.zip"

@@ -3,7 +3,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import {
-	ApiError, apiDelete, apiGet, apiGetBlob, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, apiPutBytes, runningInTauri,
+	ApiError, apiDelete, apiGet, apiGetBlob, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, apiPutBytes, exportToPath, runningInTauri,
 } from '../lib/engine';
 import type {
 	Drawing, Library, LibrarySummary, OcrStatus, PageOverride, PageResult, PageReview, ReviewAction, ReviewResult, RunInfo, RunSheet,
@@ -226,7 +226,7 @@ export const useSymbols = defineStore('symbols', () => {
 				const { save: saveDialog } = await import('@tauri-apps/plugin-dialog');
 				const target = await saveDialog({ defaultPath: name, filters: [filter] });
 				if (!target) return;
-				const res = await apiPostJson<{ path: string }>(path, { ...body, path: target });
+				const res = await exportToPath(path, body, target);
 				message.value = `Saved ${res.path}`;
 			} else {
 				downloadBlob(await toBlob(await apiPostJson<unknown>(path, body)), name);
@@ -468,7 +468,7 @@ export const useSymbols = defineStore('symbols', () => {
 				const { save: saveDialog } = await import('@tauri-apps/plugin-dialog');
 				const path = await saveDialog({ defaultPath: `Tags.${format}`, filters: [filter] });
 				if (!path) return;
-				const res = await apiPostJson<{ path: string }>(`${API}/runs/${id}/export`, { format, path });
+				const res = await exportToPath(`${API}/runs/${id}/export`, { format }, path);
 				message.value = `Saved ${res.path}`;
 			} else {
 				downloadBlob(await apiPostJsonForBlob(`${API}/runs/${id}/export`, { format }), `Tags.${format}`);

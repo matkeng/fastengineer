@@ -33,6 +33,7 @@ class CardType(BaseModel):
     part_number: str = ""
     description: str = ""
     wiring: str = ""  # analog wiring, e.g. "2-wire", "2/3/4-wire"
+    first_channel: Literal[0, 1] = 0  # channels are numbered from 0 or from 1 (as the card's maker does)
 
 
 class RackType(BaseModel):

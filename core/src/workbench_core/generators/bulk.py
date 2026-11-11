@@ -446,12 +446,14 @@ def _a_hardware(inp: Inputs, v) -> None:
 
 
 CT_HEAD = ["ID", "Kind", "Channels", "Part number", "Description", "Wiring"]
+CT_FIRST = "First channel"  # an extra column (sheets without it are read as 0)
 RT_HEAD = ["ID", "Part number", "Description", "Max slots"]
 
 
 def _w_card_types(inp: Inputs):
-    rows = [[t.id, t.kind, t.channels, t.part_number, t.description, t.wiring] for t in inp.catalogue.card_types]
-    return [list(CT_HEAD)] + rows, [r[0] for r in rows], 1
+    rows = [[t.id, t.kind, t.channels, t.part_number, t.description, t.wiring, t.first_channel]
+            for t in inp.catalogue.card_types]
+    return [list(CT_HEAD) + [CT_FIRST]] + rows, [r[0] for r in rows], 1
 
 
 def _r_card_types(grid: Grid, inp: Inputs):
@@ -462,14 +464,17 @@ def _r_card_types(grid: Grid, inp: Inputs):
     for n, r in enumerate(grid[1:], start=2):
         if _blank(r):
             continue
-        r = r + [None] * (6 - len(r))
+        r = r + [None] * (7 - len(r))
         kind = kinds.get(_t(r[1]).strip().lower())
         if kind is None:
             raise ValueError(f"row {n}: Kind must be one of Network, DI, DO, AI, AO, RTD")
         ch = _int(r[2], "Channels", n) if _t(r[2]).strip() else 0
         if ch < 0:
             raise ValueError(f"row {n}: Channels can't be negative")
-        kw = dict(kind=kind, channels=ch, part_number=_t(r[3]), description=_t(r[4]), wiring=_t(r[5]))
+        first = _int(r[6], CT_FIRST, n) if _t(r[6]).strip() else 0
+        if first not in (0, 1):
+            raise ValueError(f"row {n}: {CT_FIRST} must be 0 or 1")
+        kw = dict(kind=kind, channels=ch, part_number=_t(r[3]), description=_t(r[4]), wiring=_t(r[5]), first_channel=first)
         tid = _t(r[0]).strip()
         t = CardType(id=tid, **kw) if tid else CardType(**kw)
         if t.id in ids:
@@ -545,9 +550,6 @@ def table_defs(inp: Inputs) -> list[TableDef]:
         TableDef("derived", "Derived tags", _w_derived, _r_derived, _a_derived),
         TableDef("routes", "Routes", _w_routes, _r_routes, _a_routes),
         TableDef("prefixes", "Cable prefixes", _w_prefixes, _r_prefixes, _a_prefixes),
-        TableDef("hardware", "PLC cards", _w_hardware, _r_hardware, _a_hardware),
-        TableDef("card_types", "Card types", _w_card_types, _r_card_types, _a_card_types),
-        TableDef("rack_types", "Rack types", _w_rack_types, _r_rack_types, _a_rack_types),
     ]
     defs += [_lookup_def(n) for n in sorted(inp.generator.tables)]
     return defs
@@ -567,9 +569,8 @@ ABOUT = [
     "Templates: one row per template row; rows with the same ID next to each other form a template.",
     "  Text with <<TAGS>> is expanded; F= starts a late formula; cells starting with " + CALC + " are calculated",
     "  by the generator (leave them as they are, or clear them).",
-    "PLC cards: one row per card (or per empty rack / panel). Card type: the type ID, its part number, or",
-    "  e.g. DI16. Kind, Channels and Part number are shown for reference and ignored on import.",
-    "Card types / Rack types: shared by every generator; types used by a rack can't be removed.",
+    "PLC cards and the card / rack types are not in this workbook: they are in the project's PLC List",
+    "  (Project lists > PLC List, which has its own Excel export and import).",
     "T <name>: the generator's lookup tables, cell for cell (row 1 is the sheet's first row).",
 ]
 

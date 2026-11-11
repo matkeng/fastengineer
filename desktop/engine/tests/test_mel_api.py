@@ -92,3 +92,41 @@ def test_excel_source() -> None:
         "key_column": 0})
     assert res.status_code == 200, res.text
     assert res.json()["key_header"] == "Cable Tag" and res.json()["source"] == "excel: Cable Schedule"
+
+
+def test_settings_pass_between_people_as_a_json_file(tmp_path: Path) -> None:
+    rid = client.post("/api/mel/recipes", json={"name": "Plant MEL", "target": "MEL"}).json()["id"]
+    _upload(rid, "mel-sample.csv")
+    recipe = client.get(f"/api/mel/recipes/{rid}").json()["recipe"]
+    recipe["hidden_rows"] = [{"key": "P-101"}]
+    recipe["mapping"] = [{"field": "tag", "column": "Equipment Tag"}]
+    assert client.put(f"/api/mel/recipes/{rid}", json=recipe).status_code == 200
+
+    out = tmp_path / "settings"
+    assert client.post(f"/api/mel/recipes/{rid}/settings/export", json={"path": str(out)}).json() == {"path": str(out) + ".json"}
+    doc = client.post(f"/api/mel/recipes/{rid}/settings/export", json={}).json()
+    assert (doc["format"], doc["version"], doc["name"], doc["target"]) == ("drawing-workbench/list-import-settings", 1, "Plant MEL", "MEL")
+    assert doc["settings"]["hidden_rows"] == [{"key": "P-101"}] and "id" not in doc and set(doc["settings"]) == {
+        "columns", "hidden_rows", "text_columns", "overrides", "custom_rows", "auto_columns", "mapping"}
+
+    # a colleague makes a new import from the file: same name (made unique here), settings, and no file yet
+    new = client.post("/api/mel/settings/new", json=doc)
+    assert new.status_code == 200, new.text
+    made = new.json()
+    assert made["id"] != rid and made["name"] == "Plant MEL (2)" and made["hidden_rows"] == [{"key": "P-101"}]
+    assert client.get(f"/api/mel/recipes/{made['id']}").json()["revisions"] == []
+    assert made["mapping"][0]["column"] == "Equipment Tag"
+
+    # or reads it into an import they have: nothing is saved until they save
+    other = client.post("/api/mel/recipes", json={"name": "Mine", "target": "MEL"}).json()
+    read = client.post(f"/api/mel/recipes/{other['id']}/settings/read", json=doc).json()
+    assert (read["id"], read["name"], read["hidden_rows"]) == (other["id"], "Mine", [{"key": "P-101"}])
+    assert client.get(f"/api/mel/recipes/{other['id']}").json()["recipe"]["hidden_rows"] == []
+
+    pil = client.post("/api/mel/recipes", json={"name": "Tags", "target": "PIL"}).json()
+    wrong = client.post(f"/api/mel/recipes/{pil['id']}/settings/read", json=doc)
+    assert wrong.status_code == 422 and "MEL import" in wrong.json()["detail"]
+    assert client.post("/api/mel/settings/new", json={"hello": 1}).status_code == 422
+    assert client.post("/api/mel/settings/new", json=doc | {"version": 2}).status_code == 422
+    damaged = client.post("/api/mel/settings/new", json=doc | {"settings": {"hidden_rows": "nope"}})
+    assert damaged.status_code == 422 and "damaged" in damaged.json()["detail"]

@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import HistoryButton from '../audit/HistoryButton.vue';
 import { onMounted, ref } from 'vue';
 import { TARGET_LABELS, TARGETS, type TargetList } from '../../lib/melTypes';
 import { type MelTab, useMel } from '../../stores/mel';
@@ -37,6 +38,23 @@ const panels: Record<MelTab, unknown> = {
 async function create() {
 	await mel.create(newName.value || newTarget.value, newTarget.value);
 	newName.value = '';
+}
+
+// Settings as a .json file: export them here, import them into this import or as a new one.
+const settingsInput = ref<HTMLInputElement | null>(null);
+const newInput = ref<HTMLInputElement | null>(null);
+async function pickSettings(e: Event, asNew: boolean) {
+	const el = e.target as HTMLInputElement;
+	const file = el.files?.[0];
+	el.value = '';
+	if (!file) return;
+	if (asNew) {
+		await mel.createFromSettings(file);
+		return;
+	}
+	const had = mel.dirty ? ' Your unsaved changes are replaced too.' : '';
+	if (!confirm(`Replace the settings of "${mel.draft?.name}" with those in ${file.name}?\n\nIts column rules, hidden rows, text columns, overrides, added rows, calculated columns and mapping are replaced. The uploaded files stay.${had}\n\nNothing is saved until you press Save; Discard brings the old settings back.`)) return;
+	if (await mel.readSettings(file)) mel.message = null;
 }
 
 function leave() {
@@ -82,6 +100,9 @@ onMounted(() => mel.refreshList());
 					<option v-for="t in TARGETS" :key="t" :value="t">{{ TARGET_LABELS[t] }}</option>
 				</select>
 				<button type="submit" :disabled="mel.busy">Create</button>
+				<button type="button" class="secondary" :disabled="mel.busy"
+					title="Make a new import from a settings file a colleague exported (.json). You then upload its file." @click="newInput?.click()">New from settings…</button>
+				<input ref="newInput" type="file" accept=".json,application/json" hidden @change="pickSettings($event, true)" />
 			</form>
 			<p v-if="mel.error" class="error">{{ mel.error }}</p>
 		</section>
@@ -98,6 +119,13 @@ onMounted(() => mel.refreshList());
 				<span class="spacer" />
 				<span v-if="mel.dirty" class="unsaved">● Unsaved changes</span>
 				<span v-else-if="mel.message" class="saved" :title="mel.message">✓ {{ mel.message }}</span>
+				<button type="button" class="secondary" :disabled="mel.dirty || mel.busy"
+					:title="mel.dirty ? 'Save or discard your changes first' : 'The saved settings of this import as a .json file, to give to a colleague (the uploaded files are not in it)'"
+					@click="mel.exportSettings()">Export settings</button>
+				<button type="button" class="secondary" :disabled="mel.busy"
+					title="Replace this import's settings with those of a .json file a colleague exported" @click="settingsInput?.click()">Import settings…</button>
+				<input ref="settingsInput" type="file" accept=".json,application/json" hidden @change="pickSettings($event, false)" />
+				<HistoryButton v-if="mel.draft" entity="mel_recipe" :record-id="mel.draft.id" :label="mel.draft.name" />
 				<button type="button" class="secondary" :disabled="!mel.dirty || mel.busy" @click="mel.discard()">Discard</button>
 				<button type="button" :disabled="!mel.dirty || mel.busy" @click="mel.save()">Save</button>
 			</div>

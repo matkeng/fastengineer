@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import HistoryButton from '../audit/HistoryButton.vue';
 import { computed, ref } from 'vue';
 import { useSymbols } from '../../stores/symbols';
 
@@ -68,6 +69,7 @@ async function copy() {
 			<span class="spacer" />
 			<span v-if="sym.libraryDirty" class="unsaved">● Unsaved changes</span>
 			<span v-else-if="sym.message" class="saved">✓ {{ sym.message }}</span>
+			<HistoryButton entity="sym_library" :record-id="lib.id" :label="lib.name" />
 			<button type="button" class="secondary" :disabled="!sym.libraryDirty" @click="sym.discardLibrary()">Discard</button>
 			<button type="button" :disabled="!sym.libraryDirty || sym.busy" @click="sym.saveLibrary()">Save</button>
 		</div>

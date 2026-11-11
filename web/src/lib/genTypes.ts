@@ -275,7 +275,10 @@ export type CardKind = 'Network' | 'DI' | 'DO' | 'AI' | 'AO' | 'RTD';
 export const CARD_KINDS: CardKind[] = ['Network', 'DI', 'DO', 'AI', 'AO', 'RTD'];
 export const IO_SIZES = [8, 12, 16, 32];
 
-export interface CardType { id: string; kind: CardKind; channels: number; part_number: string; description: string; wiring: string }
+export interface CardType {
+	id: string; kind: CardKind; channels: number; part_number: string; description: string; wiring: string;
+	first_channel: 0 | 1; // channels numbered from 0 or from 1
+}
 export interface RackType { id: string; part_number: string; description: string; max_slots: number | null }
 export interface Catalogue { rack_types: RackType[]; card_types: CardType[] }
 export interface Card { id: string; card_type_id: string; tag: string; spare: boolean; notes: string }

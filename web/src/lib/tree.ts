@@ -5,8 +5,11 @@ import type { TreeNode } from './refTypes';
 
 export type DropPos = 'before' | 'after' | 'inside';
 
-export interface VisibleRow {
-	node: TreeNode;
+/** What the structural helpers need of an item; trees with other columns reuse them. */
+export interface TreeItem { id: string; parent_id: string | null }
+
+export interface VisibleRow<T extends TreeItem = TreeNode> {
+	node: T;
 	depth: number;
 	childCount: number;
 	expanded: boolean;
@@ -17,9 +20,9 @@ export interface VisibleRow {
 }
 
 /** parent id (null = top) -> children in order */
-export function childrenMap(nodes: TreeNode[]): Map<string | null, TreeNode[]> {
+export function childrenMap<T extends TreeItem>(nodes: T[]): Map<string | null, T[]> {
 	const ids = new Set(nodes.map((n) => n.id));
-	const m = new Map<string | null, TreeNode[]>();
+	const m = new Map<string | null, T[]>();
 	for (const n of nodes) {
 		const p = n.parent_id && ids.has(n.parent_id) ? n.parent_id : null;
 		if (!m.has(p)) m.set(p, []);
@@ -28,7 +31,7 @@ export function childrenMap(nodes: TreeNode[]): Map<string | null, TreeNode[]> {
 	return m;
 }
 
-export function isDescendant(nodes: TreeNode[], ancestorId: string, id: string | null): boolean {
+export function isDescendant(nodes: TreeItem[], ancestorId: string, id: string | null): boolean {
 	const byId = new Map(nodes.map((n) => [n.id, n]));
 	let p = id;
 	const seen = new Set<string>();
@@ -41,7 +44,7 @@ export function isDescendant(nodes: TreeNode[], ancestorId: string, id: string |
 	return false;
 }
 
-export function subtreeIds(nodes: TreeNode[], id: string): Set<string> {
+export function subtreeIds(nodes: TreeItem[], id: string): Set<string> {
 	const out = new Set<string>([id]);
 	const kids = childrenMap(nodes);
 	const stack = [id];
@@ -57,7 +60,7 @@ export function subtreeIds(nodes: TreeNode[], id: string): Set<string> {
 }
 
 /** Ancestors of a node, nearest first. */
-export function ancestors(nodes: TreeNode[], id: string): string[] {
+export function ancestors(nodes: TreeItem[], id: string): string[] {
 	const byId = new Map(nodes.map((n) => [n.id, n]));
 	const out: string[] = [];
 	let p = byId.get(id)?.parent_id ?? null;
@@ -72,10 +75,12 @@ export function matches(n: TreeNode, filter: string): boolean {
 	const f = filter.trim().toLowerCase();
 	return !f || [n.code, n.value, n.description].some((s) => s.toLowerCase().includes(f));
 }
+const defaultMatches = matches;
 
 /** Rows to show: depth-first, children of collapsed nodes hidden. With a filter, matches and
- *  their ancestors are shown (expanded). */
-export function visibleRows(nodes: TreeNode[], expanded: Set<string>, filter = ''): VisibleRow[] {
+ *  their ancestors are shown (expanded). `matches` says which columns the filter looks at. */
+export function visibleRows<T extends TreeItem = TreeNode>(nodes: T[], expanded: Set<string>, filter = '',
+	matches: (n: T, filter: string) => boolean = defaultMatches as unknown as (n: T, filter: string) => boolean): VisibleRow<T>[] {
 	const kids = childrenMap(nodes);
 	const filtering = !!filter.trim();
 	let keep: Set<string> | null = null;
@@ -88,7 +93,7 @@ export function visibleRows(nodes: TreeNode[], expanded: Set<string>, filter = '
 			}
 		}
 	}
-	const out: VisibleRow[] = [];
+	const out: VisibleRow<T>[] = [];
 	const walk = (parent: string | null, depth: number, guides: boolean[]) => {
 		const list = (kids.get(parent) ?? []).filter((c) => !keep || keep.has(c.id));
 		list.forEach((n, i) => {
@@ -104,9 +109,9 @@ export function visibleRows(nodes: TreeNode[], expanded: Set<string>, filter = '
 }
 
 /** Re-order the flat list depth-first so every parent comes before its children. */
-function normalise(nodes: TreeNode[]): TreeNode[] {
+function normalise<T extends TreeItem>(nodes: T[]): T[] {
 	const kids = childrenMap(nodes);
-	const out: TreeNode[] = [];
+	const out: T[] = [];
 	const walk = (p: string | null) => {
 		for (const c of kids.get(p) ?? []) {
 			out.push(c);
@@ -119,7 +124,7 @@ function normalise(nodes: TreeNode[]): TreeNode[] {
 
 /** Move a node (with its subtree) before/after a target, or inside it as the last child.
  *  Returns false (and changes nothing) for an impossible move. */
-export function moveNode(nodes: TreeNode[], id: string, targetId: string, pos: DropPos): boolean {
+export function moveNode(nodes: TreeItem[], id: string, targetId: string, pos: DropPos): boolean {
 	if (id === targetId || isDescendant(nodes, id, targetId)) return false;
 	const node = nodes.find((n) => n.id === id);
 	const target = nodes.find((n) => n.id === targetId);
@@ -142,7 +147,7 @@ export function moveNode(nodes: TreeNode[], id: string, targetId: string, pos: D
 }
 
 /** Make a node the last child of its previous sibling. */
-export function indent(nodes: TreeNode[], id: string): boolean {
+export function indent(nodes: TreeItem[], id: string): boolean {
 	const n = nodes.find((x) => x.id === id);
 	if (!n) return false;
 	const sibs = childrenMap(nodes).get(n.parent_id) ?? [];
@@ -152,14 +157,14 @@ export function indent(nodes: TreeNode[], id: string): boolean {
 }
 
 /** Move a node up a level, just after its parent. */
-export function outdent(nodes: TreeNode[], id: string): boolean {
+export function outdent(nodes: TreeItem[], id: string): boolean {
 	const n = nodes.find((x) => x.id === id);
 	if (!n?.parent_id) return false;
 	return moveNode(nodes, id, n.parent_id, 'after');
 }
 
 /** Swap with the previous (-1) or next (+1) sibling. */
-export function moveAmongSiblings(nodes: TreeNode[], id: string, by: -1 | 1): boolean {
+export function moveAmongSiblings(nodes: TreeItem[], id: string, by: -1 | 1): boolean {
 	const n = nodes.find((x) => x.id === id);
 	if (!n) return false;
 	const sibs = childrenMap(nodes).get(n.parent_id) ?? [];
@@ -169,13 +174,13 @@ export function moveAmongSiblings(nodes: TreeNode[], id: string, by: -1 | 1): bo
 	return moveNode(nodes, id, sibs[j].id, by < 0 ? 'before' : 'after');
 }
 
-export function removeSubtree(nodes: TreeNode[], id: string): void {
+export function removeSubtree(nodes: TreeItem[], id: string): void {
 	const gone = subtreeIds(nodes, id);
 	nodes.splice(0, nodes.length, ...nodes.filter((n) => !gone.has(n.id)));
 }
 
 /** Insert a new node as the last child of `parentId` (null = top level), or right after `afterId`. */
-export function insertNode(nodes: TreeNode[], node: TreeNode, afterId?: string): void {
+export function insertNode<T extends TreeItem>(nodes: T[], node: T, afterId?: string): void {
 	if (afterId) {
 		const sub = subtreeIds(nodes, afterId);
 		const at = Math.max(...nodes.map((n, i) => (sub.has(n.id) ? i : -1))) + 1;

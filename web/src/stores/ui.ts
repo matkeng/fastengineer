@@ -4,16 +4,19 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { IconName } from '../lib/icons';
 
-export type Section = 'dashboard' | 'excel' | 'compare' | 'symbols' | 'mel' | 'ref' | 'generators' | 'engine';
+export type Section = 'dashboard' | 'compare' | 'symbols' | 'mel' | 'keylists' | 'generators' | 'deliverables' | 'history' | 'projects' | 'engine';
 
-export const SECTIONS: { id: Section; label: string; icon: IconName }[] = [
+/** `menu: false`: not a tab of its own; it is opened from another section. */
+export const SECTIONS: { id: Section; label: string; icon: IconName; menu?: false }[] = [
 	{ id: 'dashboard', label: 'Dashboard', icon: 'home' },
-	{ id: 'excel', label: 'Excel query', icon: 'table' },
-	{ id: 'compare', label: 'Compare tables', icon: 'compare' },
+	{ id: 'compare', label: 'Compare tables', icon: 'compare', menu: false }, // opened from its card on the Dashboard
 	{ id: 'symbols', label: 'Symbol detection', icon: 'symbol' },
 	{ id: 'mel', label: 'List import', icon: 'recipe' },
-	{ id: 'ref', label: 'Lists & tables', icon: 'database' },
+	{ id: 'keylists', label: 'Project lists', icon: 'tree' },
 	{ id: 'generators', label: 'Generators', icon: 'generator' },
+	{ id: 'deliverables', label: 'Deliverables', icon: 'file' },
+	{ id: 'history', label: 'Change log', icon: 'history' },
+	{ id: 'projects', label: 'Projects', icon: 'layers' }, // administrators only (see App.vue)
 	{ id: 'engine', label: 'Engine', icon: 'cpu' },
 ];
 

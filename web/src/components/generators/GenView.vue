@@ -1,11 +1,14 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import sampleUrl from '../../../../samples/generator-sample.xlsx?url';
-import { type ImportReport, KIND_LABELS } from '../../lib/genTypes';
+import HistoryButton from '../audit/HistoryButton.vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { apiGet } from '../../lib/engine';
+import { KIND_LABELS } from '../../lib/genTypes';
+import { useDeliverables } from '../../stores/deliverables';
+import { useKeyLists } from '../../stores/keylists';
+import { useUi } from '../../stores/ui';
 import { type GenTab, useGenerators } from '../../stores/generators';
-import AppModal from '../common/AppModal.vue';
 import GenBuild from './GenBuild.vue';
 import GenBulkImport from './GenBulkImport.vue';
 import GenCheck from './GenCheck.vue';
@@ -15,9 +18,40 @@ import GenSettings from './GenSettings.vue';
 import GenTemplates from './GenTemplates.vue';
 
 const g = useGenerators();
-const fileInput = ref<HTMLInputElement | null>(null);
-const over = ref(false);
-const reportOpen = ref(false);
+const kl = useKeyLists();
+const dl = useDeliverables();
+const ui = useUi();
+
+// The two types of generator, built into the app. (Generators are no longer made from a workbook.)
+interface GeneratorList { key: string; type: string; master: string; rows: number; master_rows: number; deliverables: number }
+interface GeneratorType {
+	id: 'power' | 'instrument'; name: string; available: boolean; description: string;
+	/** Power: loads and load types. Instrument: runsheet rows and equipment types that have rows. */
+	runs: number; templates: number; missing: string[]; unconfirmed: number; lists: GeneratorList[];
+}
+const types = ref<GeneratorType[]>([]);
+const typesError = ref('');
+async function loadTypes() {
+	try {
+		types.value = await apiGet<GeneratorType[]>('/api/generators/types');
+		typesError.value = '';
+	} catch (err) {
+		typesError.value = err instanceof Error ? err.message : String(err);
+	}
+}
+function openList(id: 'load-list' | 'load-types' | 'instrument-runsheet' | 'equipment-packages') {
+	void kl.select(id);
+	ui.go('keylists');
+}
+function openMaster(key: string) {
+	kl.masterKey = key;
+	void kl.select('master');
+	ui.go('keylists');
+}
+async function openDeliverables() {
+	await dl.refresh();
+	ui.go('deliverables');
+}
 const bulkInput = ref<HTMLInputElement | null>(null);
 const bulkFile = ref<File | null>(null);
 
@@ -27,8 +61,6 @@ function pickBulk(files: FileList | null | undefined) {
 	if (!f) return;
 	if (g.anyDirty && !confirm('Save or discard your unsaved edits first: importing replaces whole tables. Continue anyway (the edits will be lost)?')) return;
 	g.discard();
-	g.discardHardware();
-	g.discardCatalogue();
 	bulkFile.value = f;
 }
 
@@ -42,31 +74,6 @@ const TABS = computed<{ id: GenTab; label: string; count?: number; tone?: string
 	{ id: 'settings', label: 'Settings' },
 ]);
 const panels: Record<GenTab, unknown> = { runsheet: GenRunsheet, templates: GenTemplates, check: GenCheck, build: GenBuild, hardware: GenHardware, settings: GenSettings };
-const report = computed<ImportReport | null>(() => g.draft?.import_report ?? null);
-
-async function pick(files: FileList | null | undefined) {
-	const f = files?.[0];
-	if (!f) return;
-	if (!/\.(xlsx|xlsm)$/i.test(f.name)) {
-		g.error = 'Choose an Excel workbook (.xlsx or .xlsm).';
-		return;
-	}
-	await g.importWorkbook(f);
-	if (g.draft) reportOpen.value = true;
-	if (fileInput.value) fileInput.value.value = '';
-}
-
-async function useSample() {
-	const blob = await (await fetch(sampleUrl)).blob();
-	await g.importWorkbook(new File([blob], 'generator-sample.xlsx'));
-	if (g.draft) reportOpen.value = true;
-}
-
-function onDrop(e: DragEvent) {
-	over.value = false;
-	void pick(e.dataTransfer?.files);
-}
-
 function leave() {
 	if (g.anyDirty && !confirm('Discard unsaved changes to this generator?')) return;
 	g.close();
@@ -80,50 +87,83 @@ function ago(at: string | null) {
 	return at ? new Date(at).toLocaleString() : '–';
 }
 
-onMounted(() => g.refreshList());
+onMounted(() => { void g.refreshList(); void loadTypes(); });
+// coming back to the section: the Load List or the load types may have changed
+watch(() => ui.tab, (tab) => { if (tab === 'generators' && !g.draft) { void g.refreshList(); void loadTypes(); } });
 </script>
 
 <template>
 	<div class="gen">
-		<!-- All generators -->
-		<section
-			v-if="!g.draft"
-			class="card"
-			:class="{ dropping: over }"
-			@dragover.prevent="over = true"
-			@dragleave="over = false"
-			@drop.prevent="onDrop"
-		>
+		<!-- The generator types, and any generators kept from earlier versions -->
+		<section v-if="!g.draft" class="card">
 			<h2>Generators</h2>
 			<p class="hint">
-				A generator turns a runsheet (one row per run) into a schedule by copying the template block each run picks
-				and filling in its <code>&lt;&lt;TAGS&gt;&gt;</code>. Import a generator workbook to start; every build is kept so you
-				can see what changed.
+				There are two generators, built into the app, and both fill the same four <strong>Project Master lists</strong>: the
+				Cable Schedule, Equipment List, Instrument List and IO List. <strong>Deliverables</strong> are made from a master list
+				(a filter, and a choice and order of columns) and are what gets issued in revisions.
 			</p>
-			<div v-if="g.list.length" class="gen-cards">
-				<article v-for="x in g.list" :key="x.id" class="gen-card" @click="g.open(x.id)">
-					<header>
-						<strong>{{ x.name }}</strong>
-						<button type="button" class="secondary small" @click.stop="remove(x.id, x.name)">Delete</button>
-					</header>
-					<div class="hint">{{ KIND_LABELS[x.kind] ?? x.kind }} · {{ x.runs }} runs · {{ x.templates }} templates</div>
-					<div v-if="x.last_build" class="last">
-						Build {{ x.last_build.seq }}: {{ x.last_build.stats.rows_written }} rows
-						<span v-if="x.last_build.stats.no_template" class="warn"> · {{ x.last_build.stats.no_template }} without a template</span>
-						<span v-if="x.last_build.added !== null"> · +{{ x.last_build.added }} −{{ x.last_build.removed }} ~{{ x.last_build.changed }}</span>
-						<div class="hint">{{ ago(x.last_build.created_at) }}</div>
+			<p v-if="typesError" class="error">{{ typesError }}</p>
+			<div class="gen-types">
+				<article v-for="t in types" :key="t.id" class="gen-type">
+					<header><strong>{{ t.name }}</strong><span class="chip ok">Available</span></header>
+					<p class="hint">{{ t.description }} It is always up to date: there is nothing to import or build.</p>
+					<p v-if="t.id === 'power'">
+						<strong>{{ t.runs }}</strong> load(s) in the Load List · <strong>{{ t.templates }}</strong> load type(s)
+					</p>
+					<p v-else>
+						<strong>{{ t.runs }}</strong> row(s) in the Instrument Runsheet<template v-if="t.unconfirmed"> ({{ t.unconfirmed }} not confirmed)</template>
+						· <strong>{{ t.templates }}</strong> equipment type(s) with rows
+					</p>
+					<p v-if="t.missing.length" class="warn">
+						{{ t.missing.length }} load(s) have no load type and add nothing yet:
+						{{ t.missing.slice(0, 8).join(', ') }}{{ t.missing.length > 8 ? '…' : '' }}
+					</p>
+					<table class="grid simple gen-type-lists">
+						<thead><tr><th>Adds to</th><th>Rows from {{ t.name }}</th><th>Master list rows</th></tr></thead>
+						<tbody>
+							<tr v-for="l in t.lists" :key="l.key" title="Open this master list" @click="openMaster(l.key)">
+								<td>{{ l.master }}</td><td class="n">{{ l.rows }}</td><td class="n">{{ l.master_rows }}</td>
+							</tr>
+						</tbody>
+					</table>
+					<div class="row">
+						<template v-if="t.id === 'power'">
+							<button type="button" class="secondary" @click="openList('load-list')">Load List</button>
+							<button type="button" class="secondary" @click="openList('load-types')">Load Types</button>
+						</template>
+						<template v-else>
+							<button type="button" class="secondary" @click="openList('instrument-runsheet')">Instrument Runsheet</button>
+							<button type="button" class="secondary" @click="openList('equipment-packages')">Equipment Types</button>
+						</template>
+						<span class="spacer" />
+						<button type="button" @click="openDeliverables">Deliverables</button>
 					</div>
-					<div v-else class="last hint">Not built yet · {{ x.source_file }}</div>
 				</article>
 			</div>
-			<p v-else class="hint">No generators yet.</p>
-			<div class="row create">
-				<input ref="fileInput" type="file" accept=".xlsx,.xlsm" hidden @change="pick(($event.target as HTMLInputElement).files)" />
-				<button type="button" :disabled="g.busy" @click="fileInput?.click()">Import workbook…</button>
-				<button type="button" class="secondary" :disabled="g.busy" @click="useSample">Use the sample generator</button>
-				<span class="hint">or drop an .xlsx / .xlsm here</span>
-				<span v-if="g.busy" class="hint">Importing…</span>
-			</div>
+
+			<template v-if="g.list.length">
+				<h3 class="gen-older">Generators from imported workbooks</h3>
+				<p class="hint">
+					Made in an earlier version, from a generator workbook. Workbooks can no longer be imported, but these keep
+					working: open one to edit, check, build and export it, or delete it when it is no longer needed.
+				</p>
+				<div class="gen-cards">
+					<article v-for="x in g.list" :key="x.id" class="gen-card" @click="g.open(x.id)">
+						<header>
+							<strong>{{ x.name }}</strong>
+							<button type="button" class="secondary small" @click.stop="remove(x.id, x.name)">Delete</button>
+						</header>
+						<div class="hint">{{ KIND_LABELS[x.kind] ?? x.kind }} · {{ x.runs }} runs · {{ x.templates }} templates</div>
+						<div v-if="x.last_build" class="last">
+							Build {{ x.last_build.seq }}: {{ x.last_build.stats.rows_written }} rows
+							<span v-if="x.last_build.stats.no_template" class="warn"> · {{ x.last_build.stats.no_template }} without a template</span>
+							<span v-if="x.last_build.added !== null"> · +{{ x.last_build.added }} −{{ x.last_build.removed }} ~{{ x.last_build.changed }}</span>
+							<div class="hint">{{ ago(x.last_build.created_at) }}</div>
+						</div>
+						<div v-else class="last hint">Not built yet · {{ x.source_file }}</div>
+					</article>
+				</div>
+			</template>
 			<p v-if="g.error" class="error">{{ g.error }}</p>
 		</section>
 
@@ -133,13 +173,13 @@ onMounted(() => g.refreshList());
 				<button type="button" class="secondary small" @click="leave">← All generators</button>
 				<input v-model="g.draft.name" class="name-input" aria-label="Generator name" />
 				<span class="chip">{{ KIND_LABELS[g.draft.kind] ?? g.draft.kind }}</span>
-				<button v-if="report" type="button" class="secondary small" @click="reportOpen = true">Import report</button>
 				<button type="button" class="secondary small" :disabled="g.anyDirty || g.busy" :title="g.anyDirty ? 'Save first' : 'Every input table in one workbook, for editing in Excel'" @click="g.exportInputs()">Export inputs</button>
 				<button type="button" class="secondary small" :disabled="g.busy" @click="bulkInput?.click()">Import inputs…</button>
 				<input ref="bulkInput" type="file" accept=".xlsx" hidden @change="pickBulk(($event.target as HTMLInputElement).files)" />
 				<span class="spacer" />
 				<span v-if="g.dirty" class="unsaved">● Unsaved changes</span>
 				<span v-else-if="g.message" class="saved" :title="g.message">✓ {{ g.message }}</span>
+				<HistoryButton v-if="g.draft" entity="generator" :record-id="g.draft.id" :label="g.draft.name" />
 				<button type="button" class="secondary" :disabled="!g.dirty || g.busy" @click="g.discard()">Discard</button>
 				<button type="button" :disabled="!g.dirty || g.busy" @click="g.save()">Save</button>
 			</div>
@@ -155,34 +195,5 @@ onMounted(() => g.refreshList());
 		</section>
 
 		<GenBulkImport :file="bulkFile" @close="bulkFile = null" />
-		<AppModal :open="reportOpen && !!report" :title="`Import report: ${report?.workbook ?? ''}`" @close="reportOpen = false">
-			<template v-if="report">
-				<p>
-					<strong>{{ report.runsheet_rows }}</strong> runsheet rows · <strong>{{ report.tags }}</strong> tags ·
-					<strong>{{ report.templates }}</strong> templates ({{ report.template_rows }} rows) ·
-					<strong>{{ report.parents }}</strong> parents
-				</p>
-				<h4>Formulas turned into calculated columns</h4>
-				<ul v-if="Object.keys(report.mapped_formulas).length">
-					<li v-for="(n, k) in report.mapped_formulas" :key="k">{{ n }} × {{ k }}</li>
-				</ul>
-				<p v-else class="hint">None.</p>
-				<template v-if="report.unmapped_formulas.length">
-					<h4 class="warn">Formulas kept as text (not understood)</h4>
-					<ul><li v-for="u in report.unmapped_formulas" :key="u.formula + u.where">{{ u.count }} × <code>{{ u.formula }}</code> in {{ u.where }}</li></ul>
-				</template>
-				<template v-if="Object.keys(report.runsheet_formula_columns).length">
-					<h4>Runsheet columns calculated in the workbook (values imported)</h4>
-					<ul><li v-for="(f, t) in report.runsheet_formula_columns" :key="t">{{ t }}: <code>{{ f }}</code></li></ul>
-				</template>
-				<h4>Data issues found</h4>
-				<ul v-if="report.issues.length"><li v-for="i in report.issues" :key="i">{{ i }}</li></ul>
-				<p v-else class="hint">None.</p>
-			</template>
-			<template #footer>
-				<span class="spacer" />
-				<button type="button" @click="reportOpen = false">Close</button>
-			</template>
-		</AppModal>
 	</div>
 </template>

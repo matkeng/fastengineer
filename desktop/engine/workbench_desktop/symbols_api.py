@@ -50,6 +50,7 @@ from workbench_core.symbols.pipeline import REVIEW_IOU
 from workbench_core.symbols.tags import apply_exclusion, check_format, compile_pattern, format_tag, group_names, resolve_points
 from workbench_core.symbols.templates import crop, effective_mask, erase_words, trim_box
 
+from . import identity
 from .storage import InUse, NotFound, SymbolStore, get_symbols
 
 router = APIRouter(prefix="/api/symbols", tags=["symbol detection"])
@@ -447,7 +448,7 @@ async def upload_drawing(request: Request, filename: str = Query(...), library_i
         raise HTTPException(400, "The PDF has no pages.")
     d = Drawing(id=uuid.uuid4().hex, file_name=Path(filename).name, library_id=library_id, uploaded_at=_now())
     store().add_drawing(d, data)
-    _worker.submit(_render_job, d.id)
+    _worker.submit(identity.carry(_render_job), d.id)
     return d
 
 
@@ -946,7 +947,7 @@ def start_run(body: NewRun) -> RunInfo:
             pass
     run = RunInfo(id=uuid.uuid4().hex, doc_ids=body.doc_ids, total_steps=total, columns=columns)
     st.save_run(run)
-    _worker.submit(_run_job, run.id)
+    _worker.submit(identity.carry(_run_job), run.id)
     return run
 
 

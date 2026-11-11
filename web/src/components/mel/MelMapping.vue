@@ -2,6 +2,7 @@
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
 import { computed } from 'vue';
+import { LOAD_FIELD_LABELS } from '../../lib/melTypes';
 import { useStage } from '../../lib/useStage';
 import { useMel } from '../../stores/mel';
 
@@ -9,14 +10,7 @@ const mel = useMel();
 const { result } = useStage('auto', (r) => [r.columns, r.hidden_rows, r.text_columns, r.overrides, r.custom_rows, r.auto_columns]);
 const MANUAL = '__manual__';
 
-const LABELS: Record<string, string> = {
-	area: 'Area', sub_area: 'Sub-area', tag: 'Tag', equip_qty: 'Quantity', standby_qty: 'Standby quantity',
-	multi_load: 'Multiple loads', desc: 'Description', equip_type: 'Equipment type', equip_subtype: 'Equipment subtype',
-	load_units: 'Load units (kW, HP…)', load_rating: 'Load rating', load_voltage: 'Voltage', csv_row_num: 'Source row number',
-	phases: 'Phases', status: 'Status', starter_type: 'Starter type', load_type: 'Load type', starter_addons: 'Starter add-ons',
-	load_addons: 'Load add-ons', field_addons: 'Field add-ons', is_a_loadcentre: 'Is a load centre', loadcentre: 'Load centre',
-	supplied_from: 'Supplied from', is_deleted: 'Deleted',
-};
+const LABELS = LOAD_FIELD_LABELS;
 // Header patterns for "Suggest mapping".
 const GUESS: Record<string, RegExp> = {
 	area: /^area$/i, sub_area: /sub.?area/i, desc: /desc/i, equip_type: /(equip|equipment).*type|^type$/i,

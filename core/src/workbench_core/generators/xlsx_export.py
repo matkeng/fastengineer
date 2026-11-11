@@ -28,7 +28,9 @@ def export_xlsx(result: BuildResult, cfg: GeneratorConfig, path: str | Path, bui
     return path
 
 
-def xlsx_bytes(result: BuildResult, cfg: GeneratorConfig, build_id: str = "") -> bytes:
+def xlsx_bytes(result: BuildResult, cfg: GeneratorConfig, build_id: str = "",
+               summary: list[tuple[str, str | int | float | None]] | None = None) -> bytes:
+    """`summary`: label and value lines, written to a second sheet, "Panel"."""
     import io
 
     from openpyxl import Workbook
@@ -49,6 +51,14 @@ def xlsx_bytes(result: BuildResult, cfg: GeneratorConfig, build_id: str = "") ->
     for i, h in enumerate(result.header, start=1):
         width = max([len(to_text(h))] + [len(to_text(r.cells[i - 1])) for r in result.rows[:500] if i - 1 < len(r.cells)])
         ws.column_dimensions[get_column_letter(i)].width = min(60, max(8, width + 2))
+    if summary:
+        extra = wb.create_sheet("Panel")
+        for label, value in summary:
+            extra.append([label, value if not (isinstance(value, str) and value.startswith("=")) else "'" + value])
+        for c in extra["A"]:
+            c.font = Font(bold=True)
+        extra.column_dimensions["A"].width = max(len(label) for label, _ in summary) + 2
+        extra.column_dimensions["B"].width = min(60, max([8] + [len(to_text(v)) + 2 for _, v in summary]))
     p = wb.properties
     p.title = cfg.doc_title or None
     if cfg.doc_number:

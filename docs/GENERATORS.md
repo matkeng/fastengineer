@@ -1,5 +1,10 @@
 # Deliverable generators
 
+> **Being retired.** For the power side, deliverables are now generated from the project's own
+> lists: each Load Type holds template rows per list and the Project Load List is the runsheet
+> (`workbench_core.keylists.loadgen`; see "Generated from the Project Load List" in the README).
+> Imported generator workbooks still work and are still the route for the instrument side.
+
 `workbench_core.generators` re-implements the Excel/VBA generator workbooks: cable schedules,
 an instrument device list and a PLC IO list. It is a pure Python engine. It takes a runsheet
 (one row per run) and template blocks of `<<TAG>>` cells, and produces the output schedule
@@ -19,6 +24,9 @@ cell for cell, in **compatibility mode**.
 | `golden.py` | golden tests against real workbooks kept outside the repository |
 
 ## In the app (Generators section)
+
+A build becomes an issued document in the **Deliverables** section: a deliverable points at a
+generator and freezes one of its builds as Rev A, B, C… (see the README's Deliverables section).
 
 1. **Import** a generator workbook (`.xlsx` / `.xlsm`) with "Import workbook…", by dropping it on the page, or with "Use the sample generator".
    The import report lists what was read, which formulas became calculated columns, and any data issues.

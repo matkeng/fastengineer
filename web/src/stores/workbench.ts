@@ -4,6 +4,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { getJson, resolveEngineUrl, waitForEngine } from '../lib/engine';
 import type { EngineInfo, Equipment, Greeting } from '../lib/types';
+import { useProjects } from './projects';
 
 // The shared document model store (spec section 4). Every editor will read
 // and write this; for the PoC it holds engine status and a few objects.
@@ -27,6 +28,8 @@ export const useWorkbench = defineStore('workbench', () => {
 			baseUrl.value = await resolveEngineUrl();
 			await waitForEngine(baseUrl.value);
 			info.value = await getJson<EngineInfo>(baseUrl.value, '/api/info');
+			// Which project to work in, before any view asks for data.
+			await useProjects().load();
 			connectMs.value = Math.round(performance.now() - startedAt);
 			status.value = 'ready';
 		} catch (err) {

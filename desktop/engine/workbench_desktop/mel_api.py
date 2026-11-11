@@ -107,6 +107,82 @@ def delete_recipe(recipe_id: str) -> dict[str, str]:
     return {"status": "deleted"}
 
 
+# -- the settings of an import as a file, to pass between people ----------------------------
+
+SETTINGS_FORMAT = "drawing-workbench/list-import-settings"
+#: What a person decides in an import: everything of the recipe but its id, name and the files.
+SETTINGS = ("columns", "hidden_rows", "text_columns", "overrides", "custom_rows", "auto_columns", "mapping")
+
+
+class SettingsBody(BaseModel):
+    path: str | None = None  # desktop: chosen in a Save As dialog
+
+
+def settings_document(recipe: Recipe) -> dict:
+    return {"format": SETTINGS_FORMAT, "version": 1, "name": recipe.name, "target": recipe.target,
+            "settings": recipe.model_dump(mode="json", include=set(SETTINGS))}
+
+
+def _read_settings(doc: object) -> tuple[str, str, dict]:
+    """(name, target, settings) of a settings file, checked. Raises HTTPException(422) saying what is wrong."""
+    if not isinstance(doc, dict) or doc.get("format") != SETTINGS_FORMAT or not isinstance(doc.get("settings"), dict):
+        raise HTTPException(422, "This is not a list import settings file (exported with Export settings).")
+    if doc.get("version") != 1:
+        raise HTTPException(422, "This settings file was made by a newer version of the app. Update the app to read it.")
+    settings = {k: v for k, v in doc["settings"].items() if k in SETTINGS}
+    try:
+        checked = Recipe(id="check", name=str(doc.get("name") or "Imported settings"), target=doc.get("target") or "MEL", **settings)
+    except ValueError as exc:  # pydantic's ValidationError
+        raise HTTPException(422, f"The settings file is damaged: {str(exc).splitlines()[0]}.") from exc
+    return checked.name, checked.target, checked.model_dump(include=set(SETTINGS))
+
+
+@router.post("/recipes/{recipe_id}/settings/export")
+def export_settings(recipe_id: str, body: SettingsBody, request: Request):
+    """The saved settings of an import (its rules, hidden rows, overrides, added rows, calculated
+    columns and mapping) as a JSON file. The uploaded files are not in it."""
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        raise HTTPException(415, "Expected application/json")
+    import json
+    recipe = _recipe(recipe_id)
+    data = json.dumps(settings_document(recipe), indent=2, ensure_ascii=False).encode("utf-8")
+    if body.path is None:
+        return Response(data, media_type="application/json",
+                        headers={"Content-Disposition": 'attachment; filename="list-import-settings.json"'})
+    target = Path(body.path)
+    if target.suffix.lower() != ".json":
+        target = target.with_suffix(".json")
+    try:
+        target.write_bytes(data)
+    except OSError as exc:
+        raise HTTPException(409, f"Could not save {target.name}: {exc.strerror or exc}.") from exc
+    return {"path": str(target)}
+
+
+@router.post("/recipes/{recipe_id}/settings/read", response_model=Recipe)
+def read_settings(recipe_id: str, doc: dict) -> Recipe:
+    """This import with a settings file's settings in place of its own. Nothing is saved: the
+    caller shows it as unsaved changes. The file must be for the same kind of list."""
+    recipe = _recipe(recipe_id)
+    _, target, settings = _read_settings(doc)
+    if target != recipe.target:
+        raise HTTPException(422, f"These settings are for a {target} import; this one is a {recipe.target} import.")
+    return Recipe.model_validate(recipe.model_dump() | settings)
+
+
+@router.post("/settings/new", response_model=Recipe)
+def new_from_settings(doc: dict) -> Recipe:
+    """A new import with a settings file's name, kind of list and settings (and no file yet)."""
+    name, target, settings = _read_settings(doc)
+    st = get_store()
+    taken = {r["name"].strip().casefold() for r in st.list_recipes()}
+    unique, n = name, 2
+    while unique.strip().casefold() in taken:
+        unique, n = f"{name} ({n})", n + 1
+    recipe = st.create_recipe(unique, target)
+    return st.save_recipe(Recipe.model_validate(recipe.model_dump() | settings))
+
+
 # -- files -------------------------------------------------------------------
 
 class CsvInspect(BaseModel):

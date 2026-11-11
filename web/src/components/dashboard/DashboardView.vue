@@ -5,10 +5,11 @@ import { computed, onMounted, ref } from 'vue';
 import pidSample from '../../../../samples/pid-sample.pdf?url';
 import type { Dashboard, DashEvent } from '../../lib/dashboardTypes';
 import { apiGet } from '../../lib/engine';
+import { loadSampleData } from '../../lib/sampleData';
 import type { IconName } from '../../lib/icons';
 import { useGenerators } from '../../stores/generators';
 import { useMel } from '../../stores/mel';
-import { useRefData } from '../../stores/refdata';
+import { useDeliverables } from '../../stores/deliverables';
 import { useSymbols } from '../../stores/symbols';
 import { type Section, useUi } from '../../stores/ui';
 import { useWorkbench } from '../../stores/workbench';
@@ -19,7 +20,7 @@ const ui = useUi();
 const wb = useWorkbench();
 const sym = useSymbols();
 const mel = useMel();
-const rd = useRefData();
+const dl = useDeliverables();
 const gens = useGenerators();
 const data = ref<Dashboard | null>(null);
 const error = ref<string | null>(null);
@@ -67,8 +68,9 @@ const kpis = computed<Kpi[]>(() => {
 			sub: k.latest_run_at ? `latest analysis, ${ago(k.latest_run_at)}` : 'no analysis yet' },
 		{ label: 'List imports', icon: 'recipe', value: k.recipes, go: 'mel',
 			sub: `${k.revisions} file revision(s)${k.latest_revision_at ? `, last ${ago(k.latest_revision_at)}` : ''}` },
-		{ label: 'Lists, trees & tables', icon: 'database', value: k.enums + k.trees + k.tables, go: 'ref',
-			sub: `${k.enums} lists · ${k.trees} trees · ${k.tables} tables · ${k.rows} rows` },
+		{ label: 'Project lists', icon: 'tree', value: k.plant_areas + k.equipment_packages + k.load_types, go: 'keylists',
+			sub: `${k.plant_areas} plant areas · ${k.equipment_packages} packages · ${k.equipment_types} equipment types · ${k.load_types} load types · ${k.eel_items} EEL items · ${k.load_list_rows} load list rows · ${k.equipment_codes} equipment codes · ${k.instrument_codes} instrument codes` },
+		{ label: 'Deliverables', icon: 'file', value: k.deliverables, go: 'deliverables', sub: `${k.deliverable_revisions} revision(s) issued` },
 		{ label: 'Generators', icon: 'generator', value: k.generators, go: 'generators',
 			sub: `${k.gen_builds} build(s)${k.latest_build_at ? `, last ${ago(k.latest_build_at)}` : ''}${k.plc_cards ? ` · ${k.plc_panels} PLC panel(s), ${k.plc_cards} cards` : ''}` },
 		{ label: 'Engine', icon: 'cpu', value: wb.status === 'ready' ? 'OK' : '–', go: 'engine',
@@ -80,12 +82,25 @@ const kpis = computed<Kpi[]>(() => {
 interface Starter { title: string; desc: string; icon: IconName; run: () => unknown; featured?: boolean }
 const starters = computed<Starter[]>(() => [
 	{ title: 'Try the P&ID example', desc: 'Sample drawing + ready-made library', icon: 'play', run: tryExample, featured: empty.value },
-	{ title: 'Query an Excel sheet', desc: 'Header row, key column, strikethrough', icon: 'table', run: () => ui.go('excel') },
-	{ title: 'Compare two tables', desc: 'Added, deleted, struck and changed', icon: 'compare', run: () => ui.go('compare') },
+	{ title: 'Load sample data', desc: 'A small invented plant in every empty list', icon: 'database', run: loadSample, featured: empty.value },
+	{ title: 'Compare tables', desc: 'Old and new: added, deleted, struck and changed', icon: 'compare', run: () => ui.go('compare') },
 	{ title: 'Analyse drawings', desc: 'Find symbols and read their tags', icon: 'symbol', run: () => ui.go('symbols') },
 	{ title: 'New list import', desc: 'MEL → load list, tags → instruments', icon: 'recipe', run: newImport },
-	{ title: 'Lists, trees & tables', desc: 'Your own lists, hierarchies and typed tables', icon: 'tree', run: () => ui.go('ref') },
 ]);
+
+/** Fill every list that is still empty with an invented small plant (nothing existing is changed). */
+async function loadSample() {
+	if (!confirm('Load sample data?\n\nEvery list that is still empty is filled with a small invented plant: plant areas, packages, codes, load types with their rows, an equipment list, a PLC, a MEL import and one deliverable of each type. Lists that already have data are left as they are.')) return;
+	try {
+		const res = await loadSampleData();
+		const added = Object.entries(res.added).map(([k, n]) => `${k}: ${n}`);
+		alert((added.length ? `Sample data added.\n\n${added.join('\n')}` : 'Nothing was added: every list already has data.')
+			+ (res.skipped.length && added.length ? `\n\nLeft as they were: ${res.skipped.join(', ')}.` : ''));
+		if (added.length) location.reload(); // every view reads the new data afresh
+	} catch (err) {
+		alert(`The sample data could not be loaded: ${err instanceof Error ? err.message : String(err)}`);
+	}
+}
 
 function newImport() {
 	if (mel.draft && mel.dirty && !confirm('Discard unsaved changes to the open list import?')) return;
@@ -115,7 +130,7 @@ async function tryExample() {
 
 const EVENT_ICON: Record<DashEvent['kind'], IconName> = {
 	run: 'run', drawing: 'file', revision: 'upload', recipe: 'recipe', enum: 'enum', tree: 'tree', table: 'table',
-	generator: 'generator', build: 'build',
+	generator: 'generator', build: 'build', revision_issued: 'file',
 };
 
 async function openEvent(e: DashEvent) {
@@ -129,6 +144,10 @@ async function openEvent(e: DashEvent) {
 			await mel.open(e.id);
 		}
 		ui.go('mel');
+	} else if (e.section === 'deliverables') {
+		await dl.refresh();
+		await dl.open(e.id);
+		ui.go('deliverables');
 	} else if (e.section === 'generators') {
 		if (gens.draft?.id !== e.id) {
 			if (gens.anyDirty && !confirm('Discard unsaved changes to the open generator?')) return;
@@ -136,10 +155,6 @@ async function openEvent(e: DashEvent) {
 		}
 		if (e.kind === 'build') gens.tab = 'build';
 		ui.go('generators');
-	} else {
-		await rd.refresh();
-		await rd.select(e.kind === 'enum' || e.kind === 'tree' ? e.kind : 'table', e.id);
-		ui.go('ref');
 	}
 }
 
