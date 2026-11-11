@@ -166,10 +166,17 @@ def import_library(st: SymbolStore, data: dict, name: str | None = None) -> tupl
             t.pop("mask_png", None)
         except Exception as exc:
             raise HTTPException(400, f"Template '{t.get('desc', '?')}' has no readable image.") from exc
+        view_png, view_words = t.pop("view_png", None), t.pop("view_words", None)
+        try:
+            view = (base64.b64decode(view_png), [Word.model_validate(w) for w in view_words or []]) if view_png else None
+        except Exception:  # a view is only for show: a broken one is left out
+            view = None
         for k in ("id", "width", "height", "priority", "library_id", "has_custom_mask"):
             t.pop(k, None)
         tpl = Template(id=uuid.uuid4().hex, library_id=lib.id, width=int(gray.shape[1]), height=int(gray.shape[0]), **t)
         out.append(st.add_template(tpl, encode_png(gray), mask))
+        if view:
+            st.set_template_view(tpl.id, *view)
     return lib, out
 
 
@@ -182,6 +189,10 @@ def export_library(st: SymbolStore, library_id: str) -> dict:
         mask = st.template_mask(t.id)
         if mask:
             d["mask_png"] = base64.b64encode(mask).decode()
+        view = st.template_view(t.id)
+        if view:
+            d["view_png"] = base64.b64encode(view[0]).decode()
+            d["view_words"] = [w.model_dump(mode="json") for w in view[1]]
         ts.append(d)
     return {"format": LIBRARY_FORMAT, "version": 2,
             "library": lib.model_dump(mode="json", exclude={"id", "created_at"}), "templates": ts}
@@ -717,18 +728,31 @@ class FromPage(BaseModel):
 
 
 def _cut(st: SymbolStore, d: Drawing, lib: Library, page: int, rect: list[float], trimmed: bool):
-    """A template image cut from a page (text erased, optionally trimmed to the ink) and where
-    it lies on the page."""
+    """A template image cut from a page (text erased, optionally trimmed to the ink), where it
+    lies on the page, and its view: the same crop with the text left in, and the words inside it
+    in template pixels (shown in the template editor, so tag points can be put on the text)."""
     gray = _gray(st, d.id, page)
     w, _, _ = page_words(st, d, page, gray, lib)
     clean = erase_words(gray, w)
     if trimmed:
         box = trim_box(clean, rect)
     else:
-        img = crop(clean, rect)  # validates the size
+        crop(clean, rect)  # validates the size
         box = [min(rect[0], rect[2]), min(rect[1], rect[3]), max(rect[0], rect[2]), max(rect[1], rect[3])]
-        return img, box
-    return crop(clean, box), box
+    img = crop(clean, box)
+    x0, y0 = max(round(min(box[0], box[2])), 0), max(round(min(box[1], box[3])), 0)  # where crop() starts
+    return img, box, crop(gray, box), _words_in(w, x0, y0, img.shape[1], img.shape[0])
+
+
+def _words_in(words: list[Word], x0: int, y0: int, width: int, height: int) -> list[Word]:
+    """The words that overlap the crop at (x0, y0) of width x height, in its pixels, clipped to it."""
+    out = []
+    for wd in words:
+        x1, y1, x2, y2 = wd.box[0] - x0, wd.box[1] - y0, wd.box[2] - x0, wd.box[3] - y0
+        if x2 <= 0 or y2 <= 0 or x1 >= width or y1 >= height:
+            continue
+        out.append(wd.model_copy(update={"box": [max(x1, 0), max(y1, 0), min(x2, width), min(y2, height)]}))
+    return out
 
 
 @router.post("/templates/from-page", response_model=Template)
@@ -740,17 +764,21 @@ async def template_from_page(body: FromPage) -> Template:
     st = store()
     lib = _library(d.library_id)
     try:
-        img, _ = await run_in_threadpool(_cut, st, d, lib, body.page, body.rect, body.trim)
+        img, _, view, words = await run_in_threadpool(_cut, st, d, lib, body.page, body.rect, body.trim)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    return _new_template(img, body.desc, d.library_id)
+    t = _new_template(img, body.desc, d.library_id)
+    st.set_template_view(t.id, encode_png(view), words)
+    return t
 
 
 class TemplatePreview(BaseModel):
     rect: list[float]  # what the template would keep, in page pixels
     width: int
     height: int
-    png: str  # base64
+    png: str  # base64: the template (text erased, as it is matched)
+    view_png: str = ""  # base64: the same with the page text left in
+    words: list[Word] = Field(default_factory=list)  # the text inside it, in template pixels
 
 
 @router.post("/templates/preview", response_model=TemplatePreview)
@@ -760,11 +788,12 @@ async def template_preview(body: FromPage) -> TemplatePreview:
     _page(d, body.page)
     st = store()
     try:
-        img, box = await run_in_threadpool(_cut, st, d, _library(d.library_id), body.page, body.rect, body.trim)
+        img, box, view, words = await run_in_threadpool(_cut, st, d, _library(d.library_id), body.page, body.rect, body.trim)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return TemplatePreview(rect=box, width=int(img.shape[1]), height=int(img.shape[0]),
-                           png=base64.b64encode(encode_png(img)).decode())
+                           png=base64.b64encode(encode_png(img)).decode(),
+                           view_png=base64.b64encode(encode_png(view)).decode(), words=words)
 
 
 def _decode_upload(data: bytes):
@@ -830,6 +859,26 @@ def template_image(template_id: str):
         return Response(store().template_image(template_id), media_type="image/png")
     except NotFound as exc:
         raise _nf("template") from exc
+
+
+@router.get("/templates/{template_id}/view.png")
+def template_view_image(template_id: str):
+    """The template with its page text, for the editor; the template itself when it has no view."""
+    try:
+        view = store().template_view(template_id)
+        return Response(view[0] if view else store().template_image(template_id), media_type="image/png")
+    except NotFound as exc:
+        raise _nf("template") from exc
+
+
+@router.get("/templates/{template_id}/words", response_model=list[Word])
+def template_words(template_id: str) -> list[Word]:
+    """The text on the template as it was cut from its page, in template pixels ([] if none is kept)."""
+    try:
+        view = store().template_view(template_id)
+    except NotFound as exc:
+        raise _nf("template") from exc
+    return view[1] if view else []
 
 
 def _mask_png(mask) -> bytes:

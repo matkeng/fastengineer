@@ -320,10 +320,14 @@ imported only when used). API: `desktop/engine/workbench_desktop/symbols_api.py`
    frame (`<data dir>/symbols/<drawing>/`).
 3. **Templates.** Press **Draw on a drawing** in the sidebar (or **New template** on any
    page) and drag a box around a symbol. Adjust the box with its handles; a preview shows
-   the template that will be cut (page text erased, trimmed to the linework, outlined in
-   green on the sheet) and its size before you create it. You can also add a symbol image
-   file. In the template editor:
-   - click where each part of the tag is written;
+   the template that will be cut (trimmed to the linework, outlined in green on the sheet)
+   with its text in yellow boxes, and its size, before you create it. You can also add a
+   symbol image file. In the template editor:
+   - click where each part of the tag is written: a template cut from a page shows that
+     page's text, each piece in a yellow box (**Show text**), and the points table says
+     what each point reads there. The text is only for show: the template is matched with
+     its text erased, so a bubble matches whatever tag is written in it. (Templates cut
+     before this change, and image files, have no text kept: cut them again to see it.);
    - set the **threshold**; any page can override it, or skip the template;
    - choose the rotated, mirrored and size variants;
    - choose what is compared: **the symbol's lines** (widened by N px, so pipes or text

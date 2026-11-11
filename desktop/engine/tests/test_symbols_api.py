@@ -306,3 +306,45 @@ def test_template_preview_matches_the_template_created(data_dir: Path) -> None:
     assert loose["width"] == round(drag[2] - drag[0])
     blank = client.post(f"{API}/templates/preview", json={"doc_id": d["id"], "page": 1, "rect": [5, 5, 60, 60]})
     assert blank.status_code == 400 and "linework" in blank.json()["detail"]
+
+
+def _gray_png(data: bytes):
+    return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
+
+
+def test_a_template_cut_from_a_page_keeps_a_view_with_its_text(data_dir: Path) -> None:
+    lib = _example()
+    d = _upload(lib["id"])
+    res = client.post(f"{API}/drawings/{d['id']}/pages/1/analyse").json()
+    b = next(s for s in res["symbols"] if s["tag"] == "PT-1025")["box"]
+    drag = [b[0] - 20, b[1] - 20, b[2] + 20, b[3] + 20]
+    pv = client.post(f"{API}/templates/preview", json={"doc_id": d["id"], "page": 1, "rect": drag}).json()
+    assert {w["text"] for w in pv["words"]} >= {"PT"} and base64.b64decode(pv["view_png"])[:4] == b"\x89PNG"
+    t = client.post(f"{API}/templates/from-page", json={"doc_id": d["id"], "page": 1, "rect": drag, "desc": "Copy"}).json()
+
+    image = _gray_png(client.get(f"{API}/templates/{t['id']}/image.png").content)
+    view = _gray_png(client.get(f"{API}/templates/{t['id']}/view.png").content)
+    assert image.shape == view.shape == (t["height"], t["width"])
+    words = client.get(f"{API}/templates/{t['id']}/words").json()
+    assert words == pv["words"] and {w["text"] for w in words} >= {"PT", "1025"}
+    for w in words:  # in template pixels, inside the template: the text is there in the view, erased in the image
+        x1, y1, x2, y2 = (int(round(v)) for v in w["box"])
+        assert 0 <= x1 < x2 <= t["width"] and 0 <= y1 < y2 <= t["height"]
+        assert view[y1:y2, x1:x2].min() < 128 and image[y1:y2, x1:x2].min() > 200, w
+
+    # moved to another library, or copied with it, the view goes along; deleting the template removes it
+    other = client.post(f"{API}/libraries", json={"name": "Copies", "copy_from": lib["id"]}).json()
+    copy = next(c for c in client.get(f"{API}/templates", params={"library_id": other["id"]}).json() if c["desc"] == "Copy")
+    assert client.get(f"{API}/templates/{copy['id']}/words").json() == words
+    moved = client.put(f"{API}/templates/{t['id']}", json={**t, "library_id": other["id"]})
+    assert moved.status_code == 200, moved.text
+    assert client.get(f"{API}/templates/{t['id']}/words").json() == words
+    assert client.delete(f"{API}/templates/{t['id']}").status_code in (200, 204)
+    assert client.get(f"{API}/templates/{t['id']}/words").status_code == 404
+    st = storage.get_symbols()
+    assert st._db.execute("SELECT COUNT(*) FROM sym_template_views WHERE template_id = ?", (t["id"],)).fetchone()[0] == 0
+
+    # a template with no view (the example's, uploaded) shows its own image and no text
+    plain = client.get(f"{API}/templates", params={"library_id": lib["id"]}).json()[0]
+    assert client.get(f"{API}/templates/{plain['id']}/words").json() == []
+    assert client.get(f"{API}/templates/{plain['id']}/view.png").content == client.get(f"{API}/templates/{plain['id']}/image.png").content

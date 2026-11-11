@@ -451,7 +451,8 @@ main.fill .sym-viewer, main.fill .sym-run { overflow: hidden; }
 .sym-canvas-host.handle-e canvas, .sym-canvas-host.handle-w canvas { cursor: ew-resize; }
 .sym-preview { display: flex; align-items: center; justify-content: center; width: 104px; height: 104px; flex: 0 0 104px;
 	border: 1px solid var(--border); border-radius: 6px; background: #fff; }
-.sym-preview img { max-width: 96px; max-height: 96px; image-rendering: pixelated; }
+.sym-preview img, .sym-preview svg { max-width: 96px; max-height: 96px; image-rendering: pixelated; }
+.sym-preview svg { width: 96px; height: 96px; }
 .sym-preview-side { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 220px; }
 .sym-preview-side label.check { align-self: flex-start; }
 .sym-banner .sym-preview-side input[type=checkbox] { min-width: 0; }

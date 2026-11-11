@@ -3,8 +3,8 @@
 <script setup lang="ts">
 import HistoryButton from '../audit/HistoryButton.vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { apiGetBlob } from '../../lib/engine';
-import type { MaskMode } from '../../lib/symbolTypes';
+import { apiGet, apiGetBlob } from '../../lib/engine';
+import type { MaskMode, Word } from '../../lib/symbolTypes';
 import { useSymbols } from '../../stores/symbols';
 
 const sym = useSymbols();
@@ -12,7 +12,11 @@ const t = computed(() => sym.templateDraft!);
 const fe = computed(() => sym.fieldErrors);
 
 const canvas = ref<HTMLCanvasElement | null>(null);
-const image = ref<ImageBitmap | null>(null);
+const plain = ref<ImageBitmap | null>(null); // the template as it is matched: page text erased
+const view = ref<ImageBitmap | null>(null); // the same with its page text (templates cut from a page)
+const words = ref<Word[]>([]); // that text's boxes, in template pixels
+const showText = ref(true); // show the text and its yellow boxes, to put tag points on
+const image = computed(() => (showText.value && view.value) || plain.value);
 const showMask = ref(true);
 const selected = ref<number | null>(null);
 const zoom = ref(4);
@@ -32,9 +36,17 @@ const testDrawing = computed(() => readyDrawings.value.find((d) => d.id === test
 const DEFAULT_NAMES = ['Function', 'Number', 'Suffix'];
 
 async function loadImage() {
-	image.value = await createImageBitmap(await apiGetBlob(`/api/symbols/templates/${t.value.id}/image.png`));
+	const id = t.value.id;
+	const [im, vw, wd] = await Promise.all([
+		apiGetBlob(`/api/symbols/templates/${id}/image.png`).then(createImageBitmap),
+		apiGetBlob(`/api/symbols/templates/${id}/view.png`).then(createImageBitmap).catch(() => null),
+		apiGet<Word[]>(`/api/symbols/templates/${id}/words`).catch(() => [] as Word[]),
+	]);
+	plain.value = im;
+	view.value = wd.length ? vw : null; // no kept text: the "view" is the template itself
+	words.value = wd;
 	const box = canvas.value?.parentElement;
-	const fitZoom = box ? Math.min((box.clientWidth - 40) / image.value.width, 380 / image.value.height) : 4;
+	const fitZoom = box ? Math.min((box.clientWidth - 40) / im.width, 380 / im.height) : 4;
 	zoom.value = Math.max(1, Math.min(8, Math.floor(fitZoom)));
 	await loadMask();
 }
@@ -101,6 +113,14 @@ function draw() {
 	ctx.fillRect(0, 0, w, h);
 	ctx.imageSmoothingEnabled = false;
 	ctx.drawImage(im, PAD, PAD, im.width * z, im.height * z);
+	if (showText.value) {
+		// the same see-through highlighter as the page viewer, so the text stays readable under it
+		ctx.fillStyle = 'rgba(255, 235, 59, 0.4)';
+		for (const wd of words.value) {
+			const [x1, y1, x2, y2] = wd.box;
+			ctx.fillRect(PAD + x1 * z, PAD + y1 * z, (x2 - x1) * z, (y2 - y1) * z);
+		}
+	}
 	if (showMask.value && t.value.mask_mode !== 'none' && tint.width) ctx.drawImage(tint, PAD, PAD, im.width * z, im.height * z);
 	ctx.strokeStyle = '#94a3b8';
 	ctx.strokeRect(PAD - 0.5, PAD - 0.5, im.width * z + 1, im.height * z + 1);
@@ -302,7 +322,13 @@ function runTest() {
 watch(() => t.value?.id, () => { selected.value = null; scalesText.value = t.value.scales.join(', '); void loadImage(); });
 watch(() => t.value?.buffer_space, () => { if (t.value.mask_mode === 'auto' && t.value.buffer_space >= 1) void loadMask(); });
 watch(() => sym.maskDraft, (b) => { if (!b && t.value) void loadMask(); }); // discarded
-watch([zoom, showMask, tool, () => t.value.points], draw, { deep: true });
+watch([zoom, showMask, showText, tool, () => t.value.points], draw, { deep: true });
+
+/** The text a tag point is on (the first word whose box holds it), as a check: never saved. */
+function wordAt(p: { x: number; y: number }): string {
+	const w = words.value.find((wd) => wd.box[0] <= p.x && p.x <= wd.box[2] && wd.box[1] <= p.y && p.y <= wd.box[3]);
+	return w?.text ?? '';
+}
 watch(testDoc, () => { testPage.value = 1; });
 
 onMounted(() => {
@@ -316,7 +342,7 @@ onMounted(() => {
 	}
 	void loadImage();
 });
-onBeforeUnmount(() => image.value?.close());
+onBeforeUnmount(() => { plain.value?.close(); view.value?.close(); });
 </script>
 
 <template>
@@ -344,27 +370,30 @@ onBeforeUnmount(() => image.value?.close());
 					</span>
 					<label v-if="tool !== 'points'" class="small">Brush <input v-model.number="brush" type="range" min="1" max="40" /> {{ brush }} px</label>
 					<span class="spacer" />
+					<label class="check small" title="The text on the page where this template was cut, with a yellow box round each piece: put each tag point inside its box"><input v-model="showText" type="checkbox" :disabled="!words.length" /> Show text</label>
 					<label class="check small"><input v-model="showMask" type="checkbox" /> Show mask</label>
 					<label class="small">Zoom <input v-model.number="zoom" type="range" min="1" max="10" /></label>
 				</div>
 				<p class="hint small">
-					<template v-if="tool === 'points'">Click on the symbol where each part of the tag is written; drag a point to move it.</template>
+					<template v-if="tool === 'points'">Click on the symbol where each part of the tag is written<template v-if="words.length"> (inside its yellow box)</template>; drag a point to move it.
+						<template v-if="!words.length"> This template has no page text kept with it (it was uploaded, or cut before text was kept): cut it again from a page to see its text.</template></template>
 					<template v-else>Green parts of the symbol are compared, grey parts are ignored (e.g. a variable fill, an arrow that changes direction, text).</template>
 				</p>
 				<div class="sym-template-canvas">
 					<canvas ref="canvas" :class="`tool-${tool}`" @pointerdown="onDown" @pointermove="onMove" @pointerup="onUp" @pointerleave="onLeave" />
 				</div>
 				<table class="grid simple points-table">
-					<thead><tr><th>Tag point</th><th>x</th><th>y</th><th title="How much of the word must lie inside the symbol (0-1)">Min overlap</th><th /></tr></thead>
+					<thead><tr><th>Tag point</th><th>x</th><th>y</th><th title="How much of the word must lie inside the symbol (0-1)">Min overlap</th><th v-if="words.length" title="The text under the point where this template was cut (a check: each match reads its own text)">Reads here</th><th /></tr></thead>
 					<tbody>
 						<tr v-for="(p, i) in t.points" :key="i" :class="{ current: selected === i }" @click="selected = i; draw()">
 							<td><input v-model="p.name" aria-label="Point name" /></td>
 							<td><input v-model.number="p.x" type="number" step="0.5" class="num" aria-label="x" /></td>
 							<td><input v-model.number="p.y" type="number" step="0.5" class="num" aria-label="y" /></td>
 							<td><input v-model.number="p.min_overlap" type="number" min="0" max="1" step="0.05" class="num" aria-label="Minimum overlap" /></td>
+							<td v-if="words.length" :class="wordAt(p) ? '' : 'hint small'">{{ wordAt(p) ? `'${wordAt(p)}'` : 'no text here' }}</td>
 							<td><button type="button" class="secondary small" @click.stop="removePoint(i)">Remove</button></td>
 						</tr>
-						<tr v-if="!t.points.length"><td colspan="5" class="hint">No tag points: matches of this template are counted but give no tag (fine for valves and other untagged symbols).</td></tr>
+						<tr v-if="!t.points.length"><td :colspan="words.length ? 6 : 5" class="hint">No tag points: matches of this template are counted but give no tag (fine for valves and other untagged symbols).</td></tr>
 					</tbody>
 				</table>
 				<p v-if="fe.points" class="warn small">{{ fe.points }}</p>

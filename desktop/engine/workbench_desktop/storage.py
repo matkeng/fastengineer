@@ -46,7 +46,7 @@ from workbench_core.keylists import (
 from workbench_core.mel import Recipe, Revision
 from workbench_core.refdata import EnumList, RefRow, RefTable, RefTree, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
-from workbench_core.symbols import Drawing, Library, PageOverride, PageResult, PageReview, RunInfo, Template
+from workbench_core.symbols import Drawing, Library, PageOverride, PageResult, PageReview, RunInfo, Template, Word
 from workbench_core.generators.editable import BuildInfo, BuildRecord, GenRecord, GenSummary, summarise
 from workbench_core.generators.hardware import Catalogue, Hardware, default_catalogue
 from workbench_core.generators.models import BuildResult, Generator, RefTable as GenTable
@@ -117,6 +117,13 @@ CREATE TABLE IF NOT EXISTS sym_templates (
     image BLOB NOT NULL,
     mask BLOB,
     UNIQUE (library_id, priority)
+);
+-- What a template cut from a page looked like with its text, and that text's boxes (template
+-- pixels): shown in the template editor only. Matching uses sym_templates.image (text erased).
+CREATE TABLE IF NOT EXISTS sym_template_views (
+    template_id TEXT PRIMARY KEY REFERENCES sym_templates(id) ON DELETE CASCADE,
+    image BLOB NOT NULL,
+    words TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sym_overrides (
     doc_id TEXT NOT NULL REFERENCES sym_drawings(id) ON DELETE CASCADE,
@@ -1345,6 +1352,22 @@ class SymbolStore:
             raise NotFound(template_id)
         return bytes(row[0]) if row[0] is not None else None
 
+    def template_view(self, template_id: str) -> tuple[bytes, list[Word]] | None:
+        """The template as it was on the page, with its text, and the text's boxes in template
+        pixels; None for a template that has no view (uploaded, or cut before views were kept)."""
+        self.get_template(template_id)
+        with self._lock:
+            row = self._db.execute("SELECT image, words FROM sym_template_views WHERE template_id = ?",
+                                   (template_id,)).fetchone()
+        if not row:
+            return None
+        return bytes(row[0]), [Word.model_validate(w) for w in json.loads(row[1])]
+
+    def set_template_view(self, template_id: str, png: bytes, words: list[Word]) -> None:
+        with self._lock, self._db:
+            self._db.execute("INSERT OR REPLACE INTO sym_template_views VALUES (?, ?, ?)",
+                             (template_id, png, json.dumps([w.model_dump(mode="json") for w in words])))
+
     def add_template(self, t: Template, png: bytes, mask: bytes | None = None, log: bool = True) -> Template:
         """Append to the end of its library's priority list."""
         self.get_library(t.library_id)
@@ -1363,12 +1386,14 @@ class SymbolStore:
         """Edit fields. Moving library re-appends it there; priority changes go through move."""
         old = self.get_template(t.id)
         if old.library_id != t.library_id:
-            png, mask = self.template_image(t.id), self.template_mask(t.id)
+            png, mask, view = self.template_image(t.id), self.template_mask(t.id), self.template_view(t.id)
             with self._lock, self._db:
                 audit.check(self._db, "sym_template", t.id)
                 self._db.execute("DELETE FROM sym_templates WHERE id = ?", (t.id,))
                 self._renumber(old.library_id)
             new = self.add_template(t.model_copy(update={"width": old.width, "height": old.height}), png, mask, log=False)
+            if view:
+                self.set_template_view(t.id, *view)
             with self._lock, self._db:
                 audit.log(self._db, "sym_template", t.id, old.model_dump_json(), new.model_dump_json(),
                           parent_id=new.library_id)

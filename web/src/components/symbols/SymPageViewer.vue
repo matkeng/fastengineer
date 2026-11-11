@@ -637,8 +637,12 @@ onBeforeUnmount(() => {
 			<div ref="host" class="sym-canvas-host" :class="[`mode-${mode}`, hoverHandle ? `handle-${hoverHandle}` : '']">
 				<canvas ref="canvas" @pointerdown="onDown" @pointermove="onMove" @pointerup="onUp" @wheel.prevent="onWheel" @dblclick="fit" />
 				<div v-if="selection && !dragging && mode === 'template'" class="sym-banner floating bottom">
-					<div class="sym-preview" :title="preview ? 'What the template will be (page text left out)' : ''">
-						<img v-if="preview" :src="`data:image/png;base64,${preview.png}`" alt="Template preview" />
+					<div class="sym-preview" :title="preview ? 'What the template will be. Its text (yellow) is shown so you can put tag points on it; matching leaves the text out, so any tag matches' : ''">
+						<svg v-if="preview" :viewBox="`0 0 ${preview.width} ${preview.height}`" role="img" aria-label="Template preview">
+							<image :href="`data:image/png;base64,${preview.view_png || preview.png}`" :width="preview.width" :height="preview.height" />
+							<rect v-for="(w, i) in preview.view_png ? preview.words : []" :key="i" :x="w.box[0]" :y="w.box[1]"
+								:width="w.box[2] - w.box[0]" :height="w.box[3] - w.box[1]" fill="rgba(255, 235, 59, 0.4)" />
+						</svg>
 						<span v-else-if="!previewError" class="hint small">Preview…</span>
 					</div>
 					<div class="sym-preview-side">

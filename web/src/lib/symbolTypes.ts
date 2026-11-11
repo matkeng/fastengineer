@@ -148,4 +148,4 @@ export interface TagsTable { headers: string[]; rows: Record<string, string>[] }
 export interface TestResult { symbols: Symbol[]; best: number; skipped: string | null }
 
 /** What New template would cut from a dragged box (nothing saved). */
-export interface TemplatePreview { rect: Box; width: number; height: number; png: string }
+export interface TemplatePreview { rect: Box; width: number; height: number; png: string; view_png?: string; words: Word[] }
