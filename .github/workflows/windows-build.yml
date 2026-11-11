@@ -148,6 +148,10 @@ jobs:
             $lib = (Invoke-RestMethod "$symApi/libraries") | Select-Object -First 1
             "Example library: $($lib.name), $($lib.templates) templates, columns $($lib.columns -join ', ')"
             if ($lib.templates -ne 3) { throw 'the P&ID example library was not added on first start' }
+            # The text scan is off in a new library; this check is about every tag, so switch it on.
+            if ($lib.pattern_scan) { throw 'the text scan should be off in a new library' }
+            $lib.pattern_scan = $true
+            $null = Invoke-RestMethod -Method Put -Uri "$symApi/libraries/$($lib.id)" -Body ($lib | ConvertTo-Json -Depth 8) -ContentType 'application/json'
             $q = "filename=pid-sample.pdf&library_id=$($lib.id)"
             $dw = Invoke-RestMethod -Method Post -Uri "$symApi/drawings?$q" -InFile samples/pid-sample.pdf -ContentType 'application/octet-stream'
             $dw = Wait-Job2 "$symApi/drawings/$($dw.id)"
