@@ -105,10 +105,10 @@ class LoadTypeList(BaseModel):
     updated_at: datetime | None = None
 
 
-Discipline = Literal["E", "I", "M", "P", "C", "S", "H"]
-#: Discipline code -> name, in the order they are shown and kept.
+#: The disciplines a project starts with: code -> name, in the order they are shown and kept.
+#: A project can change them (its Disciplines enum, see keylists.enums); codes are what is stored.
 DISCIPLINES: dict[str, str] = {"E": "Electrical", "I": "Instrumentation", "M": "Mechanical", "P": "Piping",
-                               "C": "Civil", "S": "Structural", "H": "HVAC"}
+                               "C": "Civil", "S": "Structural", "H": "HVAC", "PR": "Process", "G": "General"}
 
 
 class EquipmentCode(BaseModel):
@@ -116,7 +116,7 @@ class EquipmentCode(BaseModel):
     code: str
     name: str
     description: str = ""
-    disciplines: list[Discipline] = Field(default_factory=list)
+    disciplines: list[str] = Field(default_factory=list)  # codes of the project's Disciplines enum
 
 
 class EquipmentCodeList(BaseModel):

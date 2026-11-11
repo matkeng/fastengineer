@@ -31,6 +31,7 @@ from .plc_api import router as plc_router
 from .distribution_panels_api import router as distribution_panels_router
 from .instrument_runsheet_api import router as instrument_runsheet_router
 from .master_api import router as master_router
+from .drawing_list_api import enums_router, router as drawing_list_router
 from .keylist_workbooks_api import router as keylist_workbooks_router
 from .deliverables_api import router as deliverables_router
 from .projects_api import router as projects_router
@@ -61,6 +62,8 @@ _RECORD_URLS = [(re.compile(p), entity) for p, entity in (
     (r"^/api/(plc)$", "plc"),
     (r"^/api/(distribution-panels)$", "distribution_panels"),
     (r"^/api/(instrument-runsheet)$", "instrument_runsheet"),
+    (r"^/api/(enums)$", "enums"),
+    (r"^/api/(drawing-list)$", "drawing_list"),
     (r"^/api/deliverables/([^/]+)$", "deliverable"),
     (r"^/api/generators/([^/]+)$", "generator"),
 )]
@@ -113,6 +116,8 @@ app.include_router(plc_router)
 app.include_router(distribution_panels_router)
 app.include_router(instrument_runsheet_router)
 app.include_router(master_router)
+app.include_router(enums_router)
+app.include_router(drawing_list_router)
 app.include_router(keylist_workbooks_router)
 app.include_router(deliverables_router)
 app.include_router(symbols_router)

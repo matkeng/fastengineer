@@ -17,7 +17,7 @@ from workbench_core.keylists import (EelList, EquipmentCode, EquipmentPackage, E
                                      check_equipment_packages, check_load_types, check_plant_areas)
 from workbench_core.keylists.plc import IoPoint, PlcCard, PlcList, PlcRack, PlcSystem, normalise_points
 from workbench_core.mel import parse_csv
-from workbench_core.refdata import RefValidationError
+from workbench_core.refdata import RefValidationError, name_key
 from workbench_core.mel.models import FieldMap
 from workbench_core.refdata import (ColumnDef, EnumItem, EnumList, RefRow, RefTable, RefTree, TreeNode, check_enum,
                                     check_table_columns, check_tree, validate_row)
@@ -213,6 +213,25 @@ def load_sample_data() -> Added:
             done += 1
         return done
 
+    def drawings() -> int:
+        """A few drawings of the sample plant. (Choices the project's Enums no longer have are left blank.)"""
+        from workbench_core.keylists.drawing_list import check_drawings
+        from workbench_core.keylists.enums import lookup
+        enums = lists.enums()
+        has = {"discipline": lookup(enums.disciplines), "drawing_type": lookup(enums.drawing_types), "status": lookup(enums.drawing_statuses)}
+        want = [("100-E-SLD-001", "MCC-1", "Single line diagram", "E", "Single Line Diagram", "B", "IFC", "14/03/2026", "MCC-1"),
+                ("100-E-SCH-101", "Feed pump A", "Schematic diagram", "E", "Schematic", "A", "IFR", "02/04/2026", "P-101"),
+                ("100-PR-PID-001", "Feed area", "Piping and instrument diagram", "PR", "P&ID", "0", "IFA", "20/02/2026", "P-101, P-102"),
+                ("100-E-LAY-001", "Switchroom", "Equipment layout", "E", "Layout", "A", "Draft", "", "MCC-1, MCC-2")]
+        rows = []
+        for number, title_1, title_2, discipline, kind, rev, status, issued, equipment in want:
+            row = {"number": number, "project_name": "Sample plant", "title_1": title_1, "title_2": title_2, "discipline": discipline,
+                   "drawing_type": kind, "revision": rev, "status": status, "issue_date": issued, "equipment_reference": equipment,
+                   "scope": "Detailed design"}
+            rows.append({k: v for k, v in row.items() if k not in has or name_key(v) in has[k]})
+        lists.save_drawing_list(check_drawings(rows, enums))
+        return len(rows)
+
     def runsheet() -> int:
         """A few rows for the Instrument generator: a pressure transmitter set on each pump."""
         from workbench_core.keylists.instrument_runsheet import TypedRow
@@ -278,6 +297,7 @@ def load_sample_data() -> Added:
     rows, _, _ = current_rows()  # brings the Load List up to date, so its allocations are filled in
     fill("Distribution Panels", not lists.distribution_panels().panels, panels)
     fill("Instrument Runsheet", not lists.instrument_runsheet().rows, runsheet)
+    fill("Drawing List", not lists.drawing_list().items, drawings)
     fill("Deliverables", not dl.list(), deliverables)
     if "List import (MEL)" in added or "Electrical Equipment List" in added:
         done = 0

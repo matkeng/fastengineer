@@ -245,7 +245,7 @@ def check_load_types(rows: list[dict]) -> LoadTypeList:
 _CODE_FIELDS = (("code", "Code", True), ("name", "Name", True))
 
 
-def check_code_list(rows: list[dict], model: type[BaseModel], what: str) -> list:
+def check_code_list(rows: list[dict], model: type[BaseModel], what: str, disciplines: dict[str, str] | None = None) -> list:
     """Check the rows of a code list (Equipment Codes, Instrument Codes) as sent by a client.
 
     Code and name are required and unique (ignoring case and extra spaces); text is trimmed;
@@ -268,10 +268,11 @@ def check_code_list(rows: list[dict], model: type[BaseModel], what: str) -> list
         if "disciplines" in model.model_fields:
             chosen = raw.get("disciplines") or []
             chosen = chosen if isinstance(chosen, list) else [chosen]
-            unknown = [str(d) for d in chosen if d not in DISCIPLINES]
+            known = DISCIPLINES if disciplines is None else disciplines  # the project's Disciplines enum: code -> name
+            unknown = [str(d) for d in chosen if d not in known]
             if unknown:
                 errors[f"{rid}.disciplines"] = f"Not a discipline: {', '.join(unknown)}"
-            data["disciplines"] = [d for d in DISCIPLINES if d in chosen]
+            data["disciplines"] = [d for d in known if d in chosen]
         try:
             items.append(model.model_validate(data))
         except ValidationError as exc:

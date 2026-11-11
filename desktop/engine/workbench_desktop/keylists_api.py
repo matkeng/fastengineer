@@ -57,13 +57,15 @@ def overview() -> dict:
             "load_list": _load_list_counts(),
             "equipment_codes": {"items": len(lists.code_list("equipment-codes").items)},
             "instrument_codes": {"items": len(lists.code_list("instrument-codes").items)},
-            "disciplines": [{"code": c, "name": n} for c, n in DISCIPLINES.items()],
+            "disciplines": [{"code": c, "name": n} for c, n in lists.disciplines().items()],  # the project's Disciplines enum
             "eel": {"items": len(lists.eel().items)},
             "plc": _plc_counts(lists.plc()),
             "cable_types": {"items": len(lists.cable_types().items)},
             "distribution_panels": {"items": len(lists.distribution_panels().panels)},
             "instrument_runsheet": {"items": len(lists.instrument_runsheet().rows)},
-            "mel": {"items": _mel_count()}}
+            "mel": {"items": _mel_count()},
+            "drawing_list": {"items": len(lists.drawing_list().items)},
+            "enums": {"items": sum(len(getattr(lists.enums(), k)) for k in ("disciplines", "drawing_types", "drawing_statuses"))}}
 
 
 def _mel_count() -> int:
@@ -281,7 +283,7 @@ def _code_list_routes(list_id: str, model, list_model, what: str) -> None:
     @router.put(f"/{list_id}", response_model=list_model, name=f"update_{list_id}")
     def update_codes(body: CodeListUpdate):
         try:
-            items = check_code_list(body.items, model, what)
+            items = check_code_list(body.items, model, what, get_keylists().disciplines())
             if list_id == "equipment-codes":
                 kept = {i.id for i in items}
                 _refuse_eel(("equipment_code_id",), {c.id: c.code for c in get_keylists().code_list(list_id).items

@@ -287,7 +287,10 @@ def test_panels_and_supply() -> None:
 def test_code_lists() -> None:
     from workbench_core.keylists import DISCIPLINES, EquipmentCode, InstrumentCode, check_code_list
 
-    assert list(DISCIPLINES) == ["E", "I", "M", "P", "C", "S", "H"]
+    assert list(DISCIPLINES) == ["E", "I", "M", "P", "C", "S", "H", "PR", "G"]  # what a project starts with
+    mine = check_code_list([{"id": "z", "code": "Q", "name": "Q", "disciplines": ["ZZ", "E"]}], EquipmentCode, "equipment codes",
+                           {"E": "Electrical", "ZZ": "Mine"})  # the project's own disciplines
+    assert mine[0].disciplines == ["E", "ZZ"]
     out = check_code_list([
         {"id": "b", "code": " PMP ", "name": " Pump ", "description": " Centrifugal ", "disciplines": ["P", "M", "M", "E"]},
         {"id": "a", "code": "VLV", "name": "Valve", "description": None},

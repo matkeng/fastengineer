@@ -49,6 +49,8 @@ ENTITIES = {
     "plc": "PLC list",
     "distribution_panels": "distribution panels list",
     "instrument_runsheet": "instrument runsheet",
+    "enums": "enums",
+    "drawing_list": "drawing list",
     "deliverable": "deliverable",
     "deliverable_revision": "deliverable revision",
     "cable_types": "cable types list",

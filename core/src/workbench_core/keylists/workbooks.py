@@ -335,7 +335,8 @@ def export_code_list(list_id: str, items: list[EquipmentCode] | list[InstrumentC
     return [(title, [head] + [[i.code, i.name, i.description or None, last(i)] for i in items])]
 
 
-def import_code_list(sheets: dict[str, Rows], list_id: str, old: list) -> Parsed:
+def import_code_list(sheets: dict[str, Rows], list_id: str, old: list, disciplines: dict[str, str] | None = None) -> Parsed:
+    """`disciplines`: the project's, code -> name (an equipment code names them by either)."""
     head, title = CODE_HEADS[list_id]
     keep = _keep([(i.id, i.code) for i in old])
     items = []
@@ -344,9 +345,10 @@ def import_code_list(sheets: dict[str, Rows], list_id: str, old: list) -> Parsed
                                    "description": _get(r, "Description")}
         if list_id == "equipment-codes":
             # a discipline by its letter or its name
-            by_name = {name.casefold(): code for code, name in DISCIPLINES.items()}
+            known = DISCIPLINES if disciplines is None else disciplines
+            by_name = {name.casefold(): code for code, name in known.items()} | {code.casefold(): code for code in known}
             parts = [p.strip() for p in _get(r, "Disciplines").replace(";", ",").split(",") if p.strip()]
-            item["disciplines"] = [by_name.get(p.casefold(), p.upper() if len(p) == 1 else p) for p in parts]
+            item["disciplines"] = [by_name.get(p.casefold(), p) for p in parts]
         else:
             item["plc_code"] = _get(r, "PLC code")
         items.append(item)
@@ -641,3 +643,24 @@ def export_mel(headers: list[str], rows: list) -> Sheets:
     grid: Grid = [["Source", "Tag", "In the Load List"] + headers]
     grid += [[r.source, r.tag, "Yes" if r.in_load_list else "No"] + [r.values.get(h) or None for h in headers] for r in rows]
     return [("MEL", grid)]
+
+
+# -- the Drawing List ------------------------------------------------------------------------------
+
+def export_drawing_list(rows: list[dict[str, str]]) -> Sheets:
+    """`rows`: the drawings as text (drawing_list.as_typed). The issue date is written as dd/mm/yyyy."""
+    from .drawing_list import FIELDS, HEADINGS
+
+    return [("Drawing List", [list(HEADINGS)] + [[r.get(f) or None for f in FIELDS] for r in rows])]
+
+
+def import_drawing_list(sheets: dict[str, Rows], old: list) -> Parsed:
+    """The payload is the drawings as typed (field -> text); the engine checks them, resolving
+    each discipline, type and status against the project's Enums. A drawing keeps the identity
+    of the drawing with the same number. `old`: the drawings as they are."""
+    from .drawing_list import FIELDS, HEADINGS
+
+    file = _sheet(sheets, "Drawing List", ("Drawing number",))
+    keep = _keep([(d.id, d.number) for d in old])
+    rows = [{"id": keep(_get(r, "Drawing number"))} | {f: _get(r, h) for f, h in zip(FIELDS, HEADINGS)} for r in file]
+    return Parsed({"items": rows}, [r["number"] for r in rows], labels={r["id"]: r["number"] or "A drawing with no number" for r in rows})

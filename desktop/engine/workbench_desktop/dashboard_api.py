@@ -63,6 +63,7 @@ class Counts(BaseModel):
     eel_items: int = 0
     distribution_panels: int = 0
     instrument_runsheet_rows: int = 0
+    drawings_listed: int = 0
     deliverables: int = 0
     deliverable_revisions: int = 0
     generators: int = 0
@@ -148,6 +149,7 @@ def dashboard() -> Dashboard:
     c.eel_items = len(get_keylists().eel().items)
     c.distribution_panels = len(get_keylists().distribution_panels().panels)
     c.instrument_runsheet_rows = len(get_keylists().instrument_runsheet().rows)
+    c.drawings_listed = len(get_keylists().drawing_list().items)
     dl = get_deliverables()
     names = {d.id: d.name for d in dl.list()}
     c.deliverables = len(names)

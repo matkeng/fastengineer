@@ -24,6 +24,8 @@ from workbench_core.deliverables import RevisionInfo as IssueInfo
 from workbench_core.keylists.plc import PlcList, from_registers
 from workbench_core.keylists.distribution_panels import DistributionPanelList
 from workbench_core.keylists.instrument_runsheet import InstrumentRunsheet
+from workbench_core.keylists.drawing_list import DrawingList
+from workbench_core.keylists.enums import ProjectEnums, default_enums
 from workbench_core.keylists import (
     EEL_SOURCE,
     KEPT,
@@ -647,6 +649,46 @@ class KeyListStore:
             audit.log(self._db, "plc", "plc", before or PlcList().model_dump_json(), plc.model_dump_json(),
                       label="PLC List", note=note)
         return plc
+
+    ENUMS = "enums"
+
+    def enums(self) -> ProjectEnums:
+        """The project's choice lists; a project that never saved them has the default set."""
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.ENUMS,)).fetchone()
+        return ProjectEnums.model_validate_json(row[0]) if row else default_enums()
+
+    def disciplines(self) -> dict[str, str]:
+        """The project's disciplines, code -> name, in their order."""
+        return {d.code: d.name for d in self.enums().disciplines}
+
+    def save_enums(self, enums: ProjectEnums) -> ProjectEnums:
+        enums = enums.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.ENUMS,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.ENUMS, enums.model_dump_json()))
+            # Before the first save the defaults are in effect, so that is what changed.
+            audit.log(self._db, "enums", self.ENUMS, before or default_enums().model_dump_json(), enums.model_dump_json(),
+                      label="Enums")
+        return enums
+
+    DRAWING_LIST = "drawing-list"
+
+    def drawing_list(self) -> DrawingList:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.DRAWING_LIST,)).fetchone()
+        return DrawingList.model_validate_json(row[0]) if row else DrawingList()
+
+    def save_drawing_list(self, drawings: DrawingList, note: str | None = None) -> DrawingList:
+        drawings = drawings.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.DRAWING_LIST,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.DRAWING_LIST, drawings.model_dump_json()))
+            audit.log(self._db, "drawing_list", self.DRAWING_LIST, before or DrawingList().model_dump_json(),
+                      drawings.model_dump_json(), label="Drawing List", note=note)
+        return drawings
 
     INSTRUMENT_RUNSHEET = "instrument-runsheet"
 

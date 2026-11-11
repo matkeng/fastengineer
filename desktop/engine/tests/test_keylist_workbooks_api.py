@@ -18,7 +18,7 @@ LISTS = {"plant-areas": "/api/keylists/plant-areas", "equipment-packages": "/api
          "load-types": "/api/keylists/load-types", "equipment-codes": "/api/keylists/equipment-codes",
          "instrument-codes": "/api/keylists/instrument-codes", "cable-types": "/api/keylists/cable-types", "eel": "/api/eel",
          "load-list": "/api/loadlist", "distribution-panels": "/api/distribution-panels",
-         "instrument-runsheet": "/api/instrument-runsheet"}
+         "instrument-runsheet": "/api/instrument-runsheet", "drawing-list": "/api/drawing-list"}
 
 
 @pytest.fixture(autouse=True)

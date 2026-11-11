@@ -23,7 +23,7 @@ from workbench_core.keylists.distribution_panels import check_panels
 from workbench_core.mel.models import ELEC_LOAD_FIELDS
 from workbench_core.refdata import RefValidationError, name_key
 
-from . import distribution_panels_api, eel_api, instrument_runsheet_api, keylists_api, loadlist_api
+from . import distribution_panels_api, drawing_list_api, eel_api, instrument_runsheet_api, keylists_api, loadlist_api
 from .storage import NotFound, get_keylists, get_loadlist
 
 router = APIRouter(prefix="/api/list-workbooks", tags=["project list workbooks"])
@@ -35,7 +35,7 @@ LISTS = {"plant-areas": ("Plant Areas", "plant area"), "equipment-packages": ("E
          "instrument-codes": ("Instrument Codes", "instrument code"), "cable-types": ("Cable Types", "cable type"),
          "eel": ("Electrical Equipment List", "item"), "load-list": ("Load List", "row"),
          "distribution-panels": ("Distribution Panels", "panel"), "instrument-runsheet": ("Instrument Runsheet", "row"),
-         "mel": ("MEL", "row")}
+         "mel": ("MEL", "row"), "drawing-list": ("Drawing List", "drawing")}
 #: Lists that are only read here: they can be exported, not imported or reset.
 READ_ONLY = ("mel",)
 
@@ -70,6 +70,8 @@ def _sheets(list_id: str) -> wbk.Sheets:
         return wbk.export_cable_types(lists.cable_types().items)
     if list_id == "eel":
         return wbk.export_eel(lists.eel(), _eel_names())
+    if list_id == "drawing-list":
+        return wbk.export_drawing_list([d.model_dump() for d in drawing_list_api.get_drawings().items])
     if list_id == "instrument-runsheet":
         return wbk.export_instrument_runsheet(instrument_runsheet_api.get_runsheet().rows)
     if list_id == "mel":
@@ -124,13 +126,16 @@ def _parse(list_id: str, data: bytes) -> tuple[wbk.Parsed, list[str]]:
         return wbk.import_load_types(sheets, old), [t.code for t in old.items]
     if list_id in wbk.CODE_HEADS:
         old = lists.code_list(list_id).items
-        return wbk.import_code_list(sheets, list_id, old), [c.code for c in old]
+        return wbk.import_code_list(sheets, list_id, old, lists.disciplines()), [c.code for c in old]
     if list_id == "cable-types":
         old = lists.cable_types().items
         return wbk.import_cable_types(sheets, old), [c.code for c in old]
     if list_id == "eel":
         old = lists.eel()
         return wbk.import_eel(sheets, old, _eel_names()), [i.tag for i in old.items]
+    if list_id == "drawing-list":
+        old = lists.drawing_list().items
+        return wbk.import_drawing_list(sheets, old), [d.number for d in old]
     if list_id == "instrument-runsheet":
         return wbk.import_instrument_runsheet(sheets), []
     rows = loadlist_api.current_rows()[0]
@@ -164,9 +169,12 @@ def _check(list_id: str, parsed: wbk.Parsed) -> None:
     elif list_id == "load-types":
         check_load_types(p["items"])  # type: ignore[index]
     elif list_id in wbk.CODE_HEADS:
-        check_code_list(p["items"], EquipmentCode if list_id == "equipment-codes" else InstrumentCode, LISTS[list_id][0])  # type: ignore[index]
+        check_code_list(p["items"], EquipmentCode if list_id == "equipment-codes" else InstrumentCode, LISTS[list_id][0],  # type: ignore[index]
+                        get_keylists().disciplines())
     elif list_id == "cable-types":
         check_cable_types(p["items"])  # type: ignore[index]
+    elif list_id == "drawing-list":
+        drawing_list_api.checked(p["items"])  # type: ignore[index]
     elif list_id == "instrument-runsheet":
         instrument_runsheet_api.checked(p)  # type: ignore[arg-type]
     elif list_id == "distribution-panels":
@@ -186,7 +194,8 @@ def _save(list_id: str, parsed: wbk.Parsed):
     if list_id == "load-types":
         return keylists_api.update_load_types(keylists_api.LoadTypesUpdate.model_validate(p))
     if list_id in wbk.CODE_HEADS:
-        items = check_code_list(p["items"], EquipmentCode if list_id == "equipment-codes" else InstrumentCode, LISTS[list_id][0])  # type: ignore[index]
+        items = check_code_list(p["items"], EquipmentCode if list_id == "equipment-codes" else InstrumentCode, LISTS[list_id][0],  # type: ignore[index]
+                                lists.disciplines())
         if list_id == "equipment-codes":
             kept = {i.id for i in items}
             keylists_api._refuse_eel(("equipment_code_id",), {c.id: c.code for c in lists.code_list(list_id).items
@@ -196,6 +205,8 @@ def _save(list_id: str, parsed: wbk.Parsed):
         return lists.save_cable_types(check_cable_types(p["items"]), note="Imported from a workbook")  # type: ignore[index]
     if list_id == "eel":
         return eel_api.save_eel(eel_api.EelUpdate.model_validate(p))
+    if list_id == "drawing-list":
+        return drawing_list_api.save_drawings(drawing_list_api.DrawingsBody(items=p["items"]))  # type: ignore[index]
     if list_id == "instrument-runsheet":
         return instrument_runsheet_api.save_runsheet(instrument_runsheet_api.RunsheetBody(rows=p))  # type: ignore[arg-type]
     return distribution_panels_api.save_panels(p)  # type: ignore[arg-type]
