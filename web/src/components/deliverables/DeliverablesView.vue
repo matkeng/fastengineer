@@ -5,7 +5,7 @@ import type { ColumnsConfig } from 'datatables.net';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
-import type { Changes, RevisionInfo } from '../../lib/deliverableTypes';
+import { PANEL_TYPE, type Changes, type RevisionInfo } from '../../lib/deliverableTypes';
 import { type BuildResult, type OutputRow, type Scalar, cellText } from '../../lib/genTypes';
 import { useDeliverables } from '../../stores/deliverables';
 import { useGenerators } from '../../stores/generators';
@@ -29,10 +29,14 @@ const d = computed(() => dl.detail);
 const cur = computed(() => d.value?.current ?? null);
 const PROJECT = '@project'; // the source drop-down's value for the Project Load List
 const isProject = computed(() => d.value?.deliverable.source === 'project');
+const isPanel = computed(() => d.value?.deliverable.source === 'panel');
+const panels = computed(() => dl.overview?.panels ?? []);
+// a Distribution Panel is only ever a panel's schedule, and nothing else is: the type isn't changed afterwards
+const typeChoices = computed(() => (dl.form?.type === PANEL_TYPE ? [PANEL_TYPE] : types.value.filter((t) => t !== PANEL_TYPE)));
 const columns = computed(() => {
 	const f = dl.form;
 	if (!f) return [];
-	return f.source === 'project' ? dl.overview?.project_columns[f.type] ?? [] : generators.value.find((g) => g.id === f.generator_id)?.columns ?? [];
+	return f.source !== 'generator' ? dl.overview?.project_columns[f.type] ?? [] : generators.value.find((g) => g.id === f.generator_id)?.columns ?? [];
 });
 const source = computed({
 	get: () => (dl.form?.source === 'project' ? PROJECT : dl.form?.generator_id ?? ''),
@@ -44,6 +48,8 @@ const source = computed({
 	},
 });
 const when = (iso: string) => new Date(iso).toLocaleString();
+/** A distribution panel's header block: of the revision shown, else as it is now. */
+const summary = computed(() => (dl.shown ? dl.shown.summary ?? [] : cur.value?.summary ?? []).filter(([, v]) => v !== null && v !== ''));
 
 onMounted(() => dl.refresh());
 watch(() => ui.tab, async (tab) => {
@@ -58,16 +64,17 @@ async function select(id: string) {
 }
 
 // -- new deliverable ----------------------------------------------------------------------
-const adding = ref<{ type: string; name: string; generator_id: string } | null>(null);
+const adding = ref<{ type: string; name: string; generator_id: string; panel_id: string } | null>(null);
 function startAdd(type?: string) {
 	dl.error = null;
-	adding.value = { type: type ?? types.value[0] ?? '', name: '', generator_id: PROJECT };
+	adding.value = { type: type ?? types.value[0] ?? '', name: '', generator_id: PROJECT, panel_id: panels.value[0]?.id ?? '' };
 }
 async function add() {
 	const a = adding.value;
 	if (!a) return;
 	if (dl.dirty && !confirm('Discard unsaved changes to the open deliverable?')) return;
-	if (await dl.create(a.type, a.name, a.generator_id === PROJECT ? null : a.generator_id)) adding.value = null;
+	const made = a.type === PANEL_TYPE ? dl.create(a.type, a.name, null, a.panel_id) : dl.create(a.type, a.name, a.generator_id === PROJECT ? null : a.generator_id);
+	if (await made) adding.value = null;
 }
 
 async function remove() {
@@ -97,7 +104,8 @@ async function amend(rev: RevisionInfo) {
 	if (text !== null && text !== rev.description) await dl.amend(rev, text);
 }
 
-function openKeyList(id: 'load-list' | 'load-types') {
+function openKeyList(id: 'load-list' | 'load-types' | 'distribution-panels') {
+	if (id === 'distribution-panels') kl.panelSelected = d.value?.deliverable.panel_id || kl.panelSelected;
 	void kl.select(id);
 	ui.go('keylists');
 }
@@ -215,10 +223,15 @@ onBeforeUnmount(() => table?.api.destroy());
 						<input v-model="dl.form.name" :class="{ invalid: dl.fieldErrors.name }" />
 						<span v-if="dl.fieldErrors.name" class="warn small">{{ dl.fieldErrors.name }}</span></label>
 					<label class="field"><span>Type</span>
-						<select v-model="dl.form.type"><option v-for="t in types" :key="t" :value="t">{{ t }}</option></select></label>
+						<select v-model="dl.form.type" :disabled="isPanel"><option v-for="t in typeChoices" :key="t" :value="t">{{ t }}</option></select></label>
 					<label class="field"><span>Document number</span><input v-model="dl.form.doc_number" class="mono" /></label>
 					<label class="field"><span>Document title</span><input v-model="dl.form.doc_title" /></label>
-					<label class="field"><span>Content from<span class="req"> *</span></span>
+					<label v-if="dl.form.source === 'panel'" class="field"><span>Distribution panel<span class="req"> *</span></span>
+						<select v-model="dl.form.panel_id" :class="{ invalid: dl.fieldErrors.panel_id }">
+							<option v-for="p in panels" :key="p.id" :value="p.id">{{ p.tag }}{{ p.title ? ` – ${p.title}` : '' }}</option>
+						</select>
+						<span v-if="dl.fieldErrors.panel_id" class="warn small">{{ dl.fieldErrors.panel_id }}</span></label>
+					<label v-else class="field"><span>Content from<span class="req"> *</span></span>
 						<select v-model="source" :class="{ invalid: dl.fieldErrors.generator_id }">
 							<option :value="PROJECT">Project Load List</option>
 							<optgroup v-if="generators.length" label="Generators">
@@ -240,8 +253,19 @@ onBeforeUnmount(() => table?.api.destroy());
 					<template v-if="cur?.problem">
 						<span><strong>Nothing to issue yet.</strong> {{ cur.problem }}</span>
 						<span class="spacer" />
-						<button v-if="isProject" type="button" class="secondary" @click="openKeyList('load-list')">Open the Load List</button>
+						<button v-if="isPanel" type="button" class="secondary" @click="openKeyList('distribution-panels')">Open Distribution Panels</button>
+						<button v-else-if="isProject" type="button" class="secondary" @click="openKeyList('load-list')">Open the Load List</button>
 						<button v-else type="button" class="secondary" @click="openGenerator">Open the generator</button>
+					</template>
+					<template v-else-if="isPanel && cur">
+						<span>
+							<strong>Current content:</strong> {{ cur.rows }} row(s), the schedule of {{ d.generator.replace('Distribution Panels: ', '') || 'its panel' }} as it is now.
+							<template v-if="cur.changes">Since Rev {{ d.revisions[0]?.letter }}: {{ pending(cur.changes) }}.</template>
+							<span v-for="w in cur.warnings" :key="w" class="warnText"> {{ w }}</span>
+						</span>
+						<span class="spacer" />
+						<button type="button" class="secondary" @click="openKeyList('distribution-panels')">Open the panel</button>
+						<button type="button" :disabled="dl.busy || dl.dirty" :title="dl.dirty ? 'Save the deliverable first' : ''" @click="startIssue">Issue Rev {{ cur.next_letter }}…</button>
 					</template>
 					<template v-else-if="isProject && cur">
 						<span>
@@ -265,6 +289,10 @@ onBeforeUnmount(() => table?.api.destroy());
 						<button type="button" class="secondary" @click="openGenerator">Open the generator</button>
 						<button type="button" :disabled="dl.busy || dl.dirty" :title="dl.dirty ? 'Save the deliverable first' : ''" @click="startIssue">Issue Rev {{ cur.next_letter }}…</button>
 					</template>
+				</div>
+
+				<div v-if="summary.length" class="row dl-summary">
+					<span v-for="[label, value] in summary" :key="label" class="chip">{{ label }} <strong>{{ value }}</strong></span>
 				</div>
 
 				<h3 class="dl-h">Revisions</h3>
@@ -327,7 +355,13 @@ onBeforeUnmount(() => table?.api.destroy());
 				<label class="field"><span>Name<span class="req"> *</span></span>
 					<input v-model="adding.name" placeholder="e.g. Lighting cable schedule" :class="{ invalid: dl.fieldErrors.name }" />
 					<span v-if="dl.fieldErrors.name" class="warn small">{{ dl.fieldErrors.name }}</span></label>
-				<label class="field"><span>Content from<span class="req"> *</span></span>
+				<label v-if="adding.type === PANEL_TYPE" class="field"><span>Distribution panel<span class="req"> *</span></span>
+					<select v-model="adding.panel_id" :class="{ invalid: dl.fieldErrors.panel_id }">
+						<option v-for="p in panels" :key="p.id" :value="p.id">{{ p.tag }}{{ p.title ? ` – ${p.title}` : '' }}</option>
+					</select>
+					<span v-if="!panels.length" class="warn small">There are no panels yet: add one in Project lists, Distribution Panels.</span>
+					<span v-else-if="dl.fieldErrors.panel_id" class="warn small">{{ dl.fieldErrors.panel_id }}</span></label>
+				<label v-else class="field"><span>Content from<span class="req"> *</span></span>
 					<select v-model="adding.generator_id" :class="{ invalid: dl.fieldErrors.generator_id }">
 						<option :value="PROJECT">Project Load List</option>
 						<optgroup v-if="generators.length" label="Generators">
@@ -335,13 +369,14 @@ onBeforeUnmount(() => table?.api.destroy());
 						</optgroup>
 					</select>
 					<span v-if="dl.fieldErrors.generator_id" class="warn small">{{ dl.fieldErrors.generator_id }}</span></label>
-				<p v-if="adding.generator_id === PROJECT" class="hint small">Every load in the Load List adds the rows its load type has for this type of list. Nothing to build: it is always up to date.</p>
+				<p v-if="adding.type === PANEL_TYPE" class="hint small">The panel's schedule as it is when you issue it: one row for each pole of each way, with the panel's ratings and totals.</p>
+				<p v-else-if="adding.generator_id === PROJECT" class="hint small">Every load in the Load List adds the rows its load type has for this type of list. Nothing to build: it is always up to date.</p>
 				<button type="submit" hidden />
 			</form>
 			<template #footer>
 				<span class="spacer" />
 				<button type="button" class="secondary" @click="adding = null">Cancel</button>
-				<button type="button" :disabled="dl.busy || !adding?.name.trim() || !adding.generator_id" @click="add">Create</button>
+				<button type="button" :disabled="dl.busy || !adding?.name.trim() || (adding.type === PANEL_TYPE ? !adding.panel_id : !adding.generator_id)" @click="add">Create</button>
 			</template>
 		</AppModal>
 

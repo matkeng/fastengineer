@@ -547,6 +547,10 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
   switch between lists.
 - A new project starts with empty lists; copying standards from another
   project does not copy them.
+- **Distribution Panels**: the schedule of each distribution board, three-phase
+  or single-phase, shown as the switchboard or as a single line diagram. Its
+  circuits are the Load List rows supplied from the panel. See
+  [Distribution panel schedules](#distribution-panel-schedules).
 
 ## Lists, trees & tables
 
@@ -592,9 +596,11 @@ The lists a project issues, in the **Deliverables** section
 `web/src/components/deliverables/`).
 
 - A deliverable is a **Cable Schedule**, **Instrument List**, **PLC I/O List**,
-  **Equipment List** or **Load List**, with a name (unique), document number and
+  **Equipment List**, **Load List** or **Distribution Panel**, with a name (unique), document number and
   title. A project can have several of each type.
-- Its content comes from the **Project Load List** (see below) or from a
+- A **Distribution Panel** deliverable is the schedule of one panel of the
+  Distribution Panels list (see below). Every other type's content comes from
+  the **Project Load List** (see below) or from a
   **generator** build, optionally only the rows where one column is one of a
   list of values (for example one area).
 - **Issue Rev A / B / C…** (then AA, AB…) freezes the content of the generator's
@@ -684,14 +690,66 @@ When the details are missing or nothing in the table matches, the row is still
 written with the cable cells blank and the deliverable shows a warning naming
 the loads; it can still be issued.
 
+### Distribution panel schedules
+
+The **Distribution Panels** project list (`keylists/distribution_panels.py`,
+`keylists/panel_calc.py`, API `/api/distribution-panels`, UI
+`DistributionPanelsEditor.vue`) holds the schedule of each distribution board.
+
+- A panel is **three-phase** or **single-phase** and has an even number of
+  **ways**: odd ways down the left of the chassis, even ways down the right. On
+  a three-phase panel each way has a **red, white and blue** row (circuits QR1,
+  QW1, QB1); on a single-phase panel a way is one row (Q1).
+- A panel is linked to a **distribution panel of the Load List**. Every active
+  load supplied from that row is a circuit to place; **Place all** puts the ones
+  not yet on a way on the first free ways (a three-phase load takes a way's three
+  rows). A panel can also be left unlinked, with a typed tag and typed circuits.
+- A circuit can instead be a **spare circuit breaker**, an **RCD RTS**, a
+  **lighting control circuit** or anything else typed in. A row with nothing on
+  it is a **spare space**. A **heading** (for example "Lighting Contactor")
+  runs across the schedule above a pair of ways.
+- What the Load List doesn't hold is typed on the schedule, a row for each
+  pole: the **CB rating**, a **quantity** and the **watts each**. Left blank,
+  the quantity is 1 and the watts come from the load's rating (a kW rating is
+  shared equally by its poles; an Amps rating is amps x voltage x power factor
+  on each pole).
+- Each panel is shown as the **Switchboard** (the two-sided schedule) or as a
+  **Single line diagram** drawn from it: the supply, upstream CB and isolator,
+  the busbar, and a breaker and label for each circuit.
+- A load that is deleted or moved to another panel in the Load List stays on
+  the schedule, marked, until it is removed. Nothing in the Load List is changed
+  from here.
+
+The header figures, from the single-phase voltage, one power factor for the
+panel and the isolator and chassis rating:
+
+| Figure | How it is worked out |
+|---|---|
+| kVA per phase | watts on the phase / power factor / 1000 |
+| Amps per phase | kVA x 1000 / single-phase voltage |
+| Maximum Amp | the largest phase amps |
+| 3PH kW | all the watts / 1000 |
+| Remaining Capacity (Amps), % | rating - Maximum Amp, and that as a share of the rating |
+| Maximum kVA Rating | 3 x voltage x rating / 1000 (single-phase: voltage x rating / 1000) |
+
+There is no diversity factor, and line-to-line (two-pole) loads are counted on
+one phase only.
+
+Issued as a deliverable, the schedule is one row per pole row, spare spaces
+included, with the columns **Circuit, Way, Phase, Side, Section, Tag,
+Description, Load Type, Qty, Watts (Ea.), Total W, CB Rating (A)**; revisions
+are compared by Circuit. The header figures are frozen with each revision and
+go on a second sheet, **Panel**, of the Excel export. A panel that a deliverable
+issues can't be deleted.
+
 ### Sample data
 
 **Load sample data** on the Dashboard (`POST /api/sample-data`) fills every list
 that is still empty with a small invented plant: plant areas, equipment packages
 and types, equipment and instrument codes, four load types with rows for every
 list, three switchboards in the Electrical Equipment List, a PLC, a MEL import
-of nine loads, a list, tree and table under Lists & tables, and one deliverable
-of each type from the Project Load List. Lists that already have data are left
+of nine loads, a list, tree and table under Lists & tables, the schedule of
+MCC-2 in Distribution Panels, and one deliverable of each type. Lists that already have data are left
 alone, so it is safe to run on a project in use.
 
 ## Deliverable generators

@@ -10,11 +10,13 @@ import type { Catalogue } from '../lib/genTypes';
 import type {
 	Allocation, CableTypeForm, CableTypeList, CodeList, EelForm, EelView, PlcImportPreview, PlcList, PlcView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList, TemplateLists,
 } from '../lib/keyListTypes';
+import type { DistributionPanelList, PanelsView } from '../lib/panelTypes';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const PLANT_AREAS = '/api/keylists/plant-areas';
 const PACKAGES = '/api/keylists/equipment-packages';
 const LOAD_TYPES = '/api/keylists/load-types';
+const PANELS = '/api/distribution-panels';
 const differ = (a: unknown, b: unknown) => !!a && JSON.stringify(a) !== JSON.stringify(b);
 
 /** The project's built-in lists. Each is a saved copy plus the draft being edited. */
@@ -50,7 +52,13 @@ export const useKeyLists = defineStore('keylists', () => {
 	const catDraft = ref<Catalogue | null>(null);
 	const plcDirty = computed(() => differ(plcDraft.value, plcSaved.value));
 	const catDirty = computed(() => differ(catDraft.value, catSaved.value));
-	const dirty = computed(() => areasDirty.value || packagesDirty.value || plcDirty.value || catDirty.value);
+	// Distribution Panels: a saved copy and a draft, Save / Discard; the engine works out the schedules.
+	const panelsSaved = ref<DistributionPanelList | null>(null);
+	const panelsDraft = ref<DistributionPanelList | null>(null);
+	const panelsView = ref<PanelsView | null>(null);
+	const panelSelected = ref<string | null>(null);
+	const panelsDirty = computed(() => differ(panelsDraft.value, panelsSaved.value));
+	const dirty = computed(() => areasDirty.value || packagesDirty.value || plcDirty.value || catDirty.value || panelsDirty.value);
 
 	async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
 		busy.value = true;
@@ -83,6 +91,8 @@ export const useKeyLists = defineStore('keylists', () => {
 		fieldErrors.value = {};
 		message.value = null;
 		if (id === 'load-list') void loadLoadList();
+		// its circuits come from the Load List, which may have changed since
+		if (id === 'distribution-panels') void (panelsDirty.value ? checkPanels() : loadPanels());
 	}
 
 	async function loadLoadList() {
@@ -114,6 +124,7 @@ export const useKeyLists = defineStore('keylists', () => {
 		const l = await run(() => apiGet<LoadTypeList>(LOAD_TYPES));
 		if (l) loadTypes.value = l;
 		if (!plcDirty.value) await loadPlc();
+		if (!panelsDirty.value) await loadPanels();
 		const ct = await run(() => apiGet<CableTypeList>('/api/keylists/cable-types'));
 		if (ct) cableTypes.value = ct;
 		const e = await run(() => apiGet<EelView>('/api/eel'));
@@ -302,6 +313,49 @@ export const useKeyLists = defineStore('keylists', () => {
 		return pv;
 	}
 
+	// -- Distribution Panels ---------------------------------------------------------------
+
+	function setPanels(v: PanelsView, keepDraft = false) {
+		panelsView.value = v;
+		if (!keepDraft) {
+			panelsSaved.value = clone(v.doc);
+			panelsDraft.value = clone(v.doc);
+		}
+	}
+
+	async function loadPanels() {
+		const v = await run(() => apiGet<PanelsView>(PANELS));
+		if (v) setPanels(v);
+	}
+
+	async function savePanels() {
+		if (!panelsDraft.value) return;
+		const v = await run(() => apiPut<PanelsView>(PANELS, panelsDraft.value));
+		if (v) {
+			setPanels(v);
+			await refresh();
+			message.value = 'Saved';
+		}
+	}
+
+	/** The schedules, totals and errors of the unsaved edits (the draft is kept). */
+	async function checkPanels() {
+		if (!panelsDraft.value) return;
+		const sent = JSON.stringify(panelsDraft.value);
+		const v = await apiPostJson<PanelsView>(`${PANELS}/check`, panelsDraft.value).catch(() => null);
+		if (v && sent === JSON.stringify(panelsDraft.value)) panelsView.value = v; // not an answer to older edits
+	}
+
+	/** Put a panel's loads that are on no way yet on its free ways (in the draft; not saved). */
+	async function placePanelLoads(panelId: string) {
+		if (!panelsDraft.value) return;
+		const v = await run(() => apiPostJson<PanelsView>(`${PANELS}/place`, { doc: panelsDraft.value, panel_id: panelId }));
+		if (v) {
+			panelsView.value = v;
+			panelsDraft.value = clone(v.doc);
+		}
+	}
+
 	/** Add the cable type, or replace the saved one with the same id. False (errors set) if refused. */
 	function saveCableType(row: CableTypeForm): Promise<boolean> {
 		const items: unknown[] = [...(cableTypes.value?.items ?? [])];
@@ -360,6 +414,7 @@ export const useKeyLists = defineStore('keylists', () => {
 	/** Drop the unsaved changes of the list that is showing. */
 	function discard() {
 		if (selected.value === 'plc' && plcSaved.value) plcDraft.value = clone(plcSaved.value);
+		if (selected.value === 'distribution-panels' && panelsSaved.value) panelsDraft.value = clone(panelsSaved.value);
 		if (selected.value === 'plant-areas' && areasSaved.value) areasDraft.value = clone(areasSaved.value);
 		if (selected.value === 'equipment-packages' && packagesSaved.value) packagesDraft.value = clone(packagesSaved.value);
 		fieldErrors.value = {};
@@ -372,6 +427,7 @@ export const useKeyLists = defineStore('keylists', () => {
 		saveLoadType, deleteLoadType, templateLists, loadTemplateLists, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem, cableTypes, saveCableType, deleteCableType, addDefaultCableTypes,
 		plcSaved, plcDraft, plcView, catSaved, catDraft, plcDirty, catDirty, loadPlc, savePlc, checkPlc, saveCatalogue,
 		addDefaultTypes, exportPlc, importPlc,
+		panelsSaved, panelsDraft, panelsView, panelSelected, panelsDirty, loadPanels, savePanels, checkPanels, placePanelLoads,
 		discardCatalogue: () => { if (catSaved.value) catDraft.value = clone(catSaved.value); },
 	};
 });

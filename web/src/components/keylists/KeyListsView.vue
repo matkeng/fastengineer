@@ -11,6 +11,7 @@ import CableTypesEditor from './CableTypesEditor.vue';
 import CodeListEditor from './CodeListEditor.vue';
 import EelEditor from './EelEditor.vue';
 import PlcEditor from './PlcEditor.vue';
+import DistributionPanelsEditor from './DistributionPanelsEditor.vue';
 import LoadTypesEditor from './LoadTypesEditor.vue';
 import PlantAreasEditor from './PlantAreasEditor.vue';
 
@@ -19,10 +20,10 @@ const kl = useKeyLists();
 const ui = useUi();
 const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Load List',
 	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes', eel: 'Electrical Equipment List', plc: 'PLC List',
-	'cable-types': 'Cable Types' };
+	'cable-types': 'Cable Types', 'distribution-panels': 'Distribution Panels' };
 const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true,
 	'equipment-codes': kl.codeLists['equipment-codes'], 'instrument-codes': kl.codeLists['instrument-codes'], eel: kl.eel, plc: kl.plcDraft,
-	'cable-types': kl.cableTypes }[kl.selected]);
+	'cable-types': kl.cableTypes, 'distribution-panels': kl.panelsDraft }[kl.selected]);
 
 onMounted(() => kl.load());
 
@@ -85,7 +86,7 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 				</section>
 				<section>
 					<h3>Load List</h3>
-					<p class="hint">The Electrical Equipment List, and the Load List: its items and the MEL and EEL imports' rows.</p>
+					<p class="hint">The Electrical Equipment List, the Load List (its items and the MEL and EEL imports' rows), and the schedule of each distribution panel.</p>
 					<ul class="ref-nav">
 						<li :class="{ current: kl.selected === 'eel' }" @click="kl.select('eel')">
 							<span class="name">Electrical Equipment List</span>
@@ -95,6 +96,10 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 							<span class="name">Load List</span>
 							<span class="count" :class="{ warn: kl.overview?.load_list.unallocated }"
 								:title="`${kl.overview?.load_list.rows ?? 0} row(s), ${kl.overview?.load_list.unallocated ?? 0} without a plant area or load type`">{{ kl.overview?.load_list.rows ?? 0 }}</span>
+						</li>
+						<li :class="{ current: kl.selected === 'distribution-panels' }" @click="kl.select('distribution-panels')">
+							<span class="name">Distribution Panels</span><span v-if="kl.panelsDirty" class="dirty-dot" title="Unsaved changes">●</span>
+							<span class="count" title="panel schedule(s)">{{ kl.overview?.distribution_panels?.items ?? 0 }}</span>
 						</li>
 					</ul>
 				</section>
@@ -115,6 +120,7 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 			<EelEditor v-if="kl.eel" v-show="kl.selected === 'eel'" />
 			<PlcEditor v-if="kl.plcDraft" v-show="kl.selected === 'plc'" />
 			<LoadListEditor v-if="kl.selected === 'load-list'" />
+			<DistributionPanelsEditor v-if="kl.panelsDraft" v-show="kl.selected === 'distribution-panels'" />
 			<section v-if="!loaded" class="card wizard ref-empty">
 				<h2>{{ TITLES[kl.selected] }}</h2>
 				<p v-if="kl.error" class="error">{{ kl.error }}</p>

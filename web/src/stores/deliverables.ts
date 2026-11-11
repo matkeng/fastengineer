@@ -10,10 +10,12 @@ import type {
 const API = '/api/deliverables';
 const toForm = (d: Deliverable): DeliverableForm => ({
 	id: d.id, type: d.type, name: d.name, doc_number: d.doc_number, doc_title: d.doc_title, source: d.source, generator_id: d.generator_id,
+	panel_id: d.panel_id,
 	filter_column: d.filter_column, filter_text: d.filter_values.join(', '),
 });
 const toBody = (f: DeliverableForm) => ({
-	type: f.type, name: f.name, doc_number: f.doc_number, doc_title: f.doc_title, source: f.source, generator_id: f.source === 'project' ? '' : f.generator_id,
+	type: f.type, name: f.name, doc_number: f.doc_number, doc_title: f.doc_title, source: f.source, generator_id: f.source === 'generator' ? f.generator_id : '',
+	panel_id: f.source === 'panel' ? f.panel_id : '',
 	filter_column: f.filter_column, filter_values: f.filter_column ? f.filter_text.split(',').map((v) => v.trim()).filter(Boolean) : [],
 });
 
@@ -63,9 +65,11 @@ export const useDeliverables = defineStore('deliverables', () => {
 		detail.value = form.value = shown.value = null;
 	}
 
-	/** `generatorId` null: the content is generated from the Project Load List. */
-	async function create(type: string, name: string, generatorId: string | null): Promise<boolean> {
-		const body = generatorId === null ? { type, name, source: 'project' } : { type, name, source: 'generator', generator_id: generatorId };
+	/** `generatorId` null: the content is generated from the Project Load List. `panelId`: a
+	 *  Distribution Panel deliverable, whose content is that panel's schedule. */
+	async function create(type: string, name: string, generatorId: string | null, panelId?: string): Promise<boolean> {
+		const body = panelId !== undefined ? { type, name, source: 'panel', panel_id: panelId }
+			: generatorId === null ? { type, name, source: 'project' } : { type, name, source: 'generator', generator_id: generatorId };
 		const d = await run(() => apiPostJson<Deliverable>(API, body));
 		if (!d) return false;
 		await refresh();
