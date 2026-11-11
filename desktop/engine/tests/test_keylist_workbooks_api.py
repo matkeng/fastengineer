@@ -223,3 +223,30 @@ def test_reset_the_other_lists_obeys_their_rules() -> None:
     assert "218 default" in client.post(f"{API}/cable-types/reset").json()["message"]
     assert client.post(f"{API}/plc/reset").status_code == 200 and client.get("/api/plc").json()["plc"]["systems"] == []
     assert client.post(f"{API}/nope/reset").status_code == 404
+
+
+def test_reset_parts_of_the_load_list() -> None:
+    rows = client.get("/api/loadlist").json()["rows"]
+    p101 = next(r for r in rows if r["values"].get("tag") == "P-101")
+    f301 = next(r for r in rows if r["values"].get("tag") == "F-301")
+    ref = lambda r: {"rows": [{"recipe_id": r["recipe_id"], "key": r["key"]}]}  # noqa: E731
+    area = client.get("/api/keylists/plant-areas").json()["nodes"][3]["id"]
+    assert client.put("/api/loadlist/allocations", json=ref(p101) | {"supplied_from": "eel/smcc2", "plant_area_id": area}).status_code == 200
+    assert client.put("/api/loadlist/allocations", json=ref(f301) | {"cable_size": "16"}).status_code == 200
+
+    def row(tag: str) -> dict:
+        return next(r for r in client.get("/api/loadlist").json()["rows"] if r["values"].get("tag") == tag)
+
+    assert client.post("/api/loadlist/reset", json={"parts": ["nonsense"]}).status_code == 422
+    res = client.post("/api/loadlist/reset", json={"parts": ["supply"]}).json()
+    assert res["counts"] == {"supply": 1} and res["rows"] == 12 and "read again" in res["message"]
+    after = row("P-101")
+    assert (after["supplied_from"], after["supplied_from_by"]) == ("eel/smcc1", "auto")  # back to what the import says
+    assert (after["plant_area_id"], after["plant_area_by"]) == (area, "user")  # not asked for: kept
+    assert row("F-301")["cable_size"] == "16"
+
+    res = client.post("/api/loadlist/reset", json={"parts": ["plant_area", "load_type", "cable", "deleted"]}).json()
+    assert res["counts"]["plant_area"] == 1 and res["counts"]["cable"] == 12 and "load_type" not in res["counts"]
+    assert row("P-101")["plant_area_by"] == "auto" and row("F-301")["cable_size"] == ""
+    assert client.post("/api/loadlist/reset", json={"parts": ["supply"]}).json()["message"].startswith("Nothing needed resetting")
+    assert client.post("/api/loadlist/reset", json={}).json()["counts"] == {"all": 12}

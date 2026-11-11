@@ -296,6 +296,10 @@ div.dt-buttons .dt-button.xlsx-export { font-weight: 700; }
 main.fill > .mel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 main.fill > .mel > .wizard { flex: 1; min-height: 320px; display: flex; flex-direction: column; padding: 12px 16px; }
 main.fill .mel-grid { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* every step of an import uses the whole window; a step that is not one big table scrolls */
+main.fill > .mel > .mel-card > .step-body { overflow: auto; }
+main.fill > .mel > .mel-card > .step-body > :not(.results) { flex-shrink: 0; }
+main.fill > .mel > .card:not(.wizard) { overflow: auto; margin-bottom: 0; }
 .mel-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .mel-head .spacer, .row .spacer, .modal-foot .spacer { flex: 1; }
 .name-input { flex: 0 1 260px !important; min-width: 140px; font-weight: 700; }
@@ -1085,11 +1089,11 @@ main.fill .key-dp { overflow: auto; }
 /* Resetting project lists */
 .project-resets { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--border); }
 .project-resets h3 { margin: 0 0 6px; font-size: 0.95rem; }
-.list-resets { margin: 0; }
-.list-resets th { background: none; color: var(--text); white-space: nowrap; vertical-align: top; width: 1%; }
-.list-resets td { vertical-align: top; }
-.list-resets td.what { color: var(--muted); }
-.list-resets td.what .saved, .list-resets td.what .warn { max-width: none; white-space: normal; margin: 4px 0 0; }
-.list-resets td:last-child { width: 1%; text-align: right; }
 .list-reset-one { display: inline-flex; align-items: center; gap: 6px; }
 .list-reset-one .saved, .list-reset-one .warn { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+.reset-options { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.reset-option { display: flex; gap: 8px; align-items: flex-start; }
+.reset-option input { margin-top: 3px; flex: none; }
+.reset-option .hint { margin: 0; }
+.reset-parts { display: flex; flex-direction: column; gap: 6px; margin-left: 24px; padding-left: 10px; border-left: 2px solid var(--border); }
+.reset-option.confirm { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }

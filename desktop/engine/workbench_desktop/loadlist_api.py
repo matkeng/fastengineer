@@ -238,3 +238,35 @@ def allocate(body: Allocation):
         return invalid(exc)
     except NotFound as exc:
         raise HTTPException(404, "A row is no longer in the Load List. Open it again.") from exc
+
+
+# -- reset -----------------------------------------------------------------------------------------
+
+class ResetBody(BaseModel):
+    """What to reset: "all" (forget every row and read the imports again), or any of
+    "plant_area", "load_type", "supply", "cable", "deleted"."""
+    parts: list[str] = Field(default_factory=lambda: ["all"])
+
+
+class ResetResult(BaseModel):
+    message: str
+    counts: dict[str, int]
+    rows: int  # active rows after the imports were read again
+
+
+@router.post("/reset", response_model=ResetResult)
+def reset(body: ResetBody):
+    """Reset the Load List, or parts of it, then read the imports again so that everything the
+    files give is filled in automatically. The imports' files, rules and mappings are not touched."""
+    store = get_loadlist()
+    parts = set(body.parts)
+    unknown = parts - set(store.RESET_PARTS) - {"all"}
+    if unknown or not parts:
+        return invalid(RefValidationError("Choose what to reset."))
+    counts = store.reset(parts)
+    rows = sum(1 for r in current_rows()[0] if r.status == "active")
+    said = {"all": "{n} remembered row(s) forgotten", "plant_area": "{n} plant area(s) cleared", "load_type": "{n} load type(s) cleared",
+            "supply": "panel and supply choices cleared on {n} row(s)", "cable": "cable details cleared on {n} row(s)",
+            "deleted": "{n} deleted row(s) removed"}
+    done = [said[k].format(n=n) for k, n in counts.items()] or ["Nothing needed resetting"]
+    return ResetResult(message="; ".join(done) + f". The imports were read again: {rows} row(s).", counts=counts, rows=rows)

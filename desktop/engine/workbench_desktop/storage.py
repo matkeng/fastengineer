@@ -787,18 +787,54 @@ class LoadListStore:
         self._db.execute("INSERT INTO load_list VALUES (?, ?, ?) ON CONFLICT(recipe_id, row_key) DO UPDATE SET "
                          "data = excluded.data", (row.recipe_id, row.key, row.model_dump_json()))
 
-    def reset(self) -> int:
-        """Forget every remembered row, with its allocations and cable details (the rows marked
-        deleted too). The next sync builds the list again from the imports. Returns how many went."""
+    #: What a reset can clear, besides everything ("all").
+    RESET_PARTS = ("plant_area", "load_type", "supply", "cable", "deleted")
+
+    def reset(self, parts: set[str] | None = None) -> dict[str, int]:
+        """Reset the Load List. With no `parts` (or "all"), every remembered row is forgotten,
+        with its allocations and cable details and the rows kept as deleted. Otherwise only the
+        named parts go: "plant_area" / "load_type": the ones a person chose; "supply": the
+        distribution-panel ticks and supplied-from a person chose; "cable": every row's cable
+        details; "deleted": the rows kept as deleted. The Electrical Equipment List's own
+        allocations are never touched. The next sync fills in again what the imports give.
+        Returns how many rows each part changed."""
+        parts = set(parts or {"all"})
+        counts: dict[str, int] = {}
         with self._lock, self._db:
             rows = self._rows()
-            chosen = sum(1 for r in rows.values() if any(getattr(r, by) == "user" for by in self.EDITABLE.values()))
-            self._db.execute("DELETE FROM load_list")
-            if rows:
-                audit.log(self._db, "load_list", "load-list", {"rows": len(rows), "rows with a person's choices": chosen},
-                          {"rows": 0, "rows with a person's choices": 0}, label="Load List",
-                          note="Reset: every row forgotten, then read again from the imports")
-        return len(rows)
+            if "all" in parts:
+                self._db.execute("DELETE FROM load_list")
+                counts["all"] = len(rows)
+            else:
+                blank_cable = {"cable_length": None, "cable_construction": None, "cable_parallel": None, "cable_insulation": "",
+                               "cable_size": "", "earth_size": ""}
+                for key, row in rows.items():
+                    if "deleted" in parts and row.status == "deleted":
+                        self._db.execute("DELETE FROM load_list WHERE recipe_id = ? AND row_key = ?", key)
+                        counts["deleted"] = counts.get("deleted", 0) + 1
+                        continue
+                    update: dict[str, object] = {}
+                    for kind in ("plant_area", "load_type"):
+                        if kind in parts and getattr(row, f"{kind}_by") == "user":
+                            update |= {f"{kind}_id": None, f"{kind}_by": None}
+                            counts[kind] = counts.get(kind, 0) + 1
+                    if "supply" in parts and "user" in (row.is_panel_by, row.supplied_from_by):
+                        if row.is_panel_by == "user":
+                            update |= {"is_panel": False, "is_panel_by": None}
+                        if row.supplied_from_by == "user":
+                            update |= {"supplied_from": None, "supplied_from_by": None}
+                        counts["supply"] = counts.get("supply", 0) + 1
+                    if "cable" in parts and any(getattr(row, f) != v for f, v in blank_cable.items()):
+                        update |= blank_cable
+                        counts["cable"] = counts.get("cable", 0) + 1
+                    if update:
+                        self._put(row.model_copy(update=update))
+            if counts:
+                names = {"all": "rows forgotten", "plant_area": "plant areas cleared", "load_type": "load types cleared",
+                         "supply": "panels and supplies cleared", "cable": "cable details cleared", "deleted": "deleted rows removed"}
+                audit.log(self._db, "load_list", "load-list", None, {names[k]: n for k, n in counts.items()}, label="Load List",
+                          note="Reset" + (": every row forgotten, then read again from the imports" if "all" in parts else ""))
+        return counts
 
     #: What a person can set on a row, and the field that says who set it.
     EDITABLE = {"plant_area_id": "plant_area_by", "load_type_id": "load_type_by", "is_panel": "is_panel_by",

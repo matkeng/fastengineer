@@ -283,7 +283,7 @@ def reset_list(list_id: str):
         return ResetResult(message="The PLC List is empty. The card and rack types are kept.")
     name = _known(list_id)
     if list_id == "load-list":
-        gone = get_loadlist().reset()
+        gone = get_loadlist().reset().get("all", 0)
         rows = [r for r in loadlist_api.current_rows()[0] if r.status == "active"]
         return ResetResult(message=f"{gone} remembered row(s) forgotten. The imports were read again: {len(rows)} row(s).")
     if list_id == "cable-types":

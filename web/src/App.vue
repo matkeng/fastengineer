@@ -49,7 +49,7 @@ const fill = computed(
 		wb.status === 'ready' &&
 		((ui.tab === 'excel' && wiz.step === 4) ||
 			(ui.tab === 'compare' && cmp.stage === 'result') ||
-			(ui.tab === 'mel' && !!mel.draft && ['rows', 'overrides', 'result'].includes(mel.tab)) ||
+			ui.tab === 'mel' ||
 			ui.tab === 'symbols' ||
 			(ui.tab === 'generators' && !!gens.draft) ||
 			ui.tab === 'keylists' ||

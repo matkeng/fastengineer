@@ -592,20 +592,21 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
     row and reported.
   - **Distribution Panels**: sheets Panels, Circuits (a row per pole) and
     Headings. A circuit names its load by tag.
-- **Reset** (`POST /api/list-workbooks/{list}/reset`): the **Projects** page
-  has a **Reset project lists** section for the open project, with a
-  **Reset…** button for every list, and the Load List has the same button on
-  its own page. Each reset asks you to confirm and is in the change log.
-  - **Load List**: every remembered row is forgotten, with the plant areas,
-    load types, panels, supplies and cable details people chose and the rows
-    kept as deleted. The MEL and EEL imports are then read again, so the list
-    holds what the latest files give, filled in automatically where it can be.
-    The import files, rules and mappings are not touched.
-  - **Cable Types** goes back to the default set; the **PLC List** is emptied
-    and keeps its card and rack types; every other list is emptied.
-  - A reset goes through the list's own rules, so a list whose rows are used by
-    another list (for example Equipment Codes used by the Electrical Equipment
-    List) is refused, with the reason, until that list is reset or changed.
+- **Reset the Load List** (`POST /api/loadlist/reset`): a **Reset…** button on
+  the Load List, and under the open project on the **Projects** page. A dialog
+  asks what to reset and has to be confirmed before anything changes.
+  - **Everything**: every remembered row is forgotten, with the plant areas,
+    load types, panels, supplies and cable details people set and the rows kept
+    as deleted. The list is built again from the imports.
+  - **Only these**: the rows stay, and what is ticked is cleared on all of
+    them: plant areas people chose, load types people chose, distribution
+    panels and supplied from, cable details, rows kept as deleted.
+  - Either way the MEL and EEL imports are read again afterwards, so what their
+    latest files give is filled in automatically. The import files, rules and
+    mappings are not touched, and rows of the Electrical Equipment List keep
+    what that list sets (only their cable details can be cleared).
+  - It can't be undone; the change log records the reset and how many rows it
+    changed.
 - **Distribution Panels**: the schedule of each distribution board, three-phase
   or single-phase, shown as the switchboard or as a single line diagram. Its
   circuits are the Load List rows supplied from the panel. See

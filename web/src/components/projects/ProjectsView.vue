@@ -5,7 +5,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { clientIdentity, runningInTauri } from '../../lib/engine';
 import { type ProjectDetail, useProjects } from '../../stores/projects';
 import MemberList from './MemberList.vue';
-import ListResets from '../keylists/ListResets.vue';
+import LoadListReset from '../keylists/LoadListReset.vue';
 
 // Administrators: create projects, choose who may open each one, rename and archive.
 const pr = useProjects();
@@ -142,16 +142,15 @@ watch(() => pr.all, () => { if (selectedId.value && !selected.value) pick(null);
 				</div>
 			</form>
 			<div class="project-resets">
-				<h3>Reset project lists</h3>
+				<h3>Reset the Load List</h3>
 				<template v-if="selected.id === pr.currentId">
 					<p class="hint">
-						Empty one of this project's lists and start it again. Resetting the <strong>Load List</strong> forgets its rows and
-						reads the MEL and EEL imports again. A list whose rows are used by another list can't be reset until that one is:
-						start from the top. You are asked to confirm each one.
+						Start this project's Load List again from its MEL and EEL imports: all of it, or only the plant areas, load types,
+						panels and supplies, cable details or deleted rows. You choose what goes and confirm before anything changes.
 					</p>
-					<ListResets :project="selected.name" />
+					<LoadListReset :project="selected.name" />
 				</template>
-				<p v-else class="hint">Open this project to reset its lists.</p>
+				<p v-else class="hint">Open this project to reset its Load List.</p>
 			</div>
 		</section>
 

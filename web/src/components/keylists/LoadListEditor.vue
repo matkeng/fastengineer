@@ -2,7 +2,7 @@
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
 import ListWorkbook from './ListWorkbook.vue';
-import ListResets from './ListResets.vue';
+import LoadListReset from './LoadListReset.vue';
 import { useProjects } from '../../stores/projects';
 import type { ColumnsConfig } from 'datatables.net';
 import { computed, onBeforeUnmount, ref, toRaw, watch } from 'vue';
@@ -346,7 +346,7 @@ onBeforeUnmount(() => table?.api.destroy());
 			<span class="spacer" />
 			<span v-if="kl.message" class="saved">✓ {{ kl.message }}</span>
 			<ListWorkbook list-id="load-list" name="Load List" />
-			<ListResets only="load-list" :project="projects.current?.name ?? 'this project'" />
+			<LoadListReset :project="projects.current?.name ?? 'this project'" />
 			<button type="button" class="secondary" :disabled="kl.busy" title="Read the imports again" @click="kl.loadLoadList()">Refresh</button>
 		</div>
 		<p v-if="kl.error && !bulk" class="error">{{ kl.error }}</p>
