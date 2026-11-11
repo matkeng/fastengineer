@@ -547,6 +547,33 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
   switch between lists.
 - A new project starts with empty lists; copying standards from another
   project does not copy them.
+- **Export .xlsx / Import .xlsx** on every list
+  (`keylists/workbooks.py`, API `/api/list-workbooks/{list}/export` and
+  `/import`; the PLC List has its own workbook). The export is the saved list,
+  one sheet per kind of row, with names instead of ids: a plant area by its tag
+  number, a load type by its code, a package by its number.
+  - **Import replaces the list with the file.** You first see what the file
+    holds (how many rows are new, how many of the list are missing from it and
+    would be removed, and anything that could not be matched); nothing changes
+    until you confirm.
+  - Rows are matched to the list by name (tag number, code, number) and keep
+    their identity, so the Load List, the Electrical Equipment List and the
+    deliverables still point at them. Renaming a row in the file makes it a new
+    row.
+  - A file goes through the same rules as a save in the app: a file with a
+    duplicate, a missing required value, or without a row that is in use
+    elsewhere is refused, and the list is left as it was.
+  - **Load Types** has a sheet for the list and one for each deliverable list's
+    rows; a rows sheet left out of the file leaves those rows as they are.
+    Attached PDFs are not in the workbook and stay with their load types.
+  - **Load List**: its rows come from the imports, so a file never adds or
+    removes rows. Rows are matched by Source and Key, and only the plant area,
+    load type, distribution panel, supplied from and cable columns are read
+    (the Electrical Equipment List's rows: the cable columns only). Each changed
+    row is in the change log; a change that breaks a rule is refused for that
+    row and reported.
+  - **Distribution Panels**: sheets Panels, Circuits (a row per pole) and
+    Headings. A circuit names its load by tag.
 - **Distribution Panels**: the schedule of each distribution board, three-phase
   or single-phase, shown as the switchboard or as a single line diagram. Its
   circuits are the Load List rows supplied from the panel. See

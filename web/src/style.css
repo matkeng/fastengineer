@@ -1081,3 +1081,4 @@ main.fill .key-dp { overflow: auto; }
 .sld .branch.bad text.t-strong { fill: var(--warn); }
 .sld .group rect { fill: color-mix(in srgb, var(--accent) 6%, transparent); stroke: var(--muted); stroke-width: 1; stroke-dasharray: 5 4; }
 .dl-summary { gap: 6px; flex-wrap: wrap; margin: 8px 0 0; }
+.list-workbook { display: inline-flex; align-items: center; gap: 6px; } .list-workbook > .saved, .list-workbook > .warn { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }

@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import ListWorkbook from './ListWorkbook.vue';
 import type { ColumnsConfig } from 'datatables.net';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
@@ -201,6 +202,7 @@ const BYS: { field: Ref; title: string }[] = [
 			<span class="hint small">{{ items.length }} item(s), each also a row of the Load List. Click a row to edit or delete it.</span>
 			<span class="spacer" />
 			<HistoryButton entity="eel" record-id="eel" label="Electrical Equipment List" />
+			<ListWorkbook list-id="eel" name="Electrical Equipment List" />
 			<button type="button" @click="open(null)">Add equipment</button>
 		</div>
 		<p v-if="kl.error && !editing" class="error">{{ kl.error }}</p>

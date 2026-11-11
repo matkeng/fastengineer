@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import ListWorkbook from './ListWorkbook.vue';
 import type { ColumnsConfig } from 'datatables.net';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
@@ -157,6 +158,7 @@ onBeforeUnmount(() => table?.api.destroy());
 			<span v-if="kl.message" class="saved">✓ {{ kl.message }}</span>
 			<button type="button" class="secondary" :disabled="kl.busy" title="Add back any of the default cable types that are not in the list; nothing else changes" @click="addDefaults">Add missing defaults</button>
 			<HistoryButton entity="cable_types" record-id="cable-types" label="Cable Types" />
+			<ListWorkbook list-id="cable-types" name="Cable Types" />
 			<button type="button" @click="open(null)">Add cable type</button>
 		</div>
 		<p v-if="kl.error && !editing" class="error">{{ kl.error }}</p>

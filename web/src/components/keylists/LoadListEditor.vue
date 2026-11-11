@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import ListWorkbook from './ListWorkbook.vue';
 import type { ColumnsConfig } from 'datatables.net';
 import { computed, onBeforeUnmount, ref, toRaw, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
@@ -341,6 +342,7 @@ onBeforeUnmount(() => table?.api.destroy());
 			</span>
 			<span class="spacer" />
 			<span v-if="kl.message" class="saved">✓ {{ kl.message }}</span>
+			<ListWorkbook list-id="load-list" name="Load List" />
 			<button type="button" class="secondary" :disabled="kl.busy" title="Read the imports again" @click="kl.loadLoadList()">Refresh</button>
 		</div>
 		<p v-if="kl.error && !bulk" class="error">{{ kl.error }}</p>

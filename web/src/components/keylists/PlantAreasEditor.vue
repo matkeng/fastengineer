@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import ListWorkbook from './ListWorkbook.vue';
 import HistoryButton from '../audit/HistoryButton.vue';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { AREA_TYPES, type PlantArea, nextAreaType, plantAreaMatches, plantAreaProblems } from '../../lib/keyListTypes';
@@ -187,6 +188,7 @@ onMounted(expandAll);
 			<span v-if="kl.areasDirty" class="unsaved">● Unsaved changes</span>
 			<span v-else-if="kl.message" class="saved">✓ {{ kl.message }}</span>
 			<HistoryButton entity="plant_areas" record-id="plant-areas" label="Plant Areas" />
+			<ListWorkbook list-id="plant-areas" name="Plant Areas" :unsaved="kl.areasDirty" />
 			<button type="button" class="secondary" :disabled="!kl.areasDirty || kl.busy" @click="kl.discard()">Discard</button>
 			<button type="button" :disabled="!kl.areasDirty || kl.busy || problemCount > 0" @click="kl.saveAreas()">Save</button>
 		</div>

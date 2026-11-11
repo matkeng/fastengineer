@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import ListWorkbook from './ListWorkbook.vue';
 import HistoryButton from '../audit/HistoryButton.vue';
 import { computed, nextTick, ref } from 'vue';
 import {
@@ -99,6 +100,7 @@ const label = (p: EquipmentPackage) => [p.number, p.description].filter(Boolean)
 			<span v-if="kl.packagesDirty" class="unsaved">● Unsaved changes</span>
 			<span v-else-if="kl.message" class="saved">✓ {{ kl.message }}</span>
 			<HistoryButton entity="equipment_packages" record-id="equipment-packages" label="Equipment Packages" />
+			<ListWorkbook list-id="equipment-packages" name="Equipment Packages" :unsaved="kl.packagesDirty" />
 			<button type="button" class="secondary" :disabled="!kl.packagesDirty || kl.busy" @click="kl.discard()">Discard</button>
 			<button type="button" :disabled="!kl.packagesDirty || kl.busy || problemCount > 0" @click="kl.savePackages()">Save</button>
 		</div>

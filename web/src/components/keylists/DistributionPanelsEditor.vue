@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import ListWorkbook from './ListWorkbook.vue';
 // Distribution Panels: the schedule of each distribution board. A panel is linked to a
 // distribution panel of the Load List, whose loads are its circuits; each is put on a way
 // (and, on a three-phase panel, a red, white or blue row) with its circuit breaker. The
@@ -169,6 +170,7 @@ function applyHeading(remove = false) {
 			<span v-if="g.message" class="saved">✓ {{ g.message }}</span>
 			<span v-if="g.panelsDirty" class="unsaved">● Unsaved</span>
 			<HistoryButton entity="distribution_panels" record-id="distribution-panels" label="Distribution Panels" />
+			<ListWorkbook list-id="distribution-panels" name="Distribution Panels" :unsaved="g.panelsDirty" />
 			<button type="button" class="secondary" :disabled="!g.panelsDirty || g.busy" @click="g.discard()">Discard</button>
 			<button type="button" :disabled="!g.panelsDirty || g.busy || errorList.length > 0" @click="g.savePanels()">Save</button>
 		</div>

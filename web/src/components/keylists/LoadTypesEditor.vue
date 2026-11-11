@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import ListWorkbook from './ListWorkbook.vue';
 import type { ColumnsConfig } from 'datatables.net';
 import { invoke } from '@tauri-apps/api/core';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -297,6 +298,7 @@ onBeforeUnmount(() => {
 			<span class="hint small">{{ items.length }} load type(s). Click a row to edit or delete it.</span>
 			<span class="spacer" />
 			<HistoryButton entity="load_types" record-id="load-types" label="Load Types" />
+			<ListWorkbook list-id="load-types" name="Load Types" />
 			<button type="button" @click="open(null)">Add load type</button>
 		</div>
 		<p v-if="kl.error && !editing" class="error">{{ kl.error }}</p>

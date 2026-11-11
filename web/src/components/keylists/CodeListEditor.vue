@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
+import ListWorkbook from './ListWorkbook.vue';
 import type { ColumnsConfig } from 'datatables.net';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
@@ -140,6 +141,7 @@ onBeforeUnmount(() => table?.api.destroy());
 			<span class="hint small">{{ items.length }} {{ cfg.noun }}(s). Click a row to edit or delete it.</span>
 			<span class="spacer" />
 			<HistoryButton :entity="cfg.entity" :record-id="listId" :label="cfg.title" />
+			<ListWorkbook :list-id="listId" :name="cfg.title" />
 			<button type="button" @click="open(null)">Add {{ cfg.noun }}</button>
 		</div>
 		<p v-if="kl.error && !editing" class="error">{{ kl.error }}</p>

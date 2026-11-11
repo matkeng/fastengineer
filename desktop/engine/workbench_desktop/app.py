@@ -28,6 +28,7 @@ from .loadlist_api import router as loadlist_router
 from .eel_api import router as eel_router
 from .plc_api import router as plc_router
 from .distribution_panels_api import router as distribution_panels_router
+from .keylist_workbooks_api import router as keylist_workbooks_router
 from .deliverables_api import router as deliverables_router
 from .projects_api import router as projects_router
 from .sample_api import router as sample_router
@@ -105,6 +106,7 @@ app.include_router(loadlist_router)
 app.include_router(eel_router)
 app.include_router(plc_router)
 app.include_router(distribution_panels_router)
+app.include_router(keylist_workbooks_router)
 app.include_router(deliverables_router)
 app.include_router(symbols_router)
 app.include_router(generators_router)
