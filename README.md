@@ -487,7 +487,8 @@ You don't create or name them: each project has one of each.
   - These rows are for the **Instrument generator**, which is not available
     yet: nothing is produced from them today. The tags offered are the columns
     of the **Instrument Runsheet** (`<<STD>>`, `<<Area>>`, `<<MECH>>`, `<<SUF>>`,
-    `<<PID>>`, `<<VIA_MB>>`, `<<CONF>>`, `<<Rack>>`, `<<#1>>` to `<<#35>>`).
+    `<<PID>>`, `<<VIA_MB>>`, `<<CONF>>`, `<<Rack>>`, and `<<#1>>`, `<<#2>>`, … for
+    as many numbers as the runsheet has).
   - In the list's workbook each list's rows are a sheet ("Cable Schedule rows",
     ...) with an **Equipment type** column; a rows sheet left out of a file
     leaves those rows as they are.
@@ -642,7 +643,7 @@ You don't create or name them: each project has one of each.
   | IO via MARSHALLING BOX | `<<VIA_MB>>` | text |
   | Confirmed | `<<CONF>>` | TRUE or FALSE (blank is FALSE) |
   | PLC Rack Num | `<<Rack>>` | text |
-  | #1 to #35 | `<<#1>>` to `<<#35>>` | text, kept exactly as typed |
+  | #1, #2, … | `<<#1>>`, `<<#2>>`, … | text, kept exactly as typed |
 
   - The three references **must match for the list to be saved** (ignoring
     case and extra spaces). A cell that matches nothing is marked as you type,
@@ -650,10 +651,15 @@ You don't create or name them: each project has one of each.
   - The equipment type and the area are kept by identity: renaming one changes
     nothing here, and one that a row uses can't be deleted. The parent is kept
     as its tag.
+  - The **number columns are not fixed at 35**. The grid starts with #1 to #35;
+    **+ 5 # columns** adds more, and so does pasting rows that are wider. Once
+    saved, the list has as many number columns as its widest row uses (35 at
+    least, 500 at most), and `<<#36>>`, `<<#37>>`, … are offered as tags.
   - Rows may repeat and keep their order. A row with nothing in it is dropped.
   - The tags are what an **equipment type's rows** (its **Lists**) are filled in
     with, so that is the set its tag picker offers.
-  - Export .xlsx / Import .xlsx: one sheet with these 43 headings. An import
+  - Export .xlsx / Import .xlsx: one sheet with these headings (as many # columns
+    as the list has; a file may have more). An import
     replaces the rows and goes through the same must-match rule.
 - **MEL** (`GET /api/mel-list`): every row of the latest file of every **MEL
   import**, with its columns as the import's column rules leave them. It is

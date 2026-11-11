@@ -10,8 +10,8 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from workbench_core.keylists.instrument_runsheet import (COLUMNS, InstrumentRunsheet, TypedRow, as_typed, check_runsheet, index,
-                                                         problems, row_label)
+from workbench_core.keylists.instrument_runsheet import (MAX_NUMBERS, InstrumentRunsheet, TypedRow, as_typed, check_runsheet, columns,
+                                                         index, number_count, problems, row_label)
 from workbench_core.refdata import RefValidationError, name_key
 
 from .loadlist_api import mel_tags
@@ -29,7 +29,8 @@ class Column(BaseModel):
 
 class RunsheetView(BaseModel):
     rows: list[TypedRow]  # one text per column
-    columns: list[Column]
+    columns: list[Column]  # with as many number columns as the widest row uses (35 at least)
+    max_numbers: int = MAX_NUMBERS  # the most number columns a runsheet can have
     equipment_types: list[str]  # the names an Equipment Type Ref can be
     areas: list[str]  # the tag numbers an Area Ref can be
     parents: list[str]  # the tags a Parent Equipment Ref can be (Electrical Equipment List and MEL)
@@ -71,7 +72,8 @@ def _view(sheet: InstrumentRunsheet) -> RunsheetView:
     k = known()
     rows = as_typed(sheet, dict(k.types), dict(k.areas))
     _, errors = problems(rows, index(k.types), index(k.areas), {name_key(p): p for p in k.parents})
-    return RunsheetView(rows=rows, columns=[Column(key=c[0], heading=c[1], tag=c[2]) for c in COLUMNS],
+    return RunsheetView(rows=rows, columns=[Column(key=c[0], heading=c[1], tag=c[2]) for c in columns(number_count(sheet))],
+                        max_numbers=MAX_NUMBERS,
                         equipment_types=[n for _, n in k.types], areas=[t for _, t in k.areas], parents=k.parents, errors=errors,
                         updated_at=sheet.updated_at and sheet.updated_at.isoformat())
 

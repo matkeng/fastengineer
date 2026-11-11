@@ -618,17 +618,21 @@ def import_distribution_panels(sheets: dict[str, Rows], old: DistributionPanelLi
 def export_instrument_runsheet(rows: list) -> Sheets:
     """`rows`: the runsheet as typed (instrument_runsheet.TypedRow). Numbers are written as text,
     exactly as they were typed (a leading zero stays)."""
-    from .instrument_runsheet import HEADINGS
+    from .instrument_runsheet import FIXED, headings
 
-    return [("Instrument Runsheet", [list(HEADINGS)] + [[c if c != "" else None for c in r.cells] for r in rows])]
+    numbers = max([0] + [len(r.cells) - len(FIXED) for r in rows])  # as many number columns as the rows have (35 or more)
+    return [("Instrument Runsheet", [headings(numbers)] + [[c if c != "" else None for c in r.cells] for r in rows])]
 
 
 def import_instrument_runsheet(sheets: dict[str, Rows]) -> Parsed:
     """The payload is the rows as typed; the engine resolves and checks their references."""
-    from .instrument_runsheet import HEADINGS, TypedRow
+    from .instrument_runsheet import HEADINGS, MAX_NUMBERS, TypedRow, headings
 
     file = _sheet(sheets, "Instrument Runsheet", tuple(HEADINGS[:3]))
-    rows = [TypedRow(cells=[_get(r, h) for h in HEADINGS]) for r in file]
+    # the file's number columns: #1, #2, ... up to the highest it has (it can have more than 35)
+    found = [int(h[1:]) for h in (file[0] if file else {}) if h.startswith("#") and h[1:].isdigit()]
+    heads = headings(min(max(found, default=0), MAX_NUMBERS + 1))
+    rows = [TypedRow(cells=[_get(r, h) for h in heads]) for r in file]
     return Parsed(rows, [], labels={r.id: f"Row {n}" for n, r in enumerate(rows, start=1)})
 
 

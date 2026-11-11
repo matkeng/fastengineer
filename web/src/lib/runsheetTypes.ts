@@ -10,7 +10,12 @@ export interface RunsheetView {
 	/** What the three reference columns can be. */
 	equipment_types: string[]; areas: string[]; parents: string[];
 	errors: Record<string, string>; updated_at: string | null;
+	/** The most number columns (#1, #2, ...) a runsheet can have. `columns` has 35, or as many as the widest saved row uses. */
+	max_numbers: number;
 }
+/** The columns before the numbers. */
+export const FIXED_COLUMNS = 8;
+export const numberColumn = (n: number): RunsheetColumn => ({ key: String(n), heading: `#${n}`, tag: `<<#${n}>>` });
 
 export interface MelRow { source: string; recipe_id: string; key: string; tag: string; in_load_list: boolean; values: Record<string, string> }
 export interface MelList { headers: string[]; rows: MelRow[]; sources: { id: string; name: string; rows: number; has_file: boolean }[]; warnings: string[] }

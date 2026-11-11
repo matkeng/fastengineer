@@ -6,7 +6,8 @@ One row is one instrument assembly: which equipment type it is (an Equipment Typ
 Equipment Packages list, whose predefined rows say what it adds to each deliverable list),
 which plant area it is in, the equipment it belongs to, and the values those rows are filled
 in with: a name suffix, the P&ID, the marshalling box its IO goes through, whether it is
-confirmed, its PLC rack, and up to 35 numbers.
+confirmed, its PLC rack, and its numbers: #1, #2, ... The runsheet shows 35 number columns to
+start with and as many more as its widest row uses (up to MAX_NUMBERS).
 
 The three references must exist for the list to be saved: the equipment type by its name, the
 area by its tag number, and the parent equipment by its tag in the Electrical Equipment List
@@ -15,7 +16,7 @@ parent is kept as its tag. Rows may repeat (the same type on the same equipment 
 different numbers) and keep their order.
 
 In an equipment type's rows, each column is a tag: <<STD>>, <<Area>>, <<MECH>>, <<SUF>>,
-<<PID>>, <<VIA_MB>>, <<CONF>>, <<Rack>> and <<#1>> to <<#35>>.
+<<PID>>, <<VIA_MB>>, <<CONF>>, <<Rack>> and <<#1>>, <<#2>>, ... for the numbers.
 """
 
 from __future__ import annotations
@@ -27,9 +28,11 @@ from pydantic import BaseModel, Field
 from ..refdata.models import RefValidationError, new_id
 from ..refdata.validate import name_key
 
+#: Number columns a runsheet always shows; a row can have more, and then every row shows that many.
 NUMBERS = 35
-#: (key, heading, tag, what the tag stands for), in the runsheet's column order.
-COLUMNS: list[tuple[str, str, str, str]] = [
+MAX_NUMBERS = 500
+#: (key, heading, tag, what the tag stands for) of the columns before the numbers.
+FIXED: list[tuple[str, str, str, str]] = [
     ("equipment_type", "Equipment Type Ref", "<<STD>>", "the name of the row's equipment type"),
     ("area", "Area Ref", "<<Area>>", "the tag number of its plant area"),
     ("parent", "Parent Equipment Ref", "<<MECH>>", "the tag of the equipment it belongs to"),
@@ -38,11 +41,28 @@ COLUMNS: list[tuple[str, str, str, str]] = [
     ("via_mb", "IO via MARSHALLING BOX", "<<VIA_MB>>", "the marshalling box its IO goes through"),
     ("confirmed", "Confirmed", "<<CONF>>", "TRUE or FALSE"),
     ("rack", "PLC Rack Num", "<<Rack>>", "its PLC rack number"),
-] + [(str(n), f"#{n}", f"<<#{n}>>", f"its number {n}") for n in range(1, NUMBERS + 1)]
+]
+
+
+def columns(numbers: int = NUMBERS) -> list[tuple[str, str, str, str]]:
+    """The runsheet's columns, in order, with `numbers` number columns (at least NUMBERS)."""
+    return FIXED + [(str(n), f"#{n}", f"<<#{n}>>", f"its number {n}") for n in range(1, max(numbers, NUMBERS) + 1)]
+
+
+def headings(numbers: int = NUMBERS) -> list[str]:
+    return [c[1] for c in columns(numbers)]
+
+
+def tags(numbers: int = NUMBERS) -> list[tuple[str, str]]:
+    """The tags an equipment type's rows can use: (tag, what it stands for)."""
+    return [(c[2], c[3]) for c in columns(numbers)]
+
+
+#: The columns, headings and tags of a runsheet with the usual 35 numbers.
+COLUMNS = columns()
 KEYS: list[str] = [c[0] for c in COLUMNS]
-HEADINGS: list[str] = [c[1] for c in COLUMNS]
-#: The tags an equipment type's rows can use: (tag, what it stands for).
-TAGS: list[tuple[str, str]] = [(c[2], c[3]) for c in COLUMNS]
+HEADINGS: list[str] = headings()
+TAGS: list[tuple[str, str]] = tags()
 _TRUE = ("true", "yes", "y", "1", "x")
 _FALSE = ("false", "no", "n", "0", "")
 
@@ -57,7 +77,7 @@ class RunsheetRow(BaseModel):
     via_mb: str = ""
     confirmed: bool = False
     rack: str = ""
-    numbers: list[str] = Field(default_factory=lambda: [""] * NUMBERS)  # "#1".."#35", as typed
+    numbers: list[str] = Field(default_factory=list)  # "#1", "#2", ... as typed, up to the last one that has a value
 
 
 class InstrumentRunsheet(BaseModel):
@@ -66,7 +86,8 @@ class InstrumentRunsheet(BaseModel):
 
 
 class TypedRow(BaseModel):
-    """A row as it is typed, pasted or read from a workbook: one text per column (see KEYS)."""
+    """A row as it is typed, pasted or read from a workbook: one text per column (see columns();
+    it may have more number cells than the usual 35, or fewer cells than there are columns)."""
     id: str = Field(default_factory=new_id)
     cells: list[str | int | float | bool | None] = Field(default_factory=list)  # a number or TRUE/FALSE is read as its text
 
@@ -100,8 +121,13 @@ def problems(rows: list[TypedRow], types: dict[str, str], areas: dict[str, str],
     out: list[RunsheetRow] = []
     ids: set[str] = set()
     for raw in rows:
-        cells = [_text(c) for c in raw.cells[:len(KEYS)]] + [""] * (len(KEYS) - len(raw.cells))
-        v = dict(zip(KEYS, cells))
+        fixed = len(FIXED)
+        cells = [_text(c) for c in raw.cells] + [""] * (fixed - len(raw.cells))
+        v = dict(zip(KEYS, cells[:fixed]))
+        numbers = cells[fixed:]
+        while numbers and not numbers[-1]:  # kept up to the last number that has a value
+            numbers.pop()
+        v["numbers"] = "x" if numbers else ""  # (so a row with only numbers is not taken as blank)
         if not any(text for key, text in v.items() if key != "confirmed"):  # a blank row (its Confirmed alone is nothing)
             continue
         rid = raw.id if raw.id and raw.id not in ids else new_id()
@@ -122,8 +148,15 @@ def problems(rows: list[TypedRow], types: dict[str, str], areas: dict[str, str],
         out.append(RunsheetRow(
             id=rid, equipment_type_id=found["equipment_type"] or "", plant_area_id=found["area"] or "",
             parent_tag=found["parent"] or v["parent"], suffix=v["suffix"], pid=v["pid"], via_mb=v["via_mb"],
-            confirmed=flag in _TRUE, rack=v["rack"], numbers=[v[str(n)] for n in range(1, NUMBERS + 1)]))
+            confirmed=flag in _TRUE, rack=v["rack"], numbers=numbers[:MAX_NUMBERS]))
+        if len(numbers) > MAX_NUMBERS:
+            errors[f"{rid}.{MAX_NUMBERS}"] = f"A row has at most {MAX_NUMBERS} numbers"
     return out, errors
+
+
+def number_count(runsheet: InstrumentRunsheet) -> int:
+    """How many number columns the runsheet shows: 35, or as many as its widest row uses."""
+    return max([NUMBERS] + [len(r.numbers) for r in runsheet.rows])
 
 
 def check_runsheet(rows: list[TypedRow], types: dict[str, str], areas: dict[str, str], parents: dict[str, str]) -> InstrumentRunsheet:
@@ -135,12 +168,14 @@ def check_runsheet(rows: list[TypedRow], types: dict[str, str], areas: dict[str,
 
 
 def as_typed(runsheet: InstrumentRunsheet, type_names: dict[str, str], area_tags: dict[str, str]) -> list[TypedRow]:
-    """The saved rows as text, one per column. `type_names`: equipment type id -> name;
+    """The saved rows as text, one per column, every row as wide as the widest (and at least
+    the usual 35 numbers). `type_names`: equipment type id -> name;
     `area_tags`: plant area id -> tag number. (A type or area that is gone shows blank: it then
     has to be chosen again before the list can be saved.)"""
+    n = number_count(runsheet)
     return [TypedRow(id=r.id, cells=[
         type_names.get(r.equipment_type_id, ""), area_tags.get(r.plant_area_id, ""), r.parent_tag, r.suffix, r.pid, r.via_mb,
-        "TRUE" if r.confirmed else "FALSE", r.rack, *(r.numbers + [""] * NUMBERS)[:NUMBERS]]) for r in runsheet.rows]
+        "TRUE" if r.confirmed else "FALSE", r.rack, *(r.numbers + [""] * n)[:n]]) for r in runsheet.rows]
 
 
 def row_label(row: TypedRow, number: int) -> str:

@@ -2,8 +2,9 @@
 # Copyright (C) 2026 Matthew Kelly
 import pytest
 
-from workbench_core.keylists.instrument_runsheet import (COLUMNS, HEADINGS, KEYS, TAGS, InstrumentRunsheet, TypedRow, as_typed,
-                                                         check_runsheet, index, problems, row_label)
+from workbench_core.keylists.instrument_runsheet import (COLUMNS, HEADINGS, KEYS, MAX_NUMBERS, TAGS, InstrumentRunsheet, TypedRow,
+                                                         as_typed, check_runsheet, columns, headings, index, number_count,
+                                                         problems, row_label, tags)
 from workbench_core.refdata import RefValidationError
 
 TYPES = index([("t1", "Startup Siren - Single"), ("t2", "PRIMARY CRUSHER")])
@@ -33,7 +34,7 @@ def test_rows_are_resolved_and_kept_as_typed() -> None:
     first = sheet.rows[0]
     assert (first.equipment_type_id, first.plant_area_id, first.parent_tag, first.pid, first.confirmed, first.rack) == (
         "t2", "a1", "3510-CR3001", "3510-P-PID-507", True, "1001")
-    assert first.numbers[:4] == ["10441", "10442", "0045", ""] and len(first.numbers) == 35
+    assert first.numbers == ["10441", "10442", "0045"]  # kept up to the last one with a value
     assert (sheet.rows[1].via_mb, sheet.rows[1].suffix, sheet.rows[1].confirmed, sheet.rows[2].confirmed) == ("**CV**-CPL1", "A", False, False)
 
     typed = as_typed(sheet, {"t1": "Startup Siren - Single", "t2": "PRIMARY CRUSHER"}, {"a1": "3510"})
@@ -53,3 +54,18 @@ def test_the_three_references_must_match() -> None:
         check_runsheet(rows, TYPES, AREAS, PARENTS)
     assert exc.value.fields == errors
     assert check_runsheet([], TYPES, AREAS, PARENTS) == InstrumentRunsheet()
+
+
+def test_the_numbers_can_go_past_35() -> None:
+    assert len(columns()) == 43 and len(columns(10)) == 43 and headings(40)[-1] == "#40" and tags(36)[-1][0] == "<<#36>>"
+    wide = _row("w", "PRIMARY CRUSHER", "3510", "3510-CR3001", "", "", "", "", "", *[str(10400 + n) for n in range(1, 41)])
+    short = _row("s", "Startup Siren - Single", "3510", "3510-CV3002", "", "", "", "", "", "1", "", "3", "", "")
+    only_numbers = _row("n", "", "", "", "", "", "", "", "", "", "7")  # not a blank row: its refs are then required
+    sheet = check_runsheet([wide, short], TYPES, AREAS, PARENTS)
+    assert (len(sheet.rows[0].numbers), sheet.rows[0].numbers[39], sheet.rows[1].numbers) == (40, "10440", ["1", "", "3"])
+    assert number_count(sheet) == 40 and number_count(InstrumentRunsheet()) == 35
+    typed = as_typed(sheet, {"t1": "Startup Siren - Single", "t2": "PRIMARY CRUSHER"}, {"a1": "3510"})
+    assert [len(r.cells) for r in typed] == [48, 48] and typed[1].cells[8:12] == ["1", "", "3", ""]
+    assert set(problems([only_numbers], TYPES, AREAS, PARENTS)[1]) == {"n.equipment_type", "n.area", "n.parent"}
+    too_wide = _row("x", "PRIMARY CRUSHER", "3510", "3510-CR3001", "", "", "", "", "", *["1"] * (MAX_NUMBERS + 1))
+    assert set(problems([too_wide], TYPES, AREAS, PARENTS)[1]) == {f"x.{MAX_NUMBERS}"}

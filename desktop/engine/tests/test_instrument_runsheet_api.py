@@ -105,3 +105,25 @@ def test_the_mel_list_is_every_row_of_the_imports_read_only() -> None:
     sheet = client.post("/api/list-workbooks/instrument-runsheet/export", json={}).content
     ws = load_workbook(io.BytesIO(sheet))["Instrument Runsheet"]
     assert ws["A1"].value == "Equipment Type Ref" and ws["AQ1"].value == "#35" and ws["I2"].value == "10101" and ws.max_row == 4
+
+
+def test_more_than_35_numbers() -> None:
+    client.post("/api/sample-data")
+    rows = client.get(URL).json()["rows"]
+    rows[0]["cells"] = rows[0]["cells"][:8] + [str(n) for n in range(1, 39)]  # 38 numbers on one row
+    saved = client.put(URL, json={"rows": rows})
+    assert saved.status_code == 200, saved.text
+    view = saved.json()
+    assert len(view["columns"]) == 8 + 38 and view["columns"][-1] == {"key": "38", "heading": "#38", "tag": "<<#38>>"}
+    assert [len(r["cells"]) for r in view["rows"]] == [46, 46, 46] and view["rows"][0]["cells"][-1] == "38" and view["max_numbers"] == 500
+    assert client.get("/api/keylists/load-types/lists").json()["instrument_tags"][-1]["tag"] == "<<#38>>"
+
+    data = client.post("/api/list-workbooks/instrument-runsheet/export", json={}).content
+    ws = load_workbook(io.BytesIO(data))["Instrument Runsheet"]
+    assert ws.max_column == 46 and ws.cell(1, 46).value == "#38" and ws.cell(2, 46).value == "38"
+    assert client.put(URL, json={"rows": []}).status_code == 200
+    back = client.post("/api/list-workbooks/instrument-runsheet/import", params={"filename": "r.xlsx", "apply": True}, content=data)
+    assert back.status_code == 200 and back.json()["applied"], back.text
+    assert client.get(URL).json()["rows"][0]["cells"][-1] == "38"
+    rows[0]["cells"] = rows[0]["cells"][:8] + ["1"]  # narrower again: back to the usual 35 columns
+    assert len(client.put(URL, json={"rows": rows}).json()["columns"]) == 43

@@ -32,6 +32,7 @@ const props = withDefaults(defineProps<{
 	tagSuggestions?: string[]; // offered after typing "<<"
 	canEditRows?: boolean;
 	height?: number;
+	growColumns?: boolean; // a paste wider than the grid is passed on whole: the parent adds the columns
 }>(), { canEditRows: true, height: 0 });
 
 const emit = defineEmits<{
@@ -360,7 +361,7 @@ function onPaste(e: ClipboardEvent) {
 		data.forEach((vals, i) => vals.forEach((v, j) => {
 			const r = r1 + i;
 			const c = c1 + j;
-			if (c < nCols.value && !props.columns[c]?.readonly && (r < nRows.value || props.canEditRows)) edits.push({ r, c, value: v });
+			if ((c < nCols.value || props.growColumns) && !props.columns[c]?.readonly && (r < nRows.value || props.canEditRows)) edits.push({ r, c, value: v });
 		}));
 	}
 	void nextTick(() => {

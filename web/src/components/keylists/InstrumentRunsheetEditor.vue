@@ -5,10 +5,11 @@
 // paste from Excel). A row names an equipment type, a plant area and its parent equipment;
 // all three must exist before the list can be saved, so a cell that matches nothing is marked
 // as soon as it is typed. The rest of the row is what the equipment type's rows are filled
-// in with: suffix, P&ID, marshalling box, confirmed, PLC rack and the numbers #1 to #35.
-import { computed, ref } from 'vue';
+// in with: suffix, P&ID, marshalling box, confirmed, PLC rack and the numbers #1, #2, ... There
+// are 35 number columns to start with; more are added with a button, or by pasting wider rows.
+import { computed, ref, watch } from 'vue';
 import { newId } from '../../lib/genTypes';
-import { filledRows, runsheetProblems, type TypedRow } from '../../lib/runsheetTypes';
+import { FIXED_COLUMNS, filledRows, numberColumn, runsheetProblems, type RunsheetColumn, type TypedRow } from '../../lib/runsheetTypes';
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
@@ -17,9 +18,20 @@ import ListWorkbook from './ListWorkbook.vue';
 const kl = useKeyLists();
 const view = computed(() => kl.runsheetView!);
 const rows = computed(() => kl.runsheetDraft ?? []);
-const n = computed(() => view.value.columns.length);
+// Number columns: what is saved (35 at least), what the rows being edited use, and any added here.
+const added = ref(0);
+const numbers = computed(() => Math.min(view.value.max_numbers, Math.max(
+	view.value.columns.length - FIXED_COLUMNS, added.value, ...rows.value.map((r) => lastValue(r) - FIXED_COLUMNS))));
+const lastValue = (r: TypedRow) => r.cells.reduce((last, c, i) => ((c ?? '').trim() ? i + 1 : last), 0);
+const cols = computed((): RunsheetColumn[] => [
+	...view.value.columns.slice(0, FIXED_COLUMNS), ...Array.from({ length: numbers.value }, (_, i) => numberColumn(i + 1))]);
+const n = computed(() => cols.value.length);
+const canAdd = computed(() => numbers.value < view.value.max_numbers);
+const addNumbers = (count: number) => { added.value = Math.min(view.value.max_numbers, numbers.value + count); };
+// after a save (or a discard) the grid goes back to the columns that are in use
+watch(() => [view.value.updated_at, kl.runsheetDirty], ([, dirty]) => { if (!dirty) added.value = 0; });
 
-const columns = computed((): GridColumn[] => view.value.columns.map((c, i) => ({
+const columns = computed((): GridColumn[] => cols.value.map((c, i) => ({
 	label: c.heading, sub: c.tag,
 	width: i === 0 ? 280 : i === 2 ? 190 : i === 5 ? 190 : i === 4 ? 150 : i === 1 ? 100 : i === 6 ? 90 : i === 3 || i === 7 ? 120 : 76,
 	options: i === 0 ? view.value.equipment_types : i === 1 ? view.value.areas : i === 2 ? view.value.parents : i === 6 ? ['TRUE', 'FALSE'] : undefined,
@@ -32,7 +44,7 @@ const cells = computed(() => rows.value.map((r) => Array.from({ length: n.value 
 // Same rules as the engine, so problems show while typing.
 const problems = computed(() => ({ ...runsheetProblems(rows.value, view.value), ...kl.fieldErrors }));
 const problemCount = computed(() => Object.keys(problems.value).length);
-const errorOf = (r: number, c: number) => problems.value[`${rows.value[r]?.id}.${view.value.columns[c]?.key}`];
+const errorOf = (r: number, c: number) => problems.value[`${rows.value[r]?.id}.${cols.value[c]?.key}`];
 const cellClass = (r: number, c: number) => (errorOf(r, c) ? 'bad-cell' : '');
 const at = ref({ r: 0, c: 0 });
 const here = computed(() => errorOf(at.value.r, at.value.c));
@@ -52,8 +64,9 @@ function setCells(edits: CellEdit[]) {
 	for (const e of edits) {
 		while (list.length <= e.r) list.push(empty()); // a paste that runs past the last row adds rows
 		const row = list[e.r];
-		while (row.cells.length < n.value) row.cells.push('');
-		if (e.c < n.value) row.cells[e.c] = e.c === 6 && e.value.trim() ? e.value.trim().toUpperCase() : e.value.trim();
+		if (e.c >= FIXED_COLUMNS + view.value.max_numbers) continue; // past the most numbers a row can have
+		while (row.cells.length <= Math.max(e.c, n.value - 1)) row.cells.push(''); // a paste wider than the grid adds number columns
+		row.cells[e.c] = e.c === 6 && e.value.trim() ? e.value.trim().toUpperCase() : e.value.trim();
 	}
 }
 const insertRows = (index: number, count: number) => kl.runsheetDraft?.splice(index, 0, ...Array.from({ length: count }, empty));
@@ -68,7 +81,10 @@ function removeRows(idx: number[]) {
 		<div class="mel-head">
 			<span class="kind tree">Key list</span>
 			<h2 class="key-title">Instrument Runsheet</h2>
-			<span class="hint small">{{ counts.rows }} row(s) · {{ counts.confirmed }} confirmed</span>
+			<span class="hint small">{{ counts.rows }} row(s) · {{ counts.confirmed }} confirmed · numbers #1 to #{{ numbers }}</span>
+			<button type="button" class="secondary small" :disabled="!canAdd"
+				:title="canAdd ? 'Add five more number columns at the right (pasting wider rows adds them too)' : `A runsheet has at most ${view.max_numbers} number columns`"
+				@click="addNumbers(5)">+ 5 # columns</button>
 			<span class="spacer" />
 			<span v-if="problemCount" class="warn small">{{ problemCount }} problem(s)</span>
 			<span v-if="kl.runsheetDirty" class="unsaved">● Unsaved changes</span>
@@ -85,11 +101,12 @@ function removeRows(idx: number[]) {
 			tags under the headings are what its equipment type's rows are filled in with. Type in the grid or paste from Excel.
 			The three <strong>ref</strong> columns must match before it can be saved: an <strong>equipment type</strong> of Equipment
 			Packages, a <strong>plant area</strong> tag number, and a tag in the <strong>Electrical Equipment List</strong> or the
-			<strong>MEL</strong>.
+			<strong>MEL</strong>. There are 35 number columns (#1 to #35) to start with: <strong>+ 5 # columns</strong> adds more, and so
+			does pasting rows that are wider. Number columns that no row uses go again when the list is saved.
 		</p>
-		<EditGrid :columns="columns" :cells="cells" :cell-class="cellClass" @set="setCells" @insert="insertRows" @remove="removeRows"
+		<EditGrid :columns="columns" :cells="cells" :cell-class="cellClass" grow-columns @set="setCells" @insert="insertRows" @remove="removeRows"
 			@focus="(r, c) => (at = { r, c })" />
-		<p v-if="here" class="warn small runsheet-here">Row {{ at.r + 1 }}, {{ view.columns[at.c]?.heading }}: {{ here }}</p>
+		<p v-if="here" class="warn small runsheet-here">Row {{ at.r + 1 }}, {{ cols[at.c]?.heading }}: {{ here }}</p>
 		<ul v-else-if="problemCount" class="warn-list">
 			<li v-for="m in firstProblems" :key="m">{{ m }}</li>
 			<li v-if="problemCount > firstProblems.length">and {{ problemCount - firstProblems.length }} more</li>

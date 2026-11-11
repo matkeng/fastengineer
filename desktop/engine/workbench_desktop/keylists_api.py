@@ -192,14 +192,17 @@ class LoadTypesUpdate(BaseModel):
 @router.get("/load-types/lists")
 def load_type_lists() -> dict:
     """The deliverable lists a load type has rows for (with their columns), and the tags a row can use."""
-    from workbench_core.keylists.instrument_runsheet import TAGS as INSTRUMENT_TAGS
+    from workbench_core.keylists.instrument_runsheet import number_count
+    from workbench_core.keylists.instrument_runsheet import tags as instrument_tags
     from workbench_core.keylists.loadgen import LISTS, ROW_SETTINGS, TAGS, TEMPLATE_LISTS
     return {"lists": [{"key": k, "name": LISTS[k].deliverable_type, "columns": list(LISTS[k].columns),
                        "settings": [{"name": n, "values": list(v)} for n, v in ROW_SETTINGS.get(k, {}).items()]}
                       for k in TEMPLATE_LISTS],
             "tags": [{"tag": f"<<{t}>>", "meaning": m} for t, m in TAGS],
             # what an equipment type's rows can use: the columns of the Instrument Runsheet
-            "instrument_tags": [{"tag": t, "meaning": m} for t, m in INSTRUMENT_TAGS]}
+            # (with as many <<#n>> as the runsheet has number columns now; a higher one can be typed)
+            "instrument_tags": [{"tag": t, "meaning": m}
+                                for t, m in instrument_tags(number_count(get_keylists().instrument_runsheet()))]}
 
 
 @router.put("/load-types", response_model=LoadTypeList)
