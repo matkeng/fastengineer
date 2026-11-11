@@ -238,13 +238,28 @@ def test_inputs_export_preview_and_apply(tmp_path: Path):
     assert out["path"].endswith("in.xlsx") and (tmp_path / "in.xlsx").stat().st_size > 2000
 
 
-def test_the_two_generator_types() -> None:
+def test_the_two_generators_fill_the_master_lists() -> None:
     types = client.get("/api/generators/types").json()
-    assert [(t["id"], t["name"], t["available"]) for t in types] == [("power", "Power", True), ("instrument", "Instrument", False)]
-    assert (types[0]["loads"], types[0]["lists"][0]) == (0, {"type": "Cable Schedule", "rows": 0, "deliverables": 0})
+    assert [(t["id"], t["name"], t["available"]) for t in types] == [("power", "Power", True), ("instrument", "Instrument", True)]
+    assert (types[0]["runs"], types[1]["runs"], types[0]["lists"][0]["rows"]) == (0, 0, 0)
     client.post("/api/sample-data")
-    power = client.get("/api/generators/types").json()[0]
-    assert (power["loads"], power["load_types"], power["missing_load_types"]) == (12, 4, [])
-    by = {x["type"]: x for x in power["lists"]}
-    assert list(by) == ["Cable Schedule", "Equipment List", "Instrument List", "PLC I/O List", "Load List"]
-    assert by["Load List"] == {"type": "Load List", "rows": 12, "deliverables": 1} and by["Cable Schedule"]["rows"] > 12
+    power, instrument = client.get("/api/generators/types").json()
+    assert (power["runs"], power["templates"], power["missing"]) == (12, 4, [])
+    assert (instrument["runs"], instrument["templates"], instrument["unconfirmed"]) == (3, 1, 1)
+    assert [x["type"] for x in power["lists"]] == ["Cable Schedule", "Equipment List", "Instrument List", "PLC I/O List"]
+    il = next(x for x in instrument["lists"] if x["key"] == "instrument_list")
+    pl = next(x for x in power["lists"] if x["key"] == "instrument_list")
+    assert (il["master"], il["rows"], il["deliverables"]) == ("Project Master Instrument List", 3, 1)
+    assert il["master_rows"] == pl["master_rows"] == il["rows"] + pl["rows"] and pl["rows"] > 0
+
+    masters = client.get("/api/master").json()
+    assert [m["name"] for m in masters] == ["Project Master Cable Schedule", "Project Master Equipment List",
+                                            "Project Master Instrument List", "Project Master IO List"]
+    m = next(x for x in masters if x["key"] == "plc_io_list")
+    assert (m["instrument_rows"], m["rows"], m["columns"][-2:]) == (3, m["power_rows"] + 3, ["Generator", "Confirmed"])
+    one = client.get("/api/master/plc_io_list").json()
+    assert one["result"]["header"] == m["columns"] and len(one["result"]["rows"]) == m["rows"] and one["warnings"] == []
+    assert one["result"]["rows"][-1]["cells"][-2:] == ["Instrument", "FALSE"]
+    assert client.get("/api/master/nope").status_code == 404
+    data = client.post("/api/master/plc_io_list/export", json={"format": "csv"})
+    assert data.status_code == 200 and data.text.splitlines()[0].lstrip("\ufeff").startswith("Tag,Description")

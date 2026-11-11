@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Matthew Kelly
 """Deliverable generators. The app has two built-in types (see /types): Power, which makes its
-lists from the Project Load List and the load types, and Instrument, which is to come.
+rows from the Project Load List and the load types, and Instrument, which makes its rows from
+the Instrument Runsheet and the equipment types. Both fill the Project Master lists.
 
 Generators made from a generator workbook belong to earlier versions: the app no longer offers
 the import, but the ones a project has can still be edited, checked, built and exported here.
@@ -91,13 +92,18 @@ async def import_file(request: Request, filename: str = Query(...), name: str | 
 
 
 # -- the built-in generators -----------------------------------------------------------------
-# Generators are not made from a workbook any more. There are two types, built into the app:
-# "power" (the Project Load List through the load types' rows) and "instrument" (to come).
+# Generators are not made from a workbook any more. There are two, built into the app, and both
+# write to the same four Project Master lists (see master_api): "power" (the Project Load List
+# through the load types' rows) and "instrument" (the Instrument Runsheet through the equipment
+# types' rows).
 
-class PowerList(BaseModel):
-    type: str  # the deliverable type it produces
-    rows: int  # rows it would have now
-    deliverables: int  # deliverables of that type that take their content from it
+class GeneratorList(BaseModel):
+    key: str
+    type: str  # the deliverable type made from the master list
+    master: str  # the project master list it writes to
+    rows: int  # rows this generator adds to it now
+    master_rows: int  # rows the master list has in all (both generators)
+    deliverables: int  # deliverables made from the master list
 
 
 class GeneratorType(BaseModel):
@@ -105,40 +111,46 @@ class GeneratorType(BaseModel):
     name: str
     available: bool
     description: str
-    loads: int = 0
-    load_types: int = 0
-    missing_load_types: list[str] = []  # tags of the loads no list can be made for yet
-    lists: list[PowerList] = []
+    # Power: loads of the Load List and load types. Instrument: runsheet rows and equipment types that have rows.
+    runs: int = 0
+    templates: int = 0
+    missing: list[str] = []  # Power: tags of the loads with no load type, which add nothing yet
+    unconfirmed: int = 0  # Instrument: runsheet rows not confirmed (they generate, flagged)
+    lists: list[GeneratorList] = []
 
 
 @router.get("/types", response_model=list[GeneratorType])
 def generator_types() -> list[GeneratorType]:
-    """The two types of generator, with what the Power generator would produce right now."""
-    from workbench_core.keylists.loadgen import LISTS, generate, missing_load_types
+    """The two generators, with what each adds to the four Project Master lists right now."""
+    from workbench_core.keylists.loadgen import LISTS
+    from workbench_core.keylists.master import INSTRUMENT, MASTER_LISTS, MASTER_NAMES, POWER, generator_counts
 
-    from .loadlist_api import current_rows
-    from .storage import get_deliverables, get_keylists
+    from .master_api import inputs, master_of
+    from .storage import get_deliverables
 
-    lists = get_keylists()
-    rows, _, _ = current_rows()
-    types = {t.id: t for t in lists.load_types().items}
-    areas = {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}
-    cables = lists.cable_types().items
+    src = inputs()
     used: dict[str, int] = {}
     for d in get_deliverables().list():
         if d.source == "project":
             used[d.type] = used.get(d.type, 0) + 1
-    power = GeneratorType(
-        id="power", name="Power", available=True,
-        description="Every load of the Project Load List adds the rows its load type has for each list.",
-        loads=sum(1 for r in rows if r.status == "active"), load_types=len(types),
-        missing_load_types=missing_load_types(rows, types),
-        lists=[PowerList(type=spec.deliverable_type, rows=len(generate(key, rows, types, areas, cables).rows),
-                         deliverables=used.get(spec.deliverable_type, 0)) for key, spec in LISTS.items()])
-    instrument = GeneratorType(
-        id="instrument", name="Instrument", available=False,
-        description="Instrument lists, instrument cable schedules and I/O lists from the project's instruments. Not available yet.")
-    return [power, instrument]
+    rows: dict[str, list[GeneratorList]] = {POWER: [], INSTRUMENT: []}
+    missing: list[str] = []
+    for key in MASTER_LISTS:
+        result, _, missing = master_of(key, src)
+        counts = generator_counts(result)
+        for who in (POWER, INSTRUMENT):
+            rows[who].append(GeneratorList(key=key, type=LISTS[key].deliverable_type, master=MASTER_NAMES[key], rows=counts[who],
+                                           master_rows=len(result.rows), deliverables=used.get(LISTS[key].deliverable_type, 0)))
+    sheet = src.runsheet.rows  # type: ignore[attr-defined]
+    return [
+        GeneratorType(id="power", name="Power", available=True,
+                      description="Every load of the Project Load List adds the rows its load type has for each list.",
+                      runs=sum(1 for r in src.loads if r.status == "active"), templates=len(src.load_types), missing=missing,
+                      lists=rows[POWER]),
+        GeneratorType(id="instrument", name="Instrument", available=True,
+                      description="Every row of the Instrument Runsheet adds the rows its equipment type has for each list.",
+                      runs=len(sheet), templates=sum(1 for t in src.equipment_types.values() if any(t.rows.values())),
+                      unconfirmed=sum(1 for r in sheet if not r.confirmed), lists=rows[INSTRUMENT])]
 
 
 @router.get("", response_model=list[GenSummary])

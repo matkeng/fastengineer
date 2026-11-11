@@ -184,7 +184,9 @@ def test_deliverables_from_the_project_load_list() -> None:
     for kind, d in made.items():
         detail = client.get(f"{API}/{d['id']}", params={"rows": True}).json()
         cur = detail["current"]
-        assert detail["generator"] == "Project Load List" and cur["source"] == "project"
+        master = {"Cable Schedule": "Project Master Cable Schedule", "Equipment List": "Project Master Equipment List",
+                  "Instrument List": "Project Master Instrument List", "PLC I/O List": "Project Master IO List"}
+        assert detail["generator"] == master.get(kind, "Project Load List") and cur["source"] == "project"
         assert cur["problem"] is None and cur["rows"] > 0 and cur["warnings"] == []
         assert cur["result"]["header"] == ov["project_columns"][kind]
     cables = _cells(made["Cable Schedule"]["id"])
@@ -194,6 +196,23 @@ def test_deliverables_from_the_project_load_list() -> None:
     assert [c[0] for c in cables if c[3] == "C-401"] == ["C-401-P1", "C-401-P2"]  # two in parallel
     assert [c[11] for c in cables if c[3] == "MSB-1"] == ["L1", "L2", "L3", "N"] * 2 + ["E"]  # single cores and their earth
     assert len(_cells(made["Load List"]["id"])) == 12
+    # both generators are in a master list: the sample runsheet's three pumps add an instrument each
+    instruments = _cells(made["Instrument List"]["id"])
+    assert [(c[0], c[-2], c[-1]) for c in instruments if c[-2] == "Instrument"] == [
+        ("P-101-PTA", "Instrument", "TRUE"), ("P-102-PTB", "Instrument", "TRUE"), ("P-103-PT", "Instrument", "FALSE")]
+    assert {c[-2] for c in instruments} == {"Power", "Instrument"} and first[-2:] == ["Power", "TRUE"]
+
+    # a deliverable keeps the rows and the columns it chooses, in its order
+    plc = client.put(f"{API}/{made['PLC I/O List']['id']}", json=dict(made["PLC I/O List"], filter_column="Confirmed", filter_values=["TRUE"],
+                                                                      columns=["Channel", "Tag", "Generator"]))
+    assert plc.status_code == 200 and plc.json()["columns"] == ["Channel", "Tag", "Generator"], plc.text
+    cur = client.get(f"{API}/{plc.json()['id']}", params={"rows": True}).json()["current"]
+    assert cur["result"]["header"] == ["Channel", "Tag", "Generator"] and "P-103-PT" not in [r["cells"][1] for r in cur["result"]["rows"]]
+    assert "P-101-PTA" in [r["cells"][1] for r in cur["result"]["rows"]]
+    rev = client.post(f"{API}/{plc.json()['id']}/revisions", json={}).json()
+    assert client.get(f"{API}/revisions/{rev['id']}").json()["result"]["header"] == ["Channel", "Tag", "Generator"]
+    no_key = client.put(f"{API}/{plc.json()['id']}", json=dict(plc.json(), columns=["Channel"]))
+    assert no_key.status_code == 422 and "Keep the Tag column" in no_key.json()["fields"]["columns"]
 
     # a filter on one of the list's columns; a column it doesn't have is refused
     part = _project("Cable Schedule", name="MCC-1 cables", filter_column="From", filter_values=["MCC-1"])
@@ -247,7 +266,7 @@ def test_deliverables_from_the_project_load_list() -> None:
 def test_a_project_deliverable_with_no_loads_or_unknown_tags() -> None:
     d = _project("Equipment List")
     cur = client.get(f"{API}/{d['id']}").json()["current"]
-    assert cur["problem"] == "The Load List has no loads yet."
+    assert cur["problem"].startswith("Its project master list has no rows yet")
     assert client.post(f"{API}/{d['id']}/revisions", json={}).status_code == 422
 
     client.post("/api/sample-data")

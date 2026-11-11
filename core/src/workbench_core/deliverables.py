@@ -42,6 +42,8 @@ class Deliverable(BaseModel):
     panel_id: str = ""
     filter_column: str = ""  # blank: every row
     filter_values: list[str] = Field(default_factory=list)
+    #: The columns to keep, in the order to show them. Empty: every column, in the content's order.
+    columns: list[str] = Field(default_factory=list)
     updated_at: datetime | None = None
 
 
@@ -106,6 +108,20 @@ def apply_filter(result: BuildResult, column: str, values: list[str]) -> BuildRe
     return result.model_copy(update={"rows": rows, "changes": None})
 
 
+def select_columns(result: BuildResult, columns: list[str]) -> BuildResult:
+    """Only `columns`, in that order (named ignoring case and extra spaces). None chosen keeps
+    the content as it is; a column the content doesn't have is an error."""
+    if not columns:
+        return result
+    names = [h.strip().casefold() for h in result.header]
+    missing = [c for c in columns if c.strip().casefold() not in names]
+    if missing:
+        raise RefValidationError(f"The content has no column called {', '.join(missing)}.", {"columns": "Not columns of the content"})
+    picks = [names.index(c.strip().casefold()) for c in columns]
+    rows = [r.model_copy(update={"cells": [r.cells[i] if i < len(r.cells) else None for i in picks]}) for r in result.rows]
+    return result.model_copy(update={"header": [result.header[i] for i in picks], "rows": rows, "changes": None})
+
+
 def compare(previous: Revision | None, result: BuildResult, diff_key: str) -> ChangeReport | None:
     """What changed from the previous revision to `result` (None when there is no previous)."""
     if previous is None:
@@ -114,15 +130,18 @@ def compare(previous: Revision | None, result: BuildResult, diff_key: str) -> Ch
 
 
 def check_deliverable(d: Deliverable, others: list[Deliverable], generators: set[str], columns: list[str] | None,
-                      panels: set[str] | None = None) -> Deliverable:
+                      panels: set[str] | None = None, key_column: str = "") -> Deliverable:
     """Trimmed and checked: the name is required and unique, the generator exists, and a
     filter names a column of the generator's output (`columns`; None when not known yet)
     and at least one value. A Distribution Panel deliverable takes its content from one of
-    the `panels` (ids of the Distribution Panels list; None when not known), nothing else does."""
+    the `panels` (ids of the Distribution Panels list; None when not known), nothing else does.
+    The columns chosen are columns of the content, once each, and include `key_column` (the
+    column revisions are compared by) when that is known."""
     errors: dict[str, str] = {}
     d = d.model_copy(update={"name": d.name.strip(), "doc_number": d.doc_number.strip(), "doc_title": d.doc_title.strip(),
                              "filter_column": d.filter_column.strip(),
-                             "filter_values": list(dict.fromkeys(v.strip() for v in d.filter_values if v.strip()))})
+                             "filter_values": list(dict.fromkeys(v.strip() for v in d.filter_values if v.strip())),
+                             "columns": list({name_key(c): c.strip() for c in d.columns if c.strip()}.values())})
     if not d.name:
         errors["name"] = "Name is required"
     elif any(o.id != d.id and name_key(o.name) == name_key(d.name) for o in others):
@@ -146,6 +165,15 @@ def check_deliverable(d: Deliverable, others: list[Deliverable], generators: set
             errors["filter_values"] = "Give at least one value to keep"
     else:
         d = d.model_copy(update={"filter_values": []})
+    if d.columns and columns is not None:
+        known = {name_key(c): c for c in columns}
+        unknown = [c for c in d.columns if name_key(c) not in known]
+        if unknown:
+            errors["columns"] = f"Not columns of the content: {', '.join(unknown)}"
+        elif key_column and name_key(key_column) not in {name_key(c) for c in d.columns}:
+            errors["columns"] = f"Keep the {key_column} column: revisions are compared by it"
+        else:
+            d = d.model_copy(update={"columns": [known[name_key(c)] for c in d.columns]})
     if errors:
         raise RefValidationError(f"{len(errors)} problem(s) in the deliverable.", errors)
     return d

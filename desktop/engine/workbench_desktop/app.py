@@ -30,6 +30,7 @@ from .eel_api import router as eel_router
 from .plc_api import router as plc_router
 from .distribution_panels_api import router as distribution_panels_router
 from .instrument_runsheet_api import router as instrument_runsheet_router
+from .master_api import router as master_router
 from .keylist_workbooks_api import router as keylist_workbooks_router
 from .deliverables_api import router as deliverables_router
 from .projects_api import router as projects_router
@@ -111,6 +112,7 @@ app.include_router(eel_router)
 app.include_router(plc_router)
 app.include_router(distribution_panels_router)
 app.include_router(instrument_runsheet_router)
+app.include_router(master_router)
 app.include_router(keylist_workbooks_router)
 app.include_router(deliverables_router)
 app.include_router(symbols_router)

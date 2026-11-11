@@ -39,7 +39,8 @@ def test_sample_data_fills_an_empty_project_and_every_deliverable_can_be_issued(
         if d["type"] == "Distribution Panel":
             assert s["generator"] == "Distribution Panels: MCC-2" and (d["source"], d["panel_id"]) == ("panel", "sdp1")
         else:
-            assert s["generator"] == "Project Load List" and d["source"] == "project"
+            assert d["source"] == "project" and (s["generator"] == "Project Load List" if d["type"] == "Load List"
+                                                 else s["generator"].startswith("Project Master "))
         cur = client.get(f"/api/deliverables/{d['id']}", params={"rows": True}).json()["current"]
         assert cur["problem"] is None and cur["rows"] and cur["warnings"] == [], (d["name"], cur["problem"], cur["warnings"])
         res = client.post(f"/api/deliverables/{d['id']}/revisions", json={"description": "First issue"})

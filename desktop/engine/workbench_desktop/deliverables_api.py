@@ -15,7 +15,8 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from workbench_core.deliverables import (DELIVERABLE_TYPES, PANEL_TYPE, Deliverable, Revision, RevisionInfo, apply_filter,
-                                         check_deliverable, compare, content_rows, next_letter)
+                                         check_deliverable, compare, content_rows, next_letter, select_columns)
+from workbench_core.keylists.master import MASTER_NAMES, master_columns
 from workbench_core.generators.editable import BuildInfo, input_hash
 from workbench_core.generators.models import BuildResult, BuildStats, ChangeReport
 from workbench_core.generators.xlsx_export import csv_bytes, export_name, xlsx_bytes
@@ -101,7 +102,10 @@ Lines = list[tuple[str, str | int | float | None]]
 def _source_name(d: Deliverable, generators: dict[str, str], panels: dict[str, str]) -> str:
     if d.source == "panel":
         return f"{PANELS}: {panels[d.panel_id]}" if d.panel_id in panels else ""
-    return PROJECT if d.source == "project" else generators.get(d.generator_id, "")
+    if d.source == "project":  # its Project Master list, or the Project Load List
+        spec = BY_TYPE.get(d.type)
+        return MASTER_NAMES[spec.key] if spec and spec.templated else PROJECT
+    return generators.get(d.generator_id, "")
 
 
 def _panel_tags() -> dict[str, str]:
@@ -127,38 +131,51 @@ def _generated(d: Deliverable) -> tuple[BuildResult, str, list[str], str | None,
 
 
 def _project(d: Deliverable) -> tuple[BuildResult, str, list[str], str | None]:
-    """A project-source deliverable's content, generated now: (result, diff key, warnings, problem).
+    """A project-source deliverable's content, worked out now: (result, diff key, warnings, problem).
+    A Cable Schedule, Equipment List, Instrument List or PLC I/O List is its Project Master list
+    (the Power and the Instrument generator together); a Load List is the Project Load List.
     The problem (loads with no load type) stops it being issued."""
     from .loadlist_api import current_rows  # imported late: it runs the imports
+    from .master_api import master_of
 
-    lists = get_keylists()
     spec = BY_TYPE[d.type]
-    rows, _, _ = current_rows()
-    types = {t.id: t for t in lists.load_types().items}
-    areas = {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}
-    warnings: list[str] = []
-    result = generate(spec.key, rows, types, areas, lists.cable_types().items, warnings)
-    if result.unresolved_count:
-        warnings.append(f"{result.unresolved_count} tag(s) in the load types' rows match nothing and were left as they are: "
-                        + ", ".join(result.unresolved_tokens[:10]))
-    missing = missing_load_types(rows, types)
+    if spec.templated:
+        result, warnings, missing = master_of(spec.key)
+        empty = "Its project master list has no rows yet: nothing comes from the Load List or the Instrument Runsheet."
+    else:
+        lists = get_keylists()
+        rows, _, _ = current_rows()
+        types = {t.id: t for t in lists.load_types().items}
+        areas = {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}
+        warnings = []
+        result = generate(spec.key, rows, types, areas, lists.cable_types().items, warnings)
+        missing = missing_load_types(rows, types)
+        empty = "The Load List has no loads yet."
     problem = None
     if missing:
         problem = (f"{len(missing)} load(s) in the Load List have no load type: {', '.join(missing[:12])}"
                    + (f" and {len(missing) - 12} more" if len(missing) > 12 else "") + ". Allocate them first.")
-    elif not any(r.status == "active" for r in rows):
-        problem = "The Load List has no loads yet."
+    elif not result.rows:
+        problem = empty
     return result, spec.diff_key, warnings, problem
+
+
+def _content_columns(d: Deliverable) -> tuple[list[str], str]:
+    """(the columns of a project-source deliverable's content, the column revisions are compared by)."""
+    spec = BY_TYPE[d.type]
+    return (master_columns(spec.key) if spec.templated else list(spec.columns)), spec.diff_key
 
 
 def _checked(d: Deliverable) -> Deliverable:
     gens = {g.id for g in get_generators().list()}
     if d.type == PANEL_TYPE:
-        return check_deliverable(d, get_deliverables().list(), gens, list(PANEL_COLUMNS), set(_panel_tags()))
+        return check_deliverable(d, get_deliverables().list(), gens, list(PANEL_COLUMNS), set(_panel_tags()), key_column=PANEL_DIFF_KEY)
     if d.source == "project":
-        return check_deliverable(d, get_deliverables().list(), gens, list(BY_TYPE[d.type].columns))
+        columns, key = _content_columns(d)
+        return check_deliverable(d, get_deliverables().list(), gens, columns, key_column=key)
     columns = _columns(d.generator_id) if d.generator_id in gens else None
-    return check_deliverable(d, get_deliverables().list(), gens, columns)
+    key = get_generators().get(d.generator_id).generator.config.diff_key if d.generator_id in gens else ""
+    return check_deliverable(d, get_deliverables().list(), gens, columns, key_column=key)
 
 
 @router.get("", response_model=Overview)
@@ -176,7 +193,8 @@ def overview() -> Overview:
     items.sort(key=lambda s: (DELIVERABLE_TYPES.index(s.deliverable.type), s.deliverable.name.casefold()))
     return Overview(types=DELIVERABLE_TYPES, deliverables=items, generators=[
         GeneratorChoice(id=g.id, name=g.name, columns=_columns(g.id), builds=len(gens.list_builds(g.id))) for g in gens.list()],
-        project_columns={t: list(x.columns) for t, x in BY_TYPE.items()} | {PANEL_TYPE: list(PANEL_COLUMNS)},
+        project_columns={t: (master_columns(x.key) if x.templated else list(x.columns)) for t, x in BY_TYPE.items()}
+        | {PANEL_TYPE: list(PANEL_COLUMNS)},
         panels=[PanelChoice(id=p.id, tag=p.tag, title=p.title) for p in panels])
 
 
@@ -190,6 +208,7 @@ class DeliverableBody(BaseModel):
     panel_id: str = ""
     filter_column: str = ""
     filter_values: list[str] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)  # the columns to keep, in order (empty: all)
 
 
 def _from_body(body: DeliverableBody, did: str | None = None) -> Deliverable:
@@ -213,7 +232,7 @@ def _current(d: Deliverable, with_rows: bool) -> Current:
     if d.source != "generator":
         result, diff_key, warnings, problem, summary = _generated(d)
         try:
-            result = apply_filter(result, d.filter_column, d.filter_values)
+            result = select_columns(apply_filter(result, d.filter_column, d.filter_values), d.columns)
         except RefValidationError as exc:
             return Current(source=d.source, next_letter=letter, problem=exc.message)
         return Current(source=d.source, warnings=warnings, summary=summary, rows=content_rows(result), next_letter=letter,
@@ -227,7 +246,7 @@ def _current(d: Deliverable, with_rows: bool) -> Current:
         return Current(next_letter=letter, problem=f"{rec.name} has not been built yet. Build it in Generators first.")
     stale = build.info.input_hash != input_hash(rec.generator, gens.tables(rec.id), build.info.run_from, build.info.run_up_to)
     try:
-        result = apply_filter(build.result, d.filter_column, d.filter_values)
+        result = select_columns(apply_filter(build.result, d.filter_column, d.filter_values), d.columns)
     except RefValidationError as exc:
         return Current(build=build.info, stale=stale, next_letter=letter, problem=exc.message)
     changes = compare(store.latest(d.id), result, rec.generator.config.diff_key)
@@ -297,7 +316,7 @@ def issue(did: str, body: IssueBody):
             return invalid(RefValidationError(f"There is no build of {rec.name} to issue. Build it in Generators first."))
         source, diff_key, build_seq = build.result, rec.generator.config.diff_key, build.info.seq
     try:
-        result = apply_filter(source, d.filter_column, d.filter_values)
+        result = select_columns(apply_filter(source, d.filter_column, d.filter_values), d.columns)
     except RefValidationError as exc:
         return invalid(exc)
 
