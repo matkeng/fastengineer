@@ -115,6 +115,25 @@ fn start_engine(app: &tauri::AppHandle) -> Result<(String, CommandChild), String
     Ok((format!("http://127.0.0.1:{port}"), child))
 }
 
+/// Ends the engine when the app closes. The engine is a onefile program: the process we
+/// started only unpacks and starts the real engine as its child, so on Windows the whole
+/// process tree is ended (`taskkill /T`), not just the process we hold.
+fn stop_engine(child: CommandChild) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &child.pid().to_string(), "/T", "/F"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -143,7 +162,7 @@ pub fn run() {
         .run(|app, event| {
             if let RunEvent::Exit = event {
                 if let Some(child) = app.state::<Engine>().child.lock().unwrap().take() {
-                    let _ = child.kill();
+                    stop_engine(child);
                 }
             }
         });

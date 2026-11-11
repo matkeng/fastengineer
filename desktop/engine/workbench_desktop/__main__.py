@@ -62,10 +62,17 @@ def _pid_alive(pid: int) -> bool:
 
 def _watch_parent(pid: int, interval: float = 1.0) -> None:
     def loop() -> None:
-        while _pid_alive(pid):
-            time.sleep(interval)
-        print(f"[engine] parent {pid} exited; shutting down", flush=True)
-        os._exit(0)
+        # Nothing here may stop the exit: once the app has gone, the engine's output (a pipe
+        # to the app) is closed, so even printing can fail.
+        try:
+            while _pid_alive(pid):
+                time.sleep(interval)
+            try:
+                print(f"[engine] parent {pid} exited; shutting down", flush=True)
+            except Exception:  # noqa: BLE001
+                pass
+        finally:
+            os._exit(0)
 
     threading.Thread(target=loop, name="parent-watchdog", daemon=True).start()
 

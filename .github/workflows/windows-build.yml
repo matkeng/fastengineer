@@ -238,7 +238,40 @@ jobs:
       - name: Smoke-test the portable app
         run: |
           $dir = Get-ChildItem dist -Directory -Filter '*-portable-x64' | Select-Object -First 1
-          $app = Start-Process (Join-Path $dir.FullName 'Drawing Workbench.exe') -PassThru
+          $exe = Join-Path $dir.FullName 'Drawing Workbench.exe'
+
+          # Closing the window the way a user does must end the engine too (both of its processes).
+          $app = Start-Process $exe -PassThru
+          try {
+            $engine = $null
+            for ($i = 0; $i -lt 60 -and -not $engine; $i++) {
+              Start-Sleep -Milliseconds 500
+              if ($app.HasExited) { throw "app exited early with code $($app.ExitCode)" }
+              $engine = Get-Process workbench-engine -ErrorAction SilentlyContinue
+            }
+            if (-not $engine) { throw 'portable app did not start its engine' }
+            Start-Sleep -Seconds 8   # let the engine finish starting, as it has when a user closes the app
+            for ($i = 0; $i -lt 60; $i++) { $app.Refresh(); if ($app.MainWindowHandle -ne 0) { break }; Start-Sleep -Milliseconds 500 }
+            if ($app.MainWindowHandle -eq 0) {
+              Write-Host '::warning::The app window was not found on this runner; the normal-close check was skipped.'
+            } else {
+              $null = $app.CloseMainWindow()
+              if (-not $app.WaitForExit(30000)) { throw 'the app did not exit after its window was closed' }
+              $t = [Diagnostics.Stopwatch]::StartNew()
+              do {
+                Start-Sleep -Milliseconds 500
+                $left = Get-Process workbench-engine -ErrorAction SilentlyContinue
+              } while ($left -and $t.Elapsed.TotalSeconds -lt 15)
+              if ($left) { throw "engine still running 15 s after the window was closed: $($left.Id -join ', ')" }
+              "Window closed normally; engine gone after $([math]::Round($t.Elapsed.TotalSeconds, 1)) s."
+            }
+          } finally {
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            Get-Process workbench-engine -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+          }
+
+          $app = Start-Process $exe -PassThru
           try {
             # The shell should find workbench-engine.exe beside it and start it.
             $engine = $null

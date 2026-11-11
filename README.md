@@ -741,7 +741,9 @@ sample workbook (uses LibreOffice, if installed, to calculate formula results):
 - Installs per-user without admin (NSIS) and silently via MSI.
 - First launch: engine connects (status turns green). The connect time
   includes Nuitka onefile extraction and any antivirus scan; note it.
-- Closing the window leaves no `workbench-engine.exe` in Task Manager.
+- Closing the window leaves no `workbench-engine.exe` in Task Manager. (The app ends the engine's whole process
+  tree when it closes, and the engine also stops itself if the app is killed. An engine left over from a
+  build before this was fixed has to be ended in Task Manager once.)
   (The engine also watches the shell's PID and exits if the shell dies.)
 - If the engine never connects, check `%TEMP%\workbench-engine.log`.
 - Symbol detection: the **OCR** status is shown in a library's *Settings*. Windows OCR needs an OCR-capable display language (Settings > Time &
