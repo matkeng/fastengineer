@@ -465,12 +465,17 @@ LOADLIST_HEAD = ["Source", "Key", "Tag", "Description", "Status", "Plant area", 
                  "Earth size"]
 
 
-def export_load_list(rows: list[LoadListRow], areas: dict[str, str], types: dict[str, str], fields: list[str]) -> Sheets:
+def export_load_list(rows: list[LoadListRow], areas: dict[str, str], types: dict[str, str], fields: list[str],
+                     labels: dict[str, str] | None = None) -> Sheets:
     """`areas`: plant area id -> tag; `types`: load type id -> code; `fields`: the mapped
-    load-list fields to add after the editable columns (for reference: an import ignores them)."""
+    load-list fields to add after the editable columns (for reference: an import ignores them),
+    headed by their `labels` (the project's names for them; default the keys)."""
     tags = {r.ref(): r.tag() for r in rows} | {PRIMARY_SUPPLY: PRIMARY}
     extra = [f for f in fields if f not in ("tag", "desc")]
-    grid: Grid = [LOADLIST_HEAD + extra]
+    fixed = {h.casefold() for h in LOADLIST_HEAD}
+    heads = [(labels or {}).get(f, f) for f in extra]
+    heads = [h + " (import)" if h.casefold() in fixed else h for h in heads]
+    grid: Grid = [LOADLIST_HEAD + heads]
     for r in sorted(rows, key=lambda x: (x.status != "active", x.source.casefold(), x.tag().casefold())):
         grid.append([r.source, r.key, r.tag(), r.values.get("desc"), "Active" if r.status == "active" else "Deleted",
                      areas.get(r.plant_area_id or ""), types.get(r.load_type_id or ""), "Yes" if r.is_panel else None,

@@ -169,6 +169,8 @@ export const rowTag = (r: LoadListRow) => (r.values.tag != null && r.values.tag 
 export interface LoadListChoice { id: string; label: string; depth: number }
 export interface LoadListView {
 	fields: string[]; rows: LoadListRow[];
+	/** Field key -> the project's name for it (the Project Master Load List's fields). */
+	labels: Record<string, string>;
 	sources: { id: string; name: string; target: string; rows: number; has_file: boolean }[];
 	plant_areas: LoadListChoice[]; load_types: LoadListChoice[]; warnings: string[];
 	/** The choices for a load's cable, from the Cable Types list. */

@@ -14,7 +14,7 @@ import { useUi } from '../../stores/ui';
 import HistoryButton from '../audit/HistoryButton.vue';
 import AppModal from '../common/AppModal.vue';
 
-// Deliverables: the lists a project issues. Each takes its content from the Project Load List
+// Deliverables: the lists a project issues. Each takes its content from the Project Master Load List
 // (generated on the spot from the load types' rows) or from a generator's builds,
 // and is issued in lettered revisions (A, B, ...), frozen when the user issues them.
 const dl = useDeliverables();
@@ -31,7 +31,7 @@ const PROJECT = '@project'; // the source drop-down's value for the project's ow
 // What a deliverable of a type is made from in the project: its Project Master list (both generators), or the Load List.
 const MASTERS: Record<string, string> = { 'Cable Schedule': 'Project Master Cable Schedule', 'Equipment List': 'Project Master Equipment List',
 	'Instrument List': 'Project Master Instrument List', 'PLC I/O List': 'Project Master IO List' };
-const projectName = (type: string | undefined) => MASTERS[type ?? ''] ?? 'Project Load List';
+const projectName = (type: string | undefined) => MASTERS[type ?? ''] ?? 'Project Master Load List';
 const isProject = computed(() => d.value?.deliverable.source === 'project');
 const isPanel = computed(() => d.value?.deliverable.source === 'panel');
 const panels = computed(() => dl.overview?.panels ?? []);

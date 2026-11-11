@@ -23,7 +23,7 @@ import PlantAreasEditor from './PlantAreasEditor.vue';
 // The project's built-in lists; more are added to the sidebar.
 const kl = useKeyLists();
 const ui = useUi();
-const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Load List',
+const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Project Master Load List',
 	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes', eel: 'Electrical Equipment List', plc: 'PLC List',
 	'cable-types': 'Cable Types', 'distribution-panels': 'Distribution Panels', 'instrument-runsheet': 'Instrument Runsheet', mel: 'MEL', master: 'Project Master list', enums: 'Enums', 'drawing-list': 'Drawing List', 'document-list': 'Document List' };
 const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true,
@@ -90,8 +90,8 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 					</ul>
 				</section>
 				<section>
-					<h3>Load List</h3>
-					<p class="hint">The MEL (every row of the MEL imports, to read), the Electrical Equipment List, the Load List (its items and the imports' rows), and the schedule of each distribution panel.</p>
+					<h3>Loads and panels</h3>
+					<p class="hint">The MEL (every row of the MEL imports, to read), the Electrical Equipment List, and the schedule of each distribution panel. The Load List is under Project master lists.</p>
 					<ul class="ref-nav">
 						<li :class="{ current: kl.selected === 'mel' }" @click="kl.select('mel')">
 							<span class="name">MEL</span>
@@ -100,11 +100,6 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 						<li :class="{ current: kl.selected === 'eel' }" @click="kl.select('eel')">
 							<span class="name">Electrical Equipment List</span>
 							<span class="count" title="equipment item(s)">{{ kl.overview?.eel.items ?? 0 }}</span>
-						</li>
-						<li :class="{ current: kl.selected === 'load-list' }" @click="kl.select('load-list')">
-							<span class="name">Load List</span>
-							<span class="count" :class="{ warn: kl.overview?.load_list.unallocated }"
-								:title="`${kl.overview?.load_list.rows ?? 0} row(s), ${kl.overview?.load_list.unallocated ?? 0} without a plant area or load type`">{{ kl.overview?.load_list.rows ?? 0 }}</span>
 						</li>
 						<li :class="{ current: kl.selected === 'distribution-panels' }" @click="kl.select('distribution-panels')">
 							<span class="name">Distribution Panels</span><span v-if="kl.panelsDirty" class="dirty-dot" title="Unsaved changes">●</span>
@@ -148,8 +143,13 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 				</section>
 				<section>
 					<h3>Project master lists</h3>
-					<p class="hint">One of each list for the project, filled by the Power and Instrument generators together. Read only: deliverables are made from them.</p>
+					<p class="hint">The Load List (every load of the imports and the Electrical Equipment List, with what is allocated to it), and one of each list the Power and Instrument generators fill together. Deliverables are made from them.</p>
 					<ul class="ref-nav">
+						<li :class="{ current: kl.selected === 'load-list' }" @click="kl.select('load-list')">
+							<span class="name">Load List</span>
+							<span class="count" :class="{ warn: kl.overview?.load_list.unallocated }"
+								:title="`${kl.overview?.load_list.rows ?? 0} row(s), ${kl.overview?.load_list.unallocated ?? 0} without a plant area or load type`">{{ kl.overview?.load_list.rows ?? 0 }}</span>
+						</li>
 						<li v-for="m in kl.masters" :key="m.key" :class="{ current: kl.selected === 'master' && kl.masterKey === m.key }"
 							@click="kl.masterKey = m.key; kl.select('master')">
 							<span class="name">{{ m.name.replace('Project Master ', '') }}</span>

@@ -20,6 +20,7 @@ export const useMel = defineStore('mel', () => {
 	const draft = ref<Recipe | null>(null); // being edited
 	const revisions = ref<RevisionInfo[]>([]);
 	const fields = ref<string[]>([]);
+	const labels = ref<Record<string, string>>({}); // field key -> the project's name for it (Load List fields)
 	const outputName = ref('Load list'); // "Instrument list" for PIL imports
 	const busy = ref(false);
 	const error = ref<string | null>(null);
@@ -56,6 +57,7 @@ export const useMel = defineStore('mel', () => {
 		draft.value = clone(d.recipe);
 		revisions.value = d.revisions;
 		fields.value = d.fields;
+		labels.value = d.labels ?? {};
 		outputName.value = d.output_name;
 		message.value = null;
 		tab.value = 'overview';
@@ -216,7 +218,7 @@ export const useMel = defineStore('mel', () => {
 
 	return {
 		exportSettings, readSettings, createFromSettings,
-		tab, recipes, saved, draft, revisions, fields, outputName, busy, error, message, dirty, latest,
+		tab, recipes, saved, draft, revisions, fields, labels, outputName, busy, error, message, dirty, latest,
 		refreshList, open, create, close, save, discard, remove, inspectCsv, uploadCsv, uploadExcel, uploadSymbols,
 		deleteRevision, runStage, loadList, exportTable,
 	};

@@ -21,7 +21,6 @@ from workbench_core.keylists import workbooks as wbk
 from workbench_core.keylists.cable_types import check_cable_types
 from workbench_core.keylists.distribution_panels import check_panels
 from workbench_core.keylists.drawing_list import REGISTERS
-from workbench_core.mel.models import ELEC_LOAD_FIELDS
 from workbench_core.refdata import RefValidationError, name_key
 
 from . import distribution_panels_api, drawing_list_api, eel_api, instrument_runsheet_api, keylists_api, loadlist_api
@@ -81,8 +80,9 @@ def _sheets(list_id: str) -> wbk.Sheets:
     rows = loadlist_api.current_rows()[0]
     if list_id == "load-list":
         used = {k for r in rows for k, v in r.values.items() if v not in (None, "")}
+        lf = lists.load_fields()
         return wbk.export_load_list(rows, {n.id: n.tag for n in lists.plant_areas().nodes},
-                                    {t.id: t.code for t in lists.load_types().items}, [f for f in ELEC_LOAD_FIELDS if f in used])
+                                    {t.id: t.code for t in lists.load_types().items}, [f for f in lf.keys() if f in used], lf.labels())
     return wbk.export_distribution_panels(lists.distribution_panels(), {r.ref(): r for r in rows})
 
 

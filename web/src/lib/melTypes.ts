@@ -8,7 +8,7 @@ export const TARGET_LABELS: Record<TargetList, string> = {
 	MEL: 'MEL → load list', ELL: 'ELL → load list', EEL: 'EEL → load list', PIL: 'PIL → instrument list', LIL: 'LIL → load list',
 };
 
-/** What each load-list field is called on screen. */
+/** What each built-in load-list field is called (a project's own names come from the engine: RecipeDetail.labels, LoadListView.labels). */
 export const LOAD_FIELD_LABELS: Record<string, string> = {
 	area: 'Area', sub_area: 'Sub-area', tag: 'Tag', equip_qty: 'Quantity', standby_qty: 'Standby quantity',
 	multi_load: 'Multiple loads', desc: 'Description', equip_type: 'Equipment type', equip_subtype: 'Equipment subtype',
@@ -66,7 +66,7 @@ export interface RevisionInfo {
 	warnings: string[];
 }
 
-export interface RecipeDetail { recipe: Recipe; revisions: RevisionInfo[]; fields: string[]; output_name: string }
+export interface RecipeDetail { recipe: Recipe; revisions: RevisionInfo[]; fields: string[]; labels?: Record<string, string>; output_name: string }
 
 export type Stage = 'source' | 'columns' | 'rows' | 'text' | 'overrides' | 'custom' | 'auto';
 

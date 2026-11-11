@@ -222,3 +222,104 @@ def save_columns(body: ColumnsBody, dry_run: bool = False):
     if not dry_run:
         lists.save_master_columns(changes)
     return ColumnsSaved(view=_columns_view(), impact=impact, saved=not dry_run)
+
+
+# -- the project's fields of the Project Master Load List ---------------------------------------
+
+load_fields_router = APIRouter(prefix="/api/load-fields", tags=["project master lists"])
+
+
+class FieldView(BaseModel):
+    key: str
+    label: str
+    kind: str
+    locked: bool  # the app reads it: it can be renamed and moved, not deleted
+
+
+class LoadFieldsView(BaseModel):
+    fields: list[FieldView]
+    kinds: list[str]
+
+
+def _load_fields_view() -> LoadFieldsView:
+    from workbench_core.mel.load_fields import LOCKED
+
+    lf = get_keylists().load_fields()
+    return LoadFieldsView(fields=[FieldView(key=f.key, label=f.label, kind=f.kind, locked=f.key in LOCKED) for f in lf.fields],
+                          kinds=["text", "number", "yes/no"])
+
+
+@load_fields_router.get("", response_model=LoadFieldsView)
+def get_load_fields() -> LoadFieldsView:
+    return _load_fields_view()
+
+
+class LoadFieldsBody(BaseModel):
+    fields: list[dict]  # [{key, label, kind}] in the new order; key "" for a new field
+
+
+class DeletedField(BaseModel):
+    key: str
+    label: str
+    imports: list[str]  # names of the imports that map it (the mapping is removed)
+    rows: int  # Load List rows that have a value in it
+    template_rows: int  # load type and equipment type rows whose text uses <<key>>
+
+
+class LoadFieldsImpact(BaseModel):
+    relabelled: dict[str, list[str]]  # key -> [old label, new label]
+    added: list[str]  # labels
+    deleted: list[DeletedField]
+    rekinded: dict[str, list[str]]  # key -> [old kind, new kind]
+    reordered: bool
+
+
+class LoadFieldsSaved(BaseModel):
+    view: LoadFieldsView
+    impact: LoadFieldsImpact
+    saved: bool
+
+
+@load_fields_router.put("", response_model=LoadFieldsSaved)
+def save_load_fields(body: LoadFieldsBody, dry_run: bool = False):
+    """Save the project's Load List fields: what imports map their columns onto and what the
+    Load List shows. A rename changes the label only (the key stays, so mappings and <<tags>>
+    keep working); a delete takes the field out of every import's mapping. `dry_run`: only say
+    what saving would do."""
+    import re
+
+    from workbench_core.mel.load_fields import FieldEdit, plan_change
+    from workbench_core.refdata import RefValidationError
+
+    from .loadlist_api import current_rows
+    from .refdata_api import invalid
+    from .storage import get_store
+
+    lists = get_keylists()
+    old = lists.load_fields()
+    try:
+        change = plan_change(old, [FieldEdit.model_validate(f) for f in body.fields])
+    except RefValidationError as exc:
+        return invalid(exc)
+    except ValueError as exc:
+        return invalid(RefValidationError(f"Not a list of fields: {exc}"))
+    deleted: list[DeletedField] = []
+    if change.deletes:
+        st = get_store()
+        recipes = [st.get_recipe(r["id"]) for r in st.list_recipes() if r["target"] != "PIL"]
+        rows = current_rows()[0]
+        texts = [c for t in [*lists.load_types().items, *lists.equipment_packages().types]
+                 for rs in t.rows.values() for r in rs for c in [" ".join(str(v) for v in r.values())]]
+        labels = old.labels()
+        for k in change.deletes:
+            tag = re.compile(rf"<<\s*{re.escape(k)}\s*>>", re.IGNORECASE)
+            deleted.append(DeletedField(key=k, label=labels[k], imports=[r.name for r in recipes if any(m.field == k for m in r.mapping)],
+                                        rows=sum(1 for r in rows if r.values.get(k) not in (None, "")),
+                                        template_rows=sum(1 for t in texts if tag.search(t))))
+    added = {f.key: f.label for f in change.fields.fields}
+    impact = LoadFieldsImpact(relabelled={k: list(v) for k, v in change.relabelled.items()}, added=[added[k] for k in change.added],
+                              deleted=deleted, rekinded={k: list(v) for k, v in change.rekinded.items()},
+                              reordered=[k for k in change.fields.keys() if k in old.keys()] != [k for k in old.keys() if k in change.fields.keys()])
+    if not dry_run:
+        lists.save_load_fields(change)
+    return LoadFieldsSaved(view=_load_fields_view(), impact=impact, saved=not dry_run)

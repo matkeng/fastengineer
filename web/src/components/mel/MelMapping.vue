@@ -1,7 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import LoadFieldsEditor from '../keylists/LoadFieldsEditor.vue';
 import { LOAD_FIELD_LABELS } from '../../lib/melTypes';
 import { useStage } from '../../lib/useStage';
 import { useMel } from '../../stores/mel';
@@ -10,7 +11,17 @@ const mel = useMel();
 const { result } = useStage('auto', (r) => [r.columns, r.hidden_rows, r.text_columns, r.overrides, r.custom_rows, r.auto_columns]);
 const MANUAL = '__manual__';
 
-const LABELS = LOAD_FIELD_LABELS;
+const label = (f: string) => mel.labels[f] ?? LOAD_FIELD_LABELS[f] ?? f;
+const isLoad = computed(() => mel.draft?.target !== 'PIL');
+const editing = ref(false);
+
+/** The Load List's fields changed: open the import again for its fields (a deleted field's mapping is gone). */
+async function fieldsSaved() {
+	if (!mel.draft) return;
+	const tab = mel.tab;
+	await mel.open(mel.draft.id);
+	mel.tab = tab;
+}
 // Header patterns for "Suggest mapping".
 const GUESS: Record<string, RegExp> = {
 	area: /^area$/i, sub_area: /sub.?area/i, desc: /desc/i, equip_type: /(equip|equipment).*type|^type$/i,
@@ -48,13 +59,18 @@ function suggest() {
 <template>
 	<div>
 		<p class="hint">Choose which column fills each {{ mel.outputName.toLowerCase() }} field, or type a fixed value. Unmapped fields are left out of the {{ mel.outputName.toLowerCase() }}.</p>
-		<div class="row"><button type="button" class="secondary small" @click="suggest">Suggest mapping for unmapped fields</button></div>
+		<div class="row">
+			<button type="button" class="secondary small" @click="suggest">Suggest mapping for unmapped fields</button>
+			<button v-if="isLoad" type="button" class="secondary small" :disabled="mel.dirty"
+				:title="mel.dirty ? 'Save this import first' : 'Rename, add, delete or reorder the Project Master Load List\'s fields (for every import)'"
+				@click="editing = true">Edit the Load List fields…</button>
+		</div>
 		<div class="grid-wrap">
 			<table class="grid simple mapping">
 				<thead><tr><th>Load-list field</th><th>Comes from</th><th>Fixed value</th></tr></thead>
 				<tbody>
 					<tr v-for="r in rows" :key="r.field" :class="{ off: !r.choice }">
-						<td><strong>{{ LABELS[r.field] ?? r.field }}</strong> <code class="hint">{{ r.field }}</code></td>
+						<td><strong>{{ label(r.field) }}</strong> <code class="hint">{{ r.field }}</code></td>
 						<td>
 							<select :value="r.choice" @change="set(r.field, ($event.target as HTMLSelectElement).value)">
 								<option value="">(not mapped)</option>
@@ -70,5 +86,6 @@ function suggest() {
 				</tbody>
 			</table>
 		</div>
+		<LoadFieldsEditor v-if="isLoad" :open="editing" @close="editing = false" @saved="fieldsSaved" />
 	</div>
 </template>

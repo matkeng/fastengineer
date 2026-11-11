@@ -33,8 +33,12 @@ TARGET_BOOLEAN: dict[str, set[str]] = {"MEL": {"is_a_loadcentre", "is_deleted"},
 TARGET_OUTPUT: dict[str, str] = {"MEL": "Load list", "PIL": "Instrument list"}
 
 
-def fields_for(target: str) -> list[str]:
-    return TARGET_FIELDS.get(target, ELEC_LOAD_FIELDS)
+def fields_for(target: str, load_fields: list[str] | None = None) -> list[str]:
+    """What a recipe of `target` maps onto. `load_fields`: the project's Load List fields
+    (keys, in order; default the built-in ones), for every target but PIL."""
+    if target in TARGET_FIELDS and target != "MEL":
+        return TARGET_FIELDS[target]
+    return list(load_fields) if load_fields is not None else ELEC_LOAD_FIELDS
 
 
 def output_name(target: str) -> str:

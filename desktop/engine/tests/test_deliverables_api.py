@@ -186,7 +186,7 @@ def test_deliverables_from_the_project_load_list() -> None:
         cur = detail["current"]
         master = {"Cable Schedule": "Project Master Cable Schedule", "Equipment List": "Project Master Equipment List",
                   "Instrument List": "Project Master Instrument List", "PLC I/O List": "Project Master IO List"}
-        assert detail["generator"] == master.get(kind, "Project Load List") and cur["source"] == "project"
+        assert detail["generator"] == master.get(kind, "Project Master Load List") and cur["source"] == "project"
         assert cur["problem"] is None and cur["rows"] > 0 and cur["warnings"] == []
         assert cur["result"]["header"] == ov["project_columns"][kind]
     cables = _cells(made["Cable Schedule"]["id"])

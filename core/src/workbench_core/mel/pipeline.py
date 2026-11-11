@@ -299,13 +299,15 @@ class LoadListResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-def output_list(result: PipelineResult, recipe: Recipe) -> LoadListResult:
+def output_list(result: PipelineResult, recipe: Recipe, load_fields=None) -> LoadListResult:
     """Map the final table onto the target's fields (PRD 5.11 / 5.13): the load list for
-    MEL, the instrument list for PIL."""
+    MEL, the instrument list for PIL. `load_fields`: the project's Load List fields
+    (load_fields.LoadFields; default the built-in ones), with which are numbers and yes/no."""
     maps = {m.field: m for m in recipe.mapping if m.column or m.manual is not None}
-    fields = [f for f in fields_for(recipe.target) if f in maps]
-    numeric = TARGET_NUMERIC.get(recipe.target, NUMERIC_FIELDS)
-    boolean = TARGET_BOOLEAN.get(recipe.target, {"is_a_loadcentre", "is_deleted"})
+    project = load_fields is not None and recipe.target != "PIL"
+    fields = [f for f in fields_for(recipe.target, load_fields.keys() if project else None) if f in maps]
+    numeric = load_fields.numeric() if project else TARGET_NUMERIC.get(recipe.target, NUMERIC_FIELDS)
+    boolean = load_fields.boolean() if project else TARGET_BOOLEAN.get(recipe.target, {"is_a_loadcentre", "is_deleted"})
     warnings: list[str] = []
     for f in fields:
         m = maps[f]

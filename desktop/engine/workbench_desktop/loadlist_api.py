@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 from workbench_core.keylists import EEL_SOURCE, LOAD_LIST_TARGETS, EelList, LoadListRow, match_index
 from workbench_core.keylists.loadlist import CABLE_CONSTRUCTIONS, CABLE_FIELDS
 from workbench_core.mel import run_pipeline
-from workbench_core.mel.models import ELEC_LOAD_FIELDS
 from workbench_core.mel.pipeline import output_list
 from workbench_core.refdata import RefValidationError, name_key
 
@@ -36,7 +35,8 @@ class Source(BaseModel):
 
 
 class LoadListView(BaseModel):
-    fields: list[str]  # mapped load-list fields, in load-list order
+    fields: list[str]  # mapped load-list fields (keys), in the project's order
+    labels: dict[str, str] = Field(default_factory=dict)  # field key -> what it is called (the project's Load List fields)
     rows: list[LoadListRow]
     sources: list[Source]
     plant_areas: list[Choice]
@@ -72,6 +72,7 @@ def import_rows() -> tuple[list[LoadListRow], dict[str, str], list[Source], list
     sources: list[Source] = []
     warnings: list[str] = []
     recipes = st.list_recipes()
+    load_fields = get_keylists().load_fields()
     for info in recipes:
         rid = info["id"]
         if info["target"] not in LOAD_LIST_TARGETS:
@@ -84,7 +85,7 @@ def import_rows() -> tuple[list[LoadListRow], dict[str, str], list[Source], list
             sources.append(Source(id=rid, name=recipe.name, target=recipe.target, rows=0, has_file=False))
             continue
         result = run_pipeline(rev, recipe)
-        out = output_list(result, recipe)
+        out = output_list(result, recipe, load_fields)
         warnings += [f"{recipe.name}: {i.rule}: {i.message}" for i in result.issues]
         warnings += [f"{recipe.name}: {w}" for w in out.warnings]
         for prow, values in zip(result.rows, out.rows):
@@ -157,7 +158,8 @@ def load_list() -> LoadListView:
     def sizes(of: list) -> list[str]:
         numbers = {c.diameter for c in of if c.diameter.replace(".", "", 1).isdigit()}
         return sorted(numbers, key=float)
-    return LoadListView(fields=[f for f in ELEC_LOAD_FIELDS if f in used], rows=rows, sources=sources,
+    load_fields = get_keylists().load_fields()
+    return LoadListView(fields=[f for f in load_fields.keys() if f in used], labels=load_fields.labels(), rows=rows, sources=sources,
                         plant_areas=areas, load_types=types, warnings=sorted(set(warnings)),
                         cable_insulations=sorted({c.insulation for c in cables if c.insulation}),
                         cable_sizes=sizes([c for c in cables if name_key(c.application) != "earth"]),

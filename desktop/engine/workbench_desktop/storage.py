@@ -27,6 +27,7 @@ from workbench_core.keylists.instrument_runsheet import InstrumentRunsheet
 from workbench_core.keylists.drawing_list import DocumentList, DrawingList
 from workbench_core.keylists.enums import ProjectEnums, default_enums
 from workbench_core.keylists.loadgen import LISTS
+from workbench_core.mel.load_fields import FieldChange, LoadFields, default_load_fields
 from workbench_core.keylists.master_columns import ColumnChange, MasterColumns, default_master_columns, rename_in, rewrite_rows
 from workbench_core.keylists import (
     EEL_SOURCE,
@@ -588,6 +589,35 @@ class KeyListStore:
                       before or EquipmentPackageList().model_dump_json(), packages.model_dump_json(),
                       label="Equipment Packages")
         return packages
+
+    LOAD_FIELDS = "load-fields"
+
+    def load_fields(self) -> LoadFields:
+        """The project's Load List fields; the built-in ones until first saved."""
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.LOAD_FIELDS,)).fetchone()
+        return LoadFields.model_validate_json(row[0]) if row else default_load_fields()
+
+    def save_load_fields(self, change: FieldChange) -> LoadFields:
+        """Save edited Load List fields and, in the same transaction, take deleted fields out of
+        every import's mapping (their values then stop coming through)."""
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.LOAD_FIELDS,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.LOAD_FIELDS, change.fields.model_dump_json()))
+            audit.log(self._db, "load_fields", self.LOAD_FIELDS, before or default_load_fields().model_dump_json(),
+                      change.fields.model_dump_json(), label="Load List fields")
+            if change.deletes:
+                gone = set(change.deletes)
+                for rid, data in self._db.execute("SELECT id, data FROM recipes").fetchall():
+                    recipe = Recipe.model_validate_json(data)
+                    if recipe.target == "PIL" or not any(m.field in gone for m in recipe.mapping):
+                        continue
+                    new = recipe.model_copy(update={"mapping": [m for m in recipe.mapping if m.field not in gone], "updated_at": _now()})
+                    self._db.execute("UPDATE recipes SET data = ?, updated_at = ? WHERE id = ?",
+                                     (new.model_dump_json(), new.updated_at.isoformat(), rid))
+                    audit.log(self._db, "mel_recipe", rid, data, new.model_dump_json(), note="Load List fields deleted")
+        return change.fields
 
     MASTER_COLUMNS = "master-columns"
 

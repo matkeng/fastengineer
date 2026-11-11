@@ -590,7 +590,8 @@ You don't create or name them: each project has one of each.
   generator workbook's PLC sheets can be imported too). A plant area with racks
   can't be deleted. A generator's **PLC hardware** tab now shows the PLC List's
   channels against its IO list build, read-only, with a link here.
-- **Load List**: the rows of every **MEL and EEL** import in the project,
+- **Project Master Load List** (listed under **Project master lists**, first):
+  the rows of every **MEL and EEL** import in the project,
   combined and always live (each import's latest file through its saved rules
   and mapping), with the mapped fields as read-only, sortable, filterable
   columns plus Status and Source. Each row's **Tag number** (the import's key
@@ -647,6 +648,25 @@ You don't create or name them: each project has one of each.
     row and reported.
   - **Distribution Panels**: sheets Panels, Circuits (a row per pole) and
     Headings. A circuit names its load by tag.
+- **Fields of the Project Master Load List** (`mel/load_fields.py`, API
+  `GET/PUT /api/load-fields`): what List import maps a file's columns onto and
+  what the Load List shows. **Edit fields…** on the Load List (or **Edit the
+  Load List fields…** on an import's Mapping tab) renames, adds, deletes and
+  reorders them for the project, and sets each one's kind (text, number or
+  yes/no: how the import reads it). Save first shows what the change will do.
+  - Every field has a key that never changes: it is what mappings, the rows'
+    values and load types' `<<tags>>` use. A rename changes the name people
+    see only, so nothing that uses the field has to change. A new field's key
+    is made from its name (Motor HP → `<<motor_hp>>`).
+  - A deleted field is taken out of every import's mapping, so its values stop
+    coming through.
+  - The fields the app reads (Tag, Description, Area, Equipment type,
+    Quantity, Load units, Load rating, Voltage, Phases, Load type, Is a load
+    centre, Supplied from, Deleted) can be renamed and moved, not deleted, and
+    keep their kind.
+  - The mapping sheet, the Load List's columns and its Excel export's
+    reference columns all use the project's fields and names. The Load List
+    deliverable's own columns are unchanged.
 - **Reset the Load List** (`POST /api/loadlist/reset`): a **Reset…** button on
   the Load List, and under the open project on the **Projects** page. A dialog
   asks what to reset and has to be confirmed before anything changes.
@@ -1034,7 +1054,7 @@ types takes its rows from its master through:
 
 It follows the master until a revision is issued, which freezes exactly those
 rows and columns; revisions, comparison, withdrawal and export work as before.
-A **Load List** deliverable is still made from the Project Load List, and a
+A **Load List** deliverable is still made from the Project Master Load List, and a
 **Distribution Panel** from its panel; both can choose and order columns too.
 
 A project that has generators from **imported workbooks** (made in an earlier

@@ -51,6 +51,7 @@ ENTITIES = {
     "instrument_runsheet": "instrument runsheet",
     "enums": "enums",
     "master_columns": "master list columns",
+    "load_fields": "load list fields",
     "drawing_list": "drawing list",
     "document_list": "document list",
     "deliverable": "deliverable",

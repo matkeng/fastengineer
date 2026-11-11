@@ -2,6 +2,7 @@
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
 import ListWorkbook from './ListWorkbook.vue';
+import LoadFieldsEditor from './LoadFieldsEditor.vue';
 import LoadListReset from './LoadListReset.vue';
 import { useProjects } from '../../stores/projects';
 import type { ColumnsConfig } from 'datatables.net';
@@ -19,6 +20,7 @@ import AppModal from '../common/AppModal.vue';
 // The Load List: the MEL and EEL imports' rows, read-only, with a plant area and a load
 // type allocated to each row. An allocation is saved as soon as it is chosen.
 const kl = useKeyLists();
+const editingFields = ref(false);
 const projects = useProjects();
 const ui = useUi();
 const host = ref<HTMLDivElement | null>(null);
@@ -118,12 +120,12 @@ function build() {
 		{ title: 'Source', data: (row: LoadListRow) => `${row.source} (${row.target})`, render: (t: string, type: string) => (type === 'display' ? escapeHtml(t) : t) },
 		// What the row is, next to what is allocated to it. The tag is the import's key when no tag is mapped.
 		{
-			title: 'Tag number', data: (row: LoadListRow) => rowTag(row), className: 'key-col',
+			title: escapeHtml(v.labels.tag ?? 'Tag'), data: (row: LoadListRow) => rowTag(row), className: 'key-col',
 			render: (t: string, type: string, row: LoadListRow) => (type === 'display'
 				? `<span${t !== row.key ? ` title="Key in the import: ${escapeHtml(row.key)}"` : ''}>${escapeHtml(t)}</span>` : t),
 		},
 		{
-			title: 'Description', data: (row: LoadListRow) => (row.values.desc == null ? '' : String(row.values.desc)), className: 'desc-col',
+			title: escapeHtml(v.labels.desc ?? 'Description'), data: (row: LoadListRow) => (row.values.desc == null ? '' : String(row.values.desc)), className: 'desc-col',
 			render: (t: string, type: string) => (type === 'display' ? `<span title="${escapeHtml(t)}">${escapeHtml(t)}</span>` : t),
 		},
 		allocColumn('plant_area', 'Plant area'),
@@ -160,7 +162,7 @@ function build() {
 		},
 		...v.fields.filter((f) => f !== 'tag' && f !== 'desc').map((f): ColumnsConfig => ({
 			// The import's own text for what is edited here is marked, so the two can't be mixed up.
-			title: escapeHtml(LOAD_FIELD_LABELS[f] ?? f) + (FROM_IMPORT.has(f) ? ' (import)' : ''),
+			title: escapeHtml(v.labels[f] ?? LOAD_FIELD_LABELS[f] ?? f) + (FROM_IMPORT.has(f) ? ' (import)' : ''),
 			data: (row: LoadListRow) => row.values[f] ?? null,
 			className: typeof v.rows.find((r) => r.values[f] != null)?.values[f] === 'number' ? 'dt-right' : '',
 			render: (x: string | number | boolean | null, type: string) => {
@@ -334,8 +336,8 @@ onBeforeUnmount(() => table?.api.destroy());
 <template>
 	<section class="card wizard ref-editor rows-mode key-loadlist">
 		<div class="mel-head">
-			<span class="kind tree">Key list</span>
-			<h2 class="key-title">Load List</h2>
+			<span class="kind tree">Master list</span>
+			<h2 class="key-title">Project Master Load List</h2>
 			<span v-if="view" class="hint small">
 				{{ counts.active }} row(s)<template v-if="counts.deleted"> · {{ counts.deleted }} deleted</template>
 				· <span :class="{ warnText: counts.noArea }">{{ counts.noArea }} without a plant area</span>
@@ -345,6 +347,7 @@ onBeforeUnmount(() => table?.api.destroy());
 			</span>
 			<span class="spacer" />
 			<span v-if="kl.message" class="saved">✓ {{ kl.message }}</span>
+			<button type="button" class="secondary" title="Rename, add, delete or reorder the fields imports map onto and this list shows" @click="editingFields = true">Edit fields…</button>
 			<ListWorkbook list-id="load-list" name="Load List" />
 			<LoadListReset :project="projects.current?.name ?? 'this project'" />
 			<button type="button" class="secondary" :disabled="kl.busy" title="Read the imports again" @click="kl.loadLoadList()">Refresh</button>
@@ -453,5 +456,6 @@ onBeforeUnmount(() => table?.api.destroy());
 				<button type="button" :disabled="kl.busy || !cable?.rows.length" @click="applyCable">{{ cable?.bulk ? `Set ${cable.rows.length} row(s)` : 'Save' }}</button>
 			</template>
 		</AppModal>
+		<LoadFieldsEditor :open="editingFields" @close="editingFields = false" @saved="kl.loadLoadList()" />
 	</section>
 </template>

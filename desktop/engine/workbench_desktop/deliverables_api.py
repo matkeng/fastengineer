@@ -94,7 +94,7 @@ def _get(did: str) -> Deliverable:
         raise HTTPException(404, "That deliverable no longer exists.") from exc
 
 
-PROJECT = "Project Load List"
+PROJECT = "Project Master Load List"
 PANELS = "Distribution Panels"
 Lines = list[tuple[str, str | int | float | None]]
 

@@ -32,7 +32,7 @@ from workbench_core.mel.pipeline import LoadListResult, Stage
 
 from .excel_api import ExtractRequest
 from .excel_api import store as workbooks
-from .storage import NotFound, get_store
+from .storage import NotFound, get_keylists, get_store
 
 router = APIRouter(prefix="/api/mel", tags=["mel"])
 MAX_UPLOAD = 100 * 1024 * 1024
@@ -64,7 +64,8 @@ class NewRecipe(BaseModel):
 class RecipeDetail(BaseModel):
     recipe: Recipe
     revisions: list[RevisionInfo]
-    fields: list[str]  # what the recipe's target maps onto
+    fields: list[str]  # what the recipe's target maps onto (keys)
+    labels: dict[str, str] = {}  # field key -> what it is called (the project's Load List fields)
     output_name: str  # "Load list" (MEL) or "Instrument list" (PIL)
 
 
@@ -87,8 +88,11 @@ def create_recipe(body: NewRecipe) -> Recipe:
 @router.get("/recipes/{recipe_id}", response_model=RecipeDetail)
 def get_recipe(recipe_id: str) -> RecipeDetail:
     recipe = _recipe(recipe_id)
+    lf = get_keylists().load_fields()
+    load = recipe.target != "PIL"
     return RecipeDetail(recipe=recipe, revisions=get_store().list_revisions(recipe_id),
-                        fields=fields_for(recipe.target), output_name=output_name(recipe.target))
+                        fields=fields_for(recipe.target, lf.keys()), labels=lf.labels() if load else {},
+                        output_name=output_name(recipe.target))
 
 
 def _refuse_not_allowed(recipe: Recipe) -> None:
@@ -347,7 +351,7 @@ def run(recipe_id: str, body: RunRequest) -> PipelineResult:
 @router.post("/recipes/{recipe_id}/loadlist", response_model=LoadListResult)
 def loadlist(recipe_id: str, body: RunRequest) -> LoadListResult:
     recipe = _draft(recipe_id, body.recipe)
-    return output_list(run_pipeline(_latest(recipe_id), recipe), recipe)
+    return output_list(run_pipeline(_latest(recipe_id), recipe), recipe, get_keylists().load_fields())
 
 
 class ExportRequest(BaseModel):
@@ -373,7 +377,7 @@ def export(recipe_id: str, body: ExportRequest, request: Request):
         auto = [a.name for a in recipe.auto_columns]
         data = combined_csv(result) if body.format == "csv" else combined_xlsx(result, auto, title)
     else:
-        ll = output_list(result, recipe)
+        ll = output_list(result, recipe, get_keylists().load_fields())
         data = load_list_csv(ll) if body.format == "csv" else load_list_xlsx(ll, result, title, output_name(recipe.target))
     if body.path is None:
         name = f"{recipe.target}-{body.table}.{body.format}"
