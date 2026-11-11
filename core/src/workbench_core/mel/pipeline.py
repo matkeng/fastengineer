@@ -21,6 +21,8 @@ import re
 from typing import Literal
 
 from asteval import Interpreter
+
+from .functions import make_interpreter
 from pydantic import BaseModel, Field
 
 from .models import NUMERIC_FIELDS, TARGET_BOOLEAN, TARGET_NUMERIC, Recipe, Revision, fields_for
@@ -135,7 +137,7 @@ def _evaluate_auto(rows: list[PipelineRow], headers: list[str], recipe: Recipe,
         if missing:
             issues.append(RuleIssue(kind="auto", rule=name,
                                     message=f"Refers to missing column(s): {', '.join(missing)}; every row gets the error value."))
-        ai = Interpreter(use_numpy=False)
+        ai = make_interpreter()
         for row in rows:
             result: object = None
             if not missing:

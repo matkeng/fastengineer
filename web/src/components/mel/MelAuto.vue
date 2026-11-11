@@ -1,7 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { apiGet } from '../../lib/engine';
 import type { AutoBranch, PipelineResult } from '../../lib/melTypes';
 import { useStage } from '../../lib/useStage';
 import { useMel } from '../../stores/mel';
@@ -76,15 +77,39 @@ const fieldLabel = computed(() => {
 
 /** Insert <<column>> at the cursor of the last focused field. */
 function insert() {
-	if (!col.value || !pickCol.value || !fieldLabel.value) return;
+	if (pickCol.value) insertText(`<<${pickCol.value}>>`);
+}
+
+/** Insert some text at the cursor of the last focused field (If, Then, an Else if, Else). */
+function insertText(ref_: string) {
+	if (!col.value || !fieldLabel.value) return;
 	const field = lastField.value;
 	const el = inputs.value[field];
 	const text = fieldText(field);
-	const ref_ = `<<${pickCol.value}>>`;
 	const at = el?.selectionStart ?? text.length;
 	fieldText(field, text.slice(0, at) + ref_ + text.slice(el?.selectionEnd ?? at));
 	requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(at + ref_.length, at + ref_.length); });
 }
+
+// -- help: the text and number functions, with examples worked out on a sample row ----------------
+interface FunctionHelp {
+	sample_row: Record<string, string>;
+	groups: { name: string; about: string; examples: { expression: string; result: string; what: string }[] }[];
+}
+const help = ref<FunctionHelp | null>(null);
+const helpOpen = ref(false);
+const helpFilter = ref('');
+const shownGroups = computed(() => {
+	const q = helpFilter.value.trim().toLowerCase();
+	const groups = help.value?.groups ?? [];
+	if (!q) return groups;
+	return groups.map((g) => ({ ...g, examples: g.examples.filter((e) => `${e.expression} ${e.what}`.toLowerCase().includes(q)) }))
+		.filter((g) => g.examples.length);
+});
+const sampleText = computed(() => Object.entries(help.value?.sample_row ?? {}).map(([k, v]) => `${k} = '${v}'`).join(', '));
+onMounted(async () => {
+	help.value = await apiGet<FunctionHelp>('/api/mel/functions').catch(() => null);
+});
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 watch(
@@ -116,7 +141,38 @@ const issues = computed(() => preview.value?.issues.filter((i) => i.kind === 'au
 			<code>&lt;&lt;Equipment Type&gt;&gt; == 'Pump'</code>,
 			<code>round(&lt;&lt;Motor HP&gt;&gt; * 0.746, 1)</code>. Columns run top to bottom, so one can use another's result.
 			Plain text such as <code>Motor</code> is used as is.
+			<button type="button" class="link" :aria-expanded="helpOpen" @click="helpOpen = !helpOpen">{{ helpOpen ? 'Hide' : 'Show' }} the functions you can use</button>
 		</p>
+		<section v-if="helpOpen" class="func-help" aria-label="Functions you can use">
+			<div class="row">
+				<strong>Functions and examples</strong>
+				<input v-model="helpFilter" type="search" class="func-filter" placeholder="Find a function, e.g. round, upper, split…" aria-label="Find a function" />
+				<span class="hint small">Results are for a sample row: {{ sampleText }}.
+					<template v-if="col">Click an example to insert it into “{{ fieldLabel || 'If' }}”.</template></span>
+				<span class="spacer" />
+				<button type="button" class="secondary small" @click="helpOpen = false">Close</button>
+			</div>
+			<p v-if="!help" class="hint">Loading…</p>
+			<div class="func-groups">
+				<div v-for="g in shownGroups" :key="g.name" class="func-group">
+					<h4>{{ g.name }}</h4>
+					<p class="hint small">{{ g.about }}</p>
+					<table class="grid simple func-table">
+						<tbody>
+							<tr v-for="e in g.examples" :key="e.expression">
+								<td class="expr">
+									<button type="button" class="link mono" :disabled="!col" :title="col ? 'Insert into the field you were last in' : 'Add or pick a calculated column first'"
+										@click="insertText(e.expression)">{{ e.expression }}</button>
+								</td>
+								<td class="res mono" title="What the sample row gives">→ {{ e.result }}</td>
+								<td class="what">{{ e.what }}</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+			<p class="hint small">Not available: <code>.format()</code> (use <code>'%.1f' % value</code>), and anything that reads files or the network.</p>
+		</section>
 		<div class="two-col auto-cols">
 			<div>
 				<ul class="auto-list">

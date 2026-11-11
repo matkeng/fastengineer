@@ -130,3 +130,12 @@ def test_settings_pass_between_people_as_a_json_file(tmp_path: Path) -> None:
     assert client.post("/api/mel/settings/new", json=doc | {"version": 2}).status_code == 422
     damaged = client.post("/api/mel/settings/new", json=doc | {"settings": {"hidden_rows": "nope"}})
     assert damaged.status_code == 422 and "damaged" in damaged.json()["detail"]
+
+
+def test_the_function_help() -> None:
+    help_ = client.get("/api/mel/functions").json()
+    assert [g["name"] for g in help_["groups"]] == ["Columns and values", "Comparisons and logic", "Numbers", "Text"]
+    assert help_["sample_row"]["Tag"] == "P-101"
+    text = next(g for g in help_["groups"] if g["name"] == "Text")
+    assert {"expression": "<<Tag>>.replace('-', '')", "result": "P101", "what": "replace every occurrence"} in text["examples"]
+    assert not any("open" in e["expression"] for g in help_["groups"] for e in g["examples"])

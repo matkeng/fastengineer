@@ -430,6 +430,14 @@ Differences from the PRD's implementation, from its known-issues list (§11):
   opposite. A recipe saved before Else if and NOT reads as it did. A condition
   or value that can't be worked out for a row (for example a blank compared with
   a number) gives the **On error** value.
+- **Show the functions you can use** on the Calculated step lists the text and
+  number functions, grouped (columns and values, comparisons and logic,
+  numbers, text), each with an example and its result on a sample row; a search
+  box narrows the list, and clicking an example inserts it into the field you
+  were last in (`GET /api/mel/functions`; `core/src/workbench_core/mel/functions.py`).
+  The tests run every example, so the results shown are what the app gives.
+- Expressions can't reach outside the row: `open`, `print` and `dir` are not
+  available (before, `open(...)` could read a file on the engine's machine).
 - Calculated columns bind `<<Column>>` values as variables instead of pasting
   text into the expression, so values can't change the formula and text needs
   no quotes (`<<Type>> == 'Pump'`); plain text like `Motor` is used as is.

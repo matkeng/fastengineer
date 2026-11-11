@@ -107,6 +107,34 @@ def delete_recipe(recipe_id: str) -> dict[str, str]:
     return {"status": "deleted"}
 
 
+# -- what a calculated column can use --------------------------------------------------------
+
+class FunctionExample(BaseModel):
+    expression: str
+    result: str  # what the sample row gives (the tests check each one)
+    what: str
+
+
+class FunctionGroup(BaseModel):
+    name: str
+    about: str
+    examples: list[FunctionExample]
+
+
+class FunctionHelp(BaseModel):
+    sample_row: dict[str, str]  # the row the examples are worked out on
+    groups: list[FunctionGroup]
+
+
+@router.get("/functions", response_model=FunctionHelp)
+def function_help() -> FunctionHelp:
+    """The text and number functions a calculated column can use, with worked examples."""
+    from workbench_core.mel.functions import FUNCTION_HELP, SAMPLE_ROW
+    return FunctionHelp(sample_row=SAMPLE_ROW, groups=[
+        FunctionGroup(name=name, about=about, examples=[FunctionExample(expression=e, result=r, what=w) for e, r, w in items])
+        for name, about, items in FUNCTION_HELP])
+
+
 # -- the settings of an import as a file, to pass between people ----------------------------
 
 SETTINGS_FORMAT = "drawing-workbench/list-import-settings"
