@@ -5,6 +5,7 @@ import HistoryButton from '../audit/HistoryButton.vue';
 import { onMounted, ref } from 'vue';
 import { TARGET_LABELS, TARGETS, type TargetList } from '../../lib/melTypes';
 import { type MelTab, useMel } from '../../stores/mel';
+import MelEditsCheck from './MelEditsCheck.vue';
 import MelAuto from './MelAuto.vue';
 import MelColumns from './MelColumns.vue';
 import MelCustom from './MelCustom.vue';
@@ -43,6 +44,7 @@ async function create() {
 // Settings as a .json file: export them here, import them into this import or as a new one.
 const settingsInput = ref<HTMLInputElement | null>(null);
 const newInput = ref<HTMLInputElement | null>(null);
+const checking = ref(false); // the Check edits dialog
 async function pickSettings(e: Event, asNew: boolean) {
 	const el = e.target as HTMLInputElement;
 	const file = el.files?.[0];
@@ -122,6 +124,9 @@ onMounted(() => mel.refreshList());
 				<button type="button" class="secondary" :disabled="!mel.latest || mel.busy"
 					title="The cells this import changes, the rows it removes and the rows it adds to the latest file, with their reasons, as an Excel workbook to send to whoever owns the file (unsaved edits included)"
 					@click="mel.exportEditsReport()">Edits report .xlsx</button>
+				<button type="button" class="secondary" :disabled="!mel.latest || mel.busy"
+					title="Check which of this import's edits the latest file has taken in, and clear those" @click="checking = true">Check edits…</button>
+				<MelEditsCheck :open="checking" @close="checking = false" />
 				<button type="button" class="secondary" :disabled="mel.dirty || mel.busy"
 					:title="mel.dirty ? 'Save or discard your changes first' : 'The saved settings of this import as a .json file, to give to a colleague (the uploaded files are not in it)'"
 					@click="mel.exportSettings()">Export settings</button>

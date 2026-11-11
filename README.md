@@ -502,6 +502,22 @@ The report includes unsaved edits. A revision keeps each row's position in the
 file (rows are kept in key order), so the report and the import's row numbers
 say where a row was; files uploaded before this have no row numbers.
 
+When the next revision arrives and is uploaded, **Check edits…** (`POST
+/api/mel/recipes/{id}/edits-check`) shows, for each edit, whether the file has
+taken it in:
+
+- a changed cell is **done** when the file now has the value the import uses
+  (numbers compare as numbers: 11 = 11.0), and its row **gone** when the row
+  isn't in the file;
+- a removed row is **done** when the row isn't in the file any more;
+- an added row is **done** when the file has the row with the same values, and
+  **partly done** (naming the values that differ) when it has the row with
+  others.
+
+The done and gone ones change nothing any more and are ticked; **Clear** takes
+the ticked edits out of the import, and **Save** keeps it. Edits still needed
+stay, for the next report. The edits report's Status column says the same.
+
 ## Project lists
 
 The key lists every project has, with fixed columns and rules

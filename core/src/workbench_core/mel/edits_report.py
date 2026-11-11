@@ -18,6 +18,8 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
+from pydantic import BaseModel
+
 from .models import Recipe, Revision
 from .pipeline import run_pipeline
 
@@ -45,6 +47,11 @@ def edits_report(rev: Revision, recipe: Recipe, made: datetime | None = None) ->
     # the values each column has before overrides (after renames and fixed-value columns)
     before = {r.key: r.values for r in run_pipeline(rev, recipe, "text").rows}
 
+    # whether this file already has each edit (in the order of the sheets below)
+    words = {"done": "Done in this file: can be cleared", "gone": "Row not in this file: can be cleared", "needed": ""}
+    said = [st.detail if st.state == "partly" else words[st.state] for st in edits_status(rev, recipe)]
+    said.reverse()
+
     changed: Grid = [[key, "Column", "Column in the file", "Value in the file", "Value used", "Reason", "Row in the file", "Status"]]
     for ov in recipe.overrides:
         row = by_key.get(ov.key)
@@ -52,19 +59,19 @@ def edits_report(rev: Revision, recipe: Recipe, made: datetime | None = None) ->
         if ov.column in texts and in_file not in rev.headers:
             in_file = "(a column the import adds)"
         was = before[ov.key].get(ov.column, "") if ov.key in before else (row[1].get(in_file, "") if row else "")
-        status = "" if row else "Row not in the latest file"
+        status = said.pop()
         changed.append([ov.key, ov.column, in_file, _v(was), _v(ov.value), ov.note, row[0] if row else None, status])
 
     removed: Grid = [[key, "Reason", "Row in the file", "Status", *[h for h in rev.headers if h != key]]]
     for h in recipe.hidden_rows:
         row = by_key.get(h.key)
         values = [_v(row[1].get(c, "")) for c in rev.headers if c != key] if row else []
-        removed.append([h.key, h.note, row[0] if row else None, "" if row else "Row not in the latest file", *values])
+        removed.append([h.key, h.note, row[0] if row else None, said.pop(), *values])
 
     columns = list(dict.fromkeys(c for r in recipe.custom_rows for c in r.values))
     added: Grid = [[key, "Reason", "Status", *columns]]
     for r in recipe.custom_rows:
-        added.append([r.key, r.note, "Already a row of the latest file" if r.key in by_key else "", *[_v(r.values.get(c, "")) for c in columns]])
+        added.append([r.key, r.note, said.pop(), *[_v(r.values.get(c, "")) for c in columns]])
 
     made = made or datetime.now()
     summary: Grid = [
@@ -83,3 +90,66 @@ def edits_report(rev: Revision, recipe: Recipe, made: datetime | None = None) ->
         ["These are the changes the import makes to the file. Please take them into the next revision, so the import no longer has to."],
     ]
     return [("Summary", summary), ("Changed cells", changed), ("Removed rows", removed), ("Added rows", added)]
+
+
+# -- has the file taken the edits in? ------------------------------------------------------------
+
+class EditStatus(BaseModel):
+    """Whether the latest file has taken one edit in.
+
+    `state`: "done" (the file now has it: the edit changes nothing and can be cleared),
+    "gone" (a changed cell whose row isn't in the file: nothing to change, can be cleared),
+    "partly" (an added row the file now has, with some values different), or "needed" (the
+    import still has to make it)."""
+    kind: str  # "changed" / "removed" / "added"
+    key: str
+    column: str = ""
+    note: str = ""
+    state: str
+    detail: str
+
+
+def _same(a: object, b: object) -> bool:
+    """Values compare as numbers where both are numbers (40 = 40.0), else as text, trimmed."""
+    x, y = ("" if a is None else str(a).strip()), ("" if b is None else str(b).strip())
+    if x == y:
+        return True
+    try:
+        return float(x) == float(y)
+    except ValueError:
+        return False
+
+
+def edits_status(rev: Revision, recipe: Recipe) -> list[EditStatus]:
+    """Each edit of the import against its latest file, in the order of the report."""
+    key = rev.key_header
+    keys = {r[key] for r in rev.rows}
+    before = {r.key: r.values for r in run_pipeline(rev, recipe, "text").rows}  # the file's values, as the import names its columns
+    hidden = {h.key for h in recipe.hidden_rows}
+    out: list[EditStatus] = []
+    for ov in recipe.overrides:
+        if ov.key not in keys:
+            state, detail = "gone", "The row is not in the file any more"
+        elif ov.key in hidden:
+            state, detail = "needed", "The row is removed by the import too"
+        else:
+            now = before.get(ov.key, {}).get(ov.column, "")
+            if _same(now, ov.value):
+                state, detail = "done", f"The file now has {ov.value or '(blank)'}"
+            else:
+                state, detail = "needed", f"The file still has {now or '(blank)'}; the import uses {ov.value or '(blank)'}"
+        out.append(EditStatus(kind="changed", key=ov.key, column=ov.column, note=ov.note, state=state, detail=detail))
+    for h in recipe.hidden_rows:
+        done = h.key not in keys
+        out.append(EditStatus(kind="removed", key=h.key, note=h.note, state="done" if done else "needed",
+                              detail="The row is not in the file any more" if done else "The row is still in the file"))
+    file_rows = {r.key: r.values for r in run_pipeline(rev, recipe.model_copy(update={"overrides": []}), "overrides").rows}
+    for c in recipe.custom_rows:
+        if c.key not in keys:
+            out.append(EditStatus(kind="added", key=c.key, note=c.note, state="needed", detail="The row is not in the file yet"))
+            continue
+        have = file_rows.get(c.key, {})
+        diff = [f"{col}: file {have.get(col, '') or '(blank)'}, import {v}" for col, v in c.values.items() if not _same(have.get(col, ""), v)]
+        out.append(EditStatus(kind="added", key=c.key, note=c.note, state="partly" if diff else "done",
+                              detail=("The file has the row, but " + "; ".join(diff)) if diff else "The file has the row, with these values"))
+    return out

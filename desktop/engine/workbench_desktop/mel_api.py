@@ -425,3 +425,20 @@ def edits_report_file(recipe_id: str, body: ReportRequest, request: Request):
     except OSError as exc:
         raise HTTPException(409, f"Could not save {target.name}: {exc.strerror or exc}. Is it open in Excel?") from exc
     return {"path": str(target)}
+
+
+class EditsCheck(BaseModel):
+    rev: int
+    file_name: str
+    edits: list[dict]  # mel.edits_report.EditStatus, in the order changed, removed, added
+
+
+@router.post("/recipes/{recipe_id}/edits-check", response_model=EditsCheck)
+def edits_check(recipe_id: str, body: ReportRequest) -> EditsCheck:
+    """Whether the latest file has taken in each of the import's edits: those it has ("done"),
+    and changed cells whose row has gone ("gone"), can be cleared."""
+    from workbench_core.mel.edits_report import edits_status
+
+    recipe = _draft(recipe_id, body.recipe)
+    rev = _latest(recipe_id)
+    return EditsCheck(rev=rev.rev, file_name=rev.file_name, edits=[e.model_dump() for e in edits_status(rev, recipe)])

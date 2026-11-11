@@ -1250,3 +1250,11 @@ button.link.tag-help { padding: 0; border: 0; background: none; color: var(--acc
 .comp-col input { height: 28px; font-size: 0.85rem; }
 /* Why a MEL row is hidden */
 td.reason-col input.row-note { width: 100%; min-width: 160px; font-size: 0.82rem; padding: 2px 4px; }
+/* Checking a MEL import's edits against its latest file */
+dialog.modal:has(.edits-check) { width: min(980px, calc(100vw - 32px)); }
+.edits-check table { width: 100%; margin-top: 8px; }
+.edits-check .ec-state { font-weight: 600; white-space: nowrap; }
+.edits-check tr.ec-done .ec-state, .edits-check tr.ec-gone .ec-state { color: #2e7d32; }
+.edits-check tr.ec-partly .ec-state { color: #b26a00; }
+.edits-check tr.ec-needed .ec-state { color: var(--muted); }
+.chip.ok { border-color: #2e7d32; color: #2e7d32; }
