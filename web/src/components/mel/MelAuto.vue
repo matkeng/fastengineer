@@ -2,7 +2,7 @@
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { AutoColumn, PipelineResult } from '../../lib/melTypes';
+import type { AutoBranch, PipelineResult } from '../../lib/melTypes';
 import { useStage } from '../../lib/useStage';
 import { useMel } from '../../stores/mel';
 
@@ -11,7 +11,8 @@ const mel = useMel();
 const { result: base } = useStage('custom', (r) => [r.columns, r.hidden_rows, r.text_columns, r.overrides, r.custom_rows]);
 const selected = ref<number | null>(mel.draft!.auto_columns.length ? 0 : null);
 const preview = ref<PipelineResult | null>(null);
-const lastField = ref<keyof AutoColumn>('statement');
+// The field a column is inserted into: 'statement', 'true_val', 'false_val', or 'b<i>.statement' / 'b<i>.value' for an Else if.
+const lastField = ref('statement');
 const pickCol = ref('');
 const inputs = ref<Record<string, HTMLInputElement | null>>({});
 
@@ -25,7 +26,7 @@ const available = computed(() => [
 function add() {
 	let n = 1;
 	while (mel.draft!.auto_columns.some((a) => a.name === `Calc ${n}`)) n++;
-	mel.draft!.auto_columns.push({ name: `Calc ${n}`, statement: 'True', true_val: '', false_val: '', error_val: 'ERROR' });
+	mel.draft!.auto_columns.push({ name: `Calc ${n}`, statement: 'True', negate: false, true_val: '', else_ifs: [], false_val: '', error_val: 'ERROR' });
 	selected.value = mel.draft!.auto_columns.length - 1;
 }
 
@@ -43,16 +44,45 @@ function remove(i: number) {
 	selected.value = mel.draft!.auto_columns.length ? Math.min(i, mel.draft!.auto_columns.length - 1) : null;
 }
 
+// -- Else if branches: tried in order after the If; the first that holds gives the value ----------
+const branches = computed<AutoBranch[]>(() => (col.value ? (col.value.else_ifs ??= []) : []));
+function addBranch() {
+	branches.value.push({ statement: '', negate: false, value: '' });
+	lastField.value = `b${branches.value.length - 1}.statement`;
+	requestAnimationFrame(() => inputs.value[lastField.value]?.focus());
+}
+function moveBranch(i: number, d: -1 | 1) {
+	const list = branches.value;
+	const j = i + d;
+	if (j >= 0 && j < list.length) [list[i], list[j]] = [list[j], list[i]];
+}
+const removeBranch = (i: number) => branches.value.splice(i, 1);
+
+/** Read or write the field `key` names (see lastField). */
+function fieldText(key: string, value?: string): string {
+	const c = col.value!;
+	const m = /^b(\d+)\.(statement|value)$/.exec(key);
+	const target = (m ? branches.value[Number(m[1])] : c) as unknown as Record<string, string> | undefined;
+	const name = m ? m[2] : key;
+	if (!target) return '';
+	if (value !== undefined) target[name] = value;
+	return String(target[name] ?? '');
+}
+const fieldLabel = computed(() => {
+	const m = /^b(\d+)\.(statement|value)$/.exec(lastField.value);
+	if (m) return `Else if ${Number(m[1]) + 1}: ${m[2] === 'statement' ? 'condition' : 'then'}`;
+	return ({ statement: 'If', true_val: 'Then', false_val: 'Else' } as Record<string, string>)[lastField.value] ?? '';
+});
+
 /** Insert <<column>> at the cursor of the last focused field. */
 function insert() {
-	const c = col.value;
-	if (!c || !pickCol.value) return;
+	if (!col.value || !pickCol.value || !fieldLabel.value) return;
 	const field = lastField.value;
 	const el = inputs.value[field];
-	const text = String(c[field] ?? '');
+	const text = fieldText(field);
 	const ref_ = `<<${pickCol.value}>>`;
 	const at = el?.selectionStart ?? text.length;
-	(c[field] as string) = text.slice(0, at) + ref_ + text.slice(el?.selectionEnd ?? at);
+	fieldText(field, text.slice(0, at) + ref_ + text.slice(el?.selectionEnd ?? at));
 	requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(at + ref_.length, at + ref_.length); });
 }
 
@@ -68,7 +98,8 @@ const refs = computed(() => {
 	const c = col.value;
 	if (!c) return [];
 	const found = new Set<string>();
-	for (const s of [c.statement, c.true_val, c.false_val]) for (const m of s.matchAll(/<<(.+?)>>/g)) found.add(m[1]);
+	const texts = [c.statement, c.true_val, ...(c.else_ifs ?? []).flatMap((b) => [b.statement, b.value]), c.false_val];
+	for (const s of texts) for (const m of (s ?? '').matchAll(/<<(.+?)>>/g)) found.add(m[1]);
 	return [...found];
 });
 const errors = computed(() => (col.value ? (preview.value?.rows.filter((r) => r.auto_errors.includes(col.value!.name)).length ?? 0) : 0));
@@ -78,7 +109,9 @@ const issues = computed(() => preview.value?.issues.filter((i) => i.kind === 'au
 <template>
 	<div class="auto">
 		<p class="hint">
-			A calculated column checks a condition on every row and writes one of two results. Refer to a column as
+			A calculated column checks conditions on every row, in order: <strong>If</strong>, then each <strong>Else if</strong>;
+			the first that holds gives the value, and if none does the row gets the <strong>Else</strong> value. Tick
+			<strong>NOT</strong> to use the opposite of a condition. Refer to a column as
 			<code>&lt;&lt;Column name&gt;&gt;</code>; numbers are numbers and text is text, no quotes needed. Examples:
 			<code>&lt;&lt;Equipment Type&gt;&gt; == 'Pump'</code>,
 			<code>round(&lt;&lt;Motor HP&gt;&gt; * 0.746, 1)</code>. Columns run top to bottom, so one can use another's result.
@@ -99,24 +132,55 @@ const issues = computed(() => preview.value?.issues.filter((i) => i.kind === 'au
 			</div>
 			<div v-if="col" class="auto-edit">
 				<label class="field">Column name <input v-model="col.name" /></label>
-				<label class="field">If (condition)
-					<input :ref="(el) => (inputs.statement = el as HTMLInputElement)" v-model="col.statement" class="mono" @focus="lastField = 'statement'" />
-				</label>
-				<div class="row">
-					<label class="field grow">Then
-						<input :ref="(el) => (inputs.true_val = el as HTMLInputElement)" v-model="col.true_val" class="mono" @focus="lastField = 'true_val'" />
-					</label>
-					<label class="field grow">Else
-						<input :ref="(el) => (inputs.false_val = el as HTMLInputElement)" v-model="col.false_val" class="mono" @focus="lastField = 'false_val'" />
-					</label>
-					<label class="field">On error <input v-model="col.error_val" class="mono" /></label>
+				<div class="cases">
+					<div class="case">
+						<span class="case-word">If</span>
+						<label class="not" title="Use the opposite of this condition"><input v-model="col.negate" type="checkbox" /> NOT</label>
+						<input :ref="(el) => (inputs.statement = el as HTMLInputElement)" v-model="col.statement" class="mono cond"
+							aria-label="If condition" placeholder="condition, e.g. <<Type>> == 'Pump'" @focus="lastField = 'statement'" />
+						<span class="case-word">then</span>
+						<input :ref="(el) => (inputs.true_val = el as HTMLInputElement)" v-model="col.true_val" class="mono val"
+							aria-label="If value" @focus="lastField = 'true_val'" />
+						<span class="case-tools" />
+					</div>
+					<div v-for="(b, bi) in branches" :key="bi" class="case">
+						<span class="case-word">Else if</span>
+						<label class="not" title="Use the opposite of this condition"><input v-model="b.negate" type="checkbox" /> NOT</label>
+						<input :ref="(el) => (inputs[`b${bi}.statement`] = el as HTMLInputElement)" v-model="b.statement" class="mono cond"
+							:aria-label="`Else if ${bi + 1} condition`" placeholder="condition" @focus="lastField = `b${bi}.statement`" />
+						<span class="case-word">then</span>
+						<input :ref="(el) => (inputs[`b${bi}.value`] = el as HTMLInputElement)" v-model="b.value" class="mono val"
+							:aria-label="`Else if ${bi + 1} value`" @focus="lastField = `b${bi}.value`" />
+						<span class="case-tools">
+							<button type="button" class="secondary small" :disabled="bi === 0" title="Move up" @click="moveBranch(bi, -1)">↑</button>
+							<button type="button" class="secondary small" :disabled="bi === branches.length - 1" title="Move down" @click="moveBranch(bi, 1)">↓</button>
+							<button type="button" class="secondary small" title="Remove this Else if" @click="removeBranch(bi)">✕</button>
+						</span>
+					</div>
+					<div class="case add-case">
+						<button type="button" class="secondary small" @click="addBranch">+ Else if</button>
+					</div>
+					<div class="case">
+						<span class="case-word">Else</span>
+						<span class="not" />
+						<input :ref="(el) => (inputs.false_val = el as HTMLInputElement)" v-model="col.false_val" class="mono val wide"
+							aria-label="Else value" @focus="lastField = 'false_val'" />
+						<span class="case-tools" />
+					</div>
+					<div class="case">
+						<span class="case-word">On error</span>
+						<span class="not" />
+						<input v-model="col.error_val" class="mono val wide" aria-label="Value on error"
+							title="Written when a condition or value can't be worked out for a row" />
+						<span class="case-tools" />
+					</div>
 				</div>
 				<div class="row">
 					<select v-model="pickCol" aria-label="Column to insert">
 						<option value="" disabled>Insert a column…</option>
 						<option v-for="h in available" :key="h" :value="h">{{ h }}</option>
 					</select>
-					<button type="button" class="secondary small" :disabled="!pickCol" @click="insert">Insert into "{{ { statement: 'If', true_val: 'Then', false_val: 'Else', name: '', error_val: '' }[lastField] }}"</button>
+					<button type="button" class="secondary small" :disabled="!pickCol || !fieldLabel" @click="insert">Insert into "{{ fieldLabel }}"</button>
 				</div>
 				<p v-for="i in issues" :key="i.rule + i.message" class="warn small">{{ i.rule }}: {{ i.message }}</p>
 				<h4>Preview <span class="hint">({{ errors }} error{{ errors === 1 ? '' : 's' }} of {{ preview?.rows.length ?? 0 }} rows)</span></h4>

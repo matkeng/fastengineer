@@ -126,7 +126,11 @@ def _evaluate_auto(rows: list[PipelineRow], headers: list[str], recipe: Recipe,
         if name in headers:
             issues.append(RuleIssue(kind="auto", rule=name, message="A column with this name already exists; skipped."))
             continue
-        exprs = [_Expr(col.statement), _Expr(col.true_val), _Expr(col.false_val)]
+        # (condition, NOT it, value): the If, then each Else if, in order; then the Else.
+        cases = [(_Expr(col.statement), col.negate, _Expr(col.true_val))]
+        cases += [(_Expr(b.statement), b.negate, _Expr(b.value)) for b in col.else_ifs]
+        otherwise = _Expr(col.false_val)
+        exprs = [e for test, _neg, value in cases for e in (test, value)] + [otherwise]
         missing = sorted({c for e in exprs for c in e.columns if c not in headers})
         if missing:
             issues.append(RuleIssue(kind="auto", rule=name,
@@ -135,11 +139,18 @@ def _evaluate_auto(rows: list[PipelineRow], headers: list[str], recipe: Recipe,
         for row in rows:
             result: object = None
             if not missing:
-                for e in exprs:
-                    e.bind(ai, row.values)
-                test, ok = exprs[0].run(ai, literal_fallback=False)
+                # Each expression numbers its own columns (_c0, _c1...), so it is bound just before it runs.
+                branch, ok = otherwise, True
+                for test, negate, value in cases:
+                    test.bind(ai, row.values)
+                    held, ok = test.run(ai, literal_fallback=False)
+                    if not ok:
+                        break
+                    if bool(held) != negate:
+                        branch = value
+                        break
                 if ok:
-                    branch = exprs[1] if test else exprs[2]
+                    branch.bind(ai, row.values)
                     result, ok = branch.run(ai, literal_fallback=True)
                 if not ok:
                     result = None

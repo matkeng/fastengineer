@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from workbench_core.mel.models import AutoBranch
+
 from workbench_core.mel import (
     AutoColumn,
     ColumnRule,
@@ -156,3 +158,33 @@ def test_samples_reapply_recipe() -> None:
     res2 = run_pipeline(rev("mel-sample-rev2.csv"), recipe)
     assert len(res2.rows) == 6
     assert {i.kind for i in res2.issues} == {"columns", "rows", "overrides"}
+
+
+def test_auto_column_cascades_else_ifs_with_not() -> None:
+    rev = _rev("Tag,Kind,kW\nP-1,Pump,90\nP-2,Pump,15\nF-1,Fan,3\nV-1,Valve,\nX-1,Spare,abc\n", "Tag")
+    size = AutoColumn(name="Size", statement="<<Kind>> == 'Valve'", true_val="Valve",  # first: comparing a blank kW with a number is an error
+                      else_ifs=[AutoBranch(statement="<<kW>> >= 75", value="Large"),
+                                AutoBranch(statement="<<kW>> >= 10", value="Medium"),
+                                AutoBranch(statement="<<kW>> == ''", negate=True, value="Small")],
+                      false_val="None", error_val="?")
+    not_pump = AutoColumn(name="Not a pump", statement="<<Kind>> == 'Pump'", negate=True, true_val="Yes", false_val="No")
+    rows = _rows(run_pipeline(rev, Recipe(id="x", name="m", auto_columns=[size, not_pump])))
+    # the first condition that holds gives the value; NOT turns a condition round
+    assert {k: r["Size"] for k, r in rows.items()} == {"P-1": "Large", "P-2": "Medium", "F-1": "Small", "V-1": "Valve", "X-1": "?"}
+    assert {k: r["Not a pump"] for k, r in rows.items()} == {"P-1": "No", "P-2": "No", "F-1": "Yes", "V-1": "Yes", "X-1": "Yes"}
+    # X-1: 'abc' >= 75 can't be worked out, so the row gets the error value
+    # a column an Else if refers to that isn't there is reported, and every row gets the error value
+    gone = AutoColumn(name="G", statement="True", else_ifs=[AutoBranch(statement="<<Nope>> > 1", value="x")], error_val="E")
+    res = run_pipeline(rev, Recipe(id="x", name="m", auto_columns=[gone]))
+    assert "Nope" in res.issues[0].message and {r.values["G"] for r in res.rows} == {"E"}
+    # a recipe saved before Else if and NOT still reads
+    old = AutoColumn.model_validate({"name": "Y", "statement": "True", "true_val": "1", "false_val": "0", "error_val": "E"})
+    assert (old.negate, old.else_ifs) == (False, [])
+
+
+def test_auto_column_condition_and_value_read_different_columns() -> None:
+    # The If reads one column and the Then another: each must see its own column's value.
+    rev = _rev("Tag,Kind,Rating\nP-1,Pump,7.5\nF-1,Fan,3\n", "Tag")
+    col = AutoColumn(name="Pump kW", statement="<<Kind>> == 'Pump'", true_val="<<Rating>> * 2", false_val="<<Kind>>")
+    rows = _rows(run_pipeline(rev, Recipe(id="x", name="m", auto_columns=[col])))
+    assert (rows["P-1"]["Pump kW"], rows["F-1"]["Pump kW"]) == ("15", "Fan")

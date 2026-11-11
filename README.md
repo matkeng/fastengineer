@@ -423,6 +423,13 @@ Samples: `samples/mel-sample.csv` and `samples/mel-sample-rev2.csv`.
 
 Differences from the PRD's implementation, from its known-issues list (§11):
 
+- **Calculated columns** check conditions in order: **If**, then any number of
+  **Else if** (added with **+ Else if**, reordered and removed on their rows);
+  the first condition that holds gives the value, and a row where none does
+  gets the **Else** value. Each condition has a **NOT** box that uses its
+  opposite. A recipe saved before Else if and NOT reads as it did. A condition
+  or value that can't be worked out for a row (for example a blank compared with
+  a number) gives the **On error** value.
 - Calculated columns bind `<<Column>>` values as variables instead of pasting
   text into the expression, so values can't change the formula and text needs
   no quotes (`<<Type>> == 'Pump'`); plain text like `Motor` is used as is.

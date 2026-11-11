@@ -23,7 +23,12 @@ export interface RowRule { key: string }
 export interface TextColumn { name: string; value: string }
 export interface Override { key: string; column: string; value: string }
 export interface CustomRow { key: string; values: Record<string, string> }
-export interface AutoColumn { name: string; statement: string; true_val: string; false_val: string; error_val: string }
+/** An "else if" of a calculated column: when `statement` holds (or doesn't, with `negate`), the value is `value`. */
+export interface AutoBranch { statement: string; negate: boolean; value: string }
+/** If statement (NOT it, with negate) then true_val; else if each of else_ifs in turn; else false_val. */
+export interface AutoColumn {
+	name: string; statement: string; negate?: boolean; true_val: string; else_ifs?: AutoBranch[]; false_val: string; error_val: string;
+}
 export interface FieldMap { field: string; column: string | null; manual: string | null }
 
 export interface Recipe {

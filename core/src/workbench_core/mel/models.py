@@ -72,11 +72,24 @@ class CustomRow(BaseModel):
     values: dict[str, str] = Field(default_factory=dict)
 
 
+class AutoBranch(BaseModel):
+    """An "else if" of a calculated column: when `statement` is true (false with `negate`),
+    the column is `value`."""
+    statement: str = "True"
+    negate: bool = False
+    value: str = ""
+
+
 class AutoColumn(BaseModel):
-    """A calculated column (PRD 5.9). `<<Column>>` refers to a column's value."""
+    """A calculated column (PRD 5.9). `<<Column>>` refers to a column's value.
+
+    If `statement` (NOT it, with `negate`) then `true_val`; else if each of `else_ifs` in
+    turn; else `false_val`. The first condition that holds gives the value."""
     name: str
     statement: str = "True"
+    negate: bool = False
     true_val: str = ""
+    else_ifs: list[AutoBranch] = Field(default_factory=list)
     false_val: str = ""
     error_val: str = "ERROR"
 
