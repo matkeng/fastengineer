@@ -95,6 +95,9 @@ function insertText(ref_: string) {
 interface FunctionHelp {
 	sample_row: Record<string, string>;
 	groups: { name: string; about: string; examples: { expression: string; result: string; what: string }[] }[];
+	functions: string[];
+	text_functions: string[];
+	names: string[];
 }
 const help = ref<FunctionHelp | null>(null);
 const helpOpen = ref(false);
@@ -153,6 +156,13 @@ const issues = computed(() => preview.value?.issues.filter((i) => i.kind === 'au
 				<button type="button" class="secondary small" @click="helpOpen = false">Close</button>
 			</div>
 			<p v-if="!help" class="hint">Loading…</p>
+			<p v-else class="func-allowed small">
+				<strong>Only these can be used.</strong> Anything else (other functions, <code>.</code> names, <code>import</code>, files) is refused, and the column shows its On error value.<br />
+				Functions: <code v-for="f in help.functions" :key="f">{{ f }}()</code><br />
+				Text functions, after a text value: <code v-for="f in help.text_functions" :key="f">.{{ f }}()</code><br />
+				Names: <code v-for="n in help.names" :key="n">{{ n }}</code> and your columns as <code>&lt;&lt;Column&gt;&gt;</code>.
+				Operators: <code>+ - * / // % **</code> <code>== != &lt; &lt;= &gt; &gt;=</code> <code>in</code> <code>not in</code> <code>and or not</code> <code>x if c else y</code> <code>[i]</code> <code>[a:b]</code>.
+			</p>
 			<div class="func-groups">
 				<div v-for="g in shownGroups" :key="g.name" class="func-group">
 					<h4>{{ g.name }}</h4>

@@ -436,8 +436,17 @@ Differences from the PRD's implementation, from its known-issues list (§11):
   box narrows the list, and clicking an example inserts it into the field you
   were last in (`GET /api/mel/functions`; `core/src/workbench_core/mel/functions.py`).
   The tests run every example, so the results shown are what the app gives.
-- Expressions can't reach outside the row: `open`, `print` and `dir` are not
-  available (before, `open(...)` could read a file on the engine's machine).
+- Expressions are held to a strict allowlist (`mel/functions.py`): only the
+  functions, text functions (`.upper()`, `.split()`, …), names and operators the
+  help lists. Anything else — any other function, `.` names such as
+  `__class__`, `import`, `lambda`, f-strings, comprehensions, keyword arguments —
+  is refused before it runs, with the reason. Sizes are capped too (expression
+  length, text padding, `%` widths, `replace` results, powers), so a formula
+  can't read a file or tie up the engine (before, `open(...)` could read a file
+  on the engine's machine). The preview reports a **Not allowed** issue, and
+  saving a recipe or reading settings with one is refused (422) naming the
+  column and the field. A value with no `<<Column>>` that isn't an allowed
+  expression is plain text and is never run.
 - Calculated columns bind `<<Column>>` values as variables instead of pasting
   text into the expression, so values can't change the formula and text needs
   no quotes (`<<Type>> == 'Pump'`); plain text like `Motor` is used as is.

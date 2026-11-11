@@ -91,10 +91,20 @@ def get_recipe(recipe_id: str) -> RecipeDetail:
                         fields=fields_for(recipe.target), output_name=output_name(recipe.target))
 
 
+def _refuse_not_allowed(recipe: Recipe) -> None:
+    """Refuse calculated columns that use anything not allowed (see workbench_core.mel.functions)."""
+    from workbench_core.mel.functions import auto_column_problems
+    found = [f"{c.name}, {p}" for c in recipe.auto_columns for p in auto_column_problems(c)]
+    if found:
+        raise HTTPException(422, "A calculated column uses something that isn't allowed: " + "; ".join(found[:5])
+                            + (f"; and {len(found) - 5} more" if len(found) > 5 else "") + ".")
+
+
 @router.put("/recipes/{recipe_id}", response_model=Recipe)
 def save_recipe(recipe_id: str, recipe: Recipe) -> Recipe:
     if recipe.id != recipe_id:
         raise HTTPException(400, "Recipe id mismatch.")
+    _refuse_not_allowed(recipe)
     try:
         return get_store().save_recipe(recipe)
     except NotFound as exc:
@@ -124,15 +134,18 @@ class FunctionGroup(BaseModel):
 class FunctionHelp(BaseModel):
     sample_row: dict[str, str]  # the row the examples are worked out on
     groups: list[FunctionGroup]
+    functions: list[str]  # every function an expression can call: nothing else is allowed
+    text_functions: list[str]  # every text function, written after a text value
+    names: list[str]  # names besides the columns: True, False, None, pi, e
 
 
 @router.get("/functions", response_model=FunctionHelp)
 def function_help() -> FunctionHelp:
     """The text and number functions a calculated column can use, with worked examples."""
-    from workbench_core.mel.functions import FUNCTION_HELP, SAMPLE_ROW
+    from workbench_core.mel.functions import FUNCTION_HELP, FUNCTIONS, METHODS, NAMES, SAMPLE_ROW
     return FunctionHelp(sample_row=SAMPLE_ROW, groups=[
         FunctionGroup(name=name, about=about, examples=[FunctionExample(expression=e, result=r, what=w) for e, r, w in items])
-        for name, about, items in FUNCTION_HELP])
+        for name, about, items in FUNCTION_HELP], functions=sorted(FUNCTIONS), text_functions=list(METHODS), names=list(NAMES))
 
 
 # -- the settings of an import as a file, to pass between people ----------------------------
@@ -162,6 +175,7 @@ def _read_settings(doc: object) -> tuple[str, str, dict]:
         checked = Recipe(id="check", name=str(doc.get("name") or "Imported settings"), target=doc.get("target") or "MEL", **settings)
     except ValueError as exc:  # pydantic's ValidationError
         raise HTTPException(422, f"The settings file is damaged: {str(exc).splitlines()[0]}.") from exc
+    _refuse_not_allowed(checked)
     return checked.name, checked.target, checked.model_dump(include=set(SETTINGS))
 
 

@@ -22,7 +22,7 @@ from typing import Literal
 
 from asteval import Interpreter
 
-from .functions import make_interpreter
+from .functions import NotAllowed, make_interpreter, prepare
 from pydantic import BaseModel, Field
 
 from .models import NUMERIC_FIELDS, TARGET_BOOLEAN, TARGET_NUMERIC, Recipe, Revision, fields_for
@@ -82,7 +82,8 @@ def _as_value(text: str) -> object:
 
 class _Expr:
     """A recipe expression with <<Column>> references bound as variables, so a cell
-    value can never change the meaning of the expression (PRD 11, item 11)."""
+    value can never change the meaning of the expression (PRD 11, item 11). It is checked
+    against what calculated columns allow (see functions.py) before it can run."""
 
     def __init__(self, source: str):
         self.source = source
@@ -97,7 +98,19 @@ class _Expr:
                 self.quoted.add(col)  # "<<X>>": always text
             return f"_c{self.columns.index(col)}"
 
-        self.code = REF.sub(sub, source).strip()
+        code = REF.sub(sub, source).strip()
+        self.problem: str | None = None  # what isn't allowed in it
+        self.code = ""
+        if code:
+            try:
+                self.code = prepare(code)
+            except (NotAllowed, SyntaxError) as exc:
+                self.problem = str(exc.msg if isinstance(exc, SyntaxError) and exc.msg else exc)
+
+    @property
+    def text(self) -> bool:
+        """Plain text, used as it is: no columns, and not an allowed expression (e.g. Motor)."""
+        return self.problem is not None and not self.columns
 
     def bind(self, ai: Interpreter, values: dict[str, str]) -> None:
         for i, col in enumerate(self.columns):
@@ -106,15 +119,16 @@ class _Expr:
 
     def run(self, ai: Interpreter, literal_fallback: bool) -> tuple[object, bool]:
         """Returns (value, ok). With literal_fallback, plain text such as `Motor`
-        that isn't a valid expression is used as the value itself."""
+        that isn't an allowed expression is used as the value itself (it is never run)."""
+        if literal_fallback and self.text:
+            return self.source.strip(), True
+        if self.problem:
+            return None, False
         if not self.code:
             return "", True
         ai.error = []
         value = ai(self.code, show_errors=False)
         if ai.error:
-            name = ai.error[0].get_error()[0]
-            if literal_fallback and not self.columns and name in ("NameError", "SyntaxError"):
-                return self.source.strip(), True
             return None, False
         return value, True
 
@@ -134,7 +148,17 @@ def _evaluate_auto(rows: list[PipelineRow], headers: list[str], recipe: Recipe,
         otherwise = _Expr(col.false_val)
         exprs = [e for test, _neg, value in cases for e in (test, value)] + [otherwise]
         missing = sorted({c for e in exprs for c in e.columns if c not in headers})
-        if missing:
+        # What isn't allowed: in a condition always; in a value only when it refers to a column (else it is plain text).
+        labels = [("If", cases[0][0]), ("Then", cases[0][2])]
+        labels += [(f"Else if {n}{part}", e) for n, (test, _neg, value) in enumerate(cases[1:], start=1)
+                   for part, e in ((" condition", test), (" then", value))]
+        labels += [("Else", otherwise)]
+        bad = [f"{where}: {e.problem}" for where, e in labels if e.problem and (e in [c[0] for c in cases] or e.columns)]
+        if bad:
+            issues.append(RuleIssue(kind="auto", rule=name, message="Not allowed, so every row gets the error value. "
+                                    + "; ".join(bad)))
+            missing = missing or ["(not allowed)"]
+        if missing and not bad:
             issues.append(RuleIssue(kind="auto", rule=name,
                                     message=f"Refers to missing column(s): {', '.join(missing)}; every row gets the error value."))
         ai = make_interpreter()

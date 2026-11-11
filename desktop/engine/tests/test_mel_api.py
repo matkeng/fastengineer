@@ -139,3 +139,26 @@ def test_the_function_help() -> None:
     text = next(g for g in help_["groups"] if g["name"] == "Text")
     assert {"expression": "<<Tag>>.replace('-', '')", "result": "P101", "what": "replace every occurrence"} in text["examples"]
     assert not any("open" in e["expression"] for g in help_["groups"] for e in g["examples"])
+
+
+def test_calculated_columns_that_use_anything_not_allowed_are_refused() -> None:
+    rid = client.post("/api/mel/recipes", json={"name": "Plant MEL", "target": "MEL"}).json()["id"]
+    recipe = client.get(f"/api/mel/recipes/{rid}").json()["recipe"]
+    ok = dict(recipe, auto_columns=[{"name": "Size", "statement": "<<kW>> > 10", "true_val": "Big", "false_val": "Small",
+                                     "else_ifs": [{"statement": "<<kW>> > 1", "value": "round(<<kW>>)"}], "error_val": "?"}])
+    assert client.put(f"/api/mel/recipes/{rid}", json=ok).status_code == 200
+    for col, field in ((dict(ok["auto_columns"][0], statement="open('x')"), "If: 'open' is not an allowed function"),
+                       (dict(ok["auto_columns"][0], true_val="<<Tag>>.__class__"), "Then: '.__class__' is not allowed"),
+                       (dict(ok["auto_columns"][0], else_ifs=[{"statement": "isinstance(<<kW>>, int)", "value": "x"}]),
+                        "Else if 1 condition: 'isinstance' is not an allowed function")):
+        bad = client.put(f"/api/mel/recipes/{rid}", json=dict(ok, auto_columns=[col]))
+        assert bad.status_code == 422 and f"Size, {field}" in bad.json()["detail"], bad.text
+    plain = dict(ok["auto_columns"][0], true_val="open the valve")  # plain text in a value is fine: it is never run
+    assert client.put(f"/api/mel/recipes/{rid}", json=dict(ok, auto_columns=[plain])).status_code == 200
+
+    doc = client.post(f"/api/mel/recipes/{rid}/settings/export", json={}).json()
+    doc["settings"]["auto_columns"][0]["statement"] = "__import__('os')"
+    refused = client.post("/api/mel/settings/new", json=doc)
+    assert refused.status_code == 422 and "'__import__' is not an allowed function" in refused.json()["detail"]
+    help_ = client.get("/api/mel/functions").json()
+    assert "round" in help_["functions"] and "open" not in help_["functions"] and "upper" in help_["text_functions"]

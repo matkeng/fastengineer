@@ -1189,3 +1189,6 @@ main.fill .auto-cols > .auto-edit > .grid-wrap { flex: 1 1 0; min-height: 160px;
 .func-table td.expr button { text-align: left; white-space: normal; word-break: break-word; font-size: 0.8rem; }
 .func-table td.res { width: 18%; color: var(--ok); white-space: nowrap; font-size: 0.8rem; }
 .func-table td.what { color: var(--muted); font-size: 0.8rem; }
+
+.func-allowed { margin: 0.25rem 0 0.5rem; line-height: 1.8; }
+.func-allowed code { margin-right: 0.35rem; }
