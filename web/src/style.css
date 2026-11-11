@@ -1136,3 +1136,17 @@ main.fill .key-master { overflow: hidden; }
 .dl-column-list li.off { color: var(--muted); background: var(--bg); }
 .dl-column-list li label.check { display: inline-flex; align-items: center; gap: 6px; }
 .gen-type-lists tbody tr { cursor: pointer; }
+/* Enums and the Drawing List */
+main.fill .key-enums { overflow: auto; }
+.key-enums .key-title, .key-drawings .key-title { margin: 0; font-size: 1rem; }
+.enum-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+.enum-box h3 { margin: 0 0 2px; font-size: 0.95rem; }
+.enum-box h3 .count { font-family: var(--font-mono); font-size: 10px; padding: 0 5px; border-radius: 2px; background: var(--chrome); border: 1px solid var(--border); color: var(--muted); font-weight: 400; }
+.enum-box table { margin: 4px 0 8px; }
+.enum-box th.code, .enum-box td.code { width: 84px; }
+.enum-box td input:not([type='checkbox']):not([type='radio']):not([type='range']) { width: 100%; min-width: 0; }
+.enum-box td.actions { white-space: nowrap; text-align: right; width: 1%; }
+.enum-box .used { display: inline-block; min-width: 18px; margin-right: 4px; padding: 0 4px; border-radius: 2px; font-family: var(--font-mono); font-size: 10px;
+	background: color-mix(in srgb, var(--accent) 16%, transparent); text-align: center; cursor: help; }
+dialog.modal.drawing-form { width: min(760px, calc(100vw - 32px)); }
+.key-drawings .result-table td { white-space: nowrap; }

@@ -50,7 +50,7 @@ export interface LoadTypeForm {
 }
 export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id' | 'rows'>;
 
-export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | 'cable-types' | 'distribution-panels' | 'instrument-runsheet' | 'mel' | 'master' | CodeListId;
+export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | 'cable-types' | 'distribution-panels' | 'instrument-runsheet' | 'mel' | 'master' | 'enums' | 'drawing-list' | CodeListId;
 
 /** A cable type; every project starts with a default set. `sort` orders the list. */
 export interface CableType {
@@ -121,11 +121,8 @@ export function eelProblems(f: EelForm, others: EelItem[]): Record<string, strin
 
 /** Equipment Codes and Instrument Codes: code, name, description and one more field. */
 export type CodeListId = 'equipment-codes' | 'instrument-codes';
-export const DISCIPLINES = [
-	{ code: 'E', name: 'Electrical' }, { code: 'I', name: 'Instrumentation' }, { code: 'M', name: 'Mechanical' },
-	{ code: 'P', name: 'Piping' }, { code: 'C', name: 'Civil' }, { code: 'S', name: 'Structural' }, { code: 'H', name: 'HVAC' },
-] as const;
-export type Discipline = (typeof DISCIPLINES)[number]['code'];
+/** A discipline's code. The disciplines are the project's Disciplines enum (the key lists overview has them). */
+export type Discipline = string;
 export interface CodeRow { id: string; code: string; name: string; description: string; disciplines?: Discipline[]; plc_code?: string }
 export interface CodeList { items: CodeRow[]; updated_at: string | null }
 
@@ -191,6 +188,10 @@ export interface KeyListOverview {
 	distribution_panels: { items: number };
 	instrument_runsheet: { items: number };
 	mel: { items: number };
+	drawing_list: { items: number };
+	enums: { items: number };
+	/** The project's Disciplines enum. */
+	disciplines: { code: string; name: string }[];
 	plc: { systems: number; racks: number; cards: number };
 	instrument_codes: { items: number };
 	rating_units: string[];
@@ -289,3 +290,20 @@ export function fileSize(bytes: number): string {
 	if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 	return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
+
+/** The project's Enums: the choice lists other lists pick from (mirrors keylists.enums). */
+export interface EnumItem { id: string; code: string; name: string }
+export type EnumKey = 'disciplines' | 'drawing_types' | 'drawing_statuses';
+export interface ProjectEnums { disciplines: EnumItem[]; drawing_types: EnumItem[]; drawing_statuses: EnumItem[]; updated_at: string | null }
+export interface EnumsView { enums: ProjectEnums; titles: Record<EnumKey, string>; need_code: EnumKey[]; in_use: Record<string, number> }
+export const enumLabel = (i: EnumItem) => i.code || i.name;
+
+/** A drawing of the Drawing List, as text (mirrors drawing_list_api.DrawingRow). */
+export type DrawingChoice = 'discipline' | 'drawing_type' | 'status';
+export interface DrawingRow {
+	id: string; number: string; project_name: string; title_1: string; title_2: string; title_3: string;
+	discipline: string; discipline_id: string | null; drawing_type: string; drawing_type_id: string | null; revision: string;
+	status: string; status_id: string | null; issue_date: string; vendor_drg_number: string; vendor_reference: string;
+	equipment_reference: string; scope: string; unknown_equipment: string[];
+}
+export interface DrawingsView { items: DrawingRow[]; columns: { field: string; heading: string }[]; choices: Record<DrawingChoice, EnumItem[]>; updated_at: string | null }

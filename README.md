@@ -628,6 +628,48 @@ You don't create or name them: each project has one of each.
     what that list sets (only their cable details can be cleared).
   - It can't be undone; the change log records the reset and how many rows it
     changed.
+- **Enums** (`keylists/enums.py`, API `/api/enums`): the choice lists other
+  lists pick from, edited per project in the **Enums** section. There are three,
+  edited together and saved with Save:
+
+  | Enum | A project starts with | Used by |
+  |---|---|---|
+  | Disciplines | E Electrical, I Instrumentation, M Mechanical, P Piping, C Civil, S Structural, H HVAC, PR Process, G General | Equipment Codes, Drawing List |
+  | Drawing types | Single Line Diagram, Schematic, Termination Diagram, Loop Diagram, Block Diagram, Cable Block Diagram, Layout, General Arrangement, P&ID, Hook-up, Panel Schedule, Schedule, Index, Standard Detail, Datasheet, Other | Drawing List |
+  | Drawing statuses | Draft, IFR, IFA, IFT, IFC, AB, Superseded, Cancelled | Drawing List |
+
+  - An item has a **code** and a **name**. A discipline needs a code; for the
+    others it is optional, and an item is shown by its code when it has one.
+    Codes are unique and names are unique within an enum. Items can be added,
+    renamed, reordered and removed.
+  - An item that a drawing or an equipment code **uses can't be removed** (the
+    count is shown beside it); renaming it is fine, and the lists follow.
+    A discipline that equipment codes use keeps its code.
+  - **Equipment Codes** tick their disciplines from this Disciplines enum.
+- **Drawing List** (`keylists/drawing_list.py`, API `/api/drawing-list`): the
+  project's register of drawings, as a sortable, filterable grid; click a row
+  (or **Add drawing**) to edit it in a form, which saves straight away.
+
+  | Field | Rule |
+  |---|---|
+  | Drawing number | required, unique |
+  | Project name | text; a new drawing starts with the open project's name |
+  | Title 1, Title 2, Title 3 | text |
+  | Drawing discipline, Drawing type, Status | blank, or one of that enum's items (**fixed choices**) |
+  | Revision | text |
+  | Issue date | a date, or blank |
+  | Vendor drg number, Vendor reference | text |
+  | Equipment reference | one or more tags, separated by commas |
+  | Scope | text |
+
+  - A tag of the **equipment reference** that is in neither the MEL nor the
+    Electrical Equipment List is **flagged** (⚠ on the row, and after saving),
+    but never stops a save.
+  - Export .xlsx / Import .xlsx: one sheet with these headings. On import a
+    drawing keeps its identity by its number; a discipline, type or status is
+    read by its code or its name, and one that is not in the Enums refuses the
+    file, naming the drawing. Dates are read as `dd/mm/yyyy`, `yyyy-mm-dd` or
+    an Excel date.
 - **Instrument Runsheet** (`keylists/instrument_runsheet.py`, API
   `/api/instrument-runsheet`): what the **Instrument generator** will run from
   (see [Deliverable generators](#deliverable-generators)).
@@ -876,7 +918,8 @@ that is still empty with a small invented plant: plant areas, equipment packages
 and types, equipment and instrument codes, four load types with rows for every
 list, three switchboards in the Electrical Equipment List, a PLC, a MEL import
 of nine loads, the schedule of
-MCC-2 in Distribution Panels, three rows in the Instrument Runsheet, and one
+MCC-2 in Distribution Panels, three rows in the Instrument Runsheet, four
+drawings in the Drawing List, and one
 deliverable of each type. Lists that already have data are left
 alone, so it is safe to run on a project in use.
 

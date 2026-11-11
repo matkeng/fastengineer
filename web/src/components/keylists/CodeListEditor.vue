@@ -6,7 +6,7 @@ import type { ColumnsConfig } from 'datatables.net';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, type SelectFilter, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
-import { type CodeListId, type CodeRow, DISCIPLINES, type Discipline, codeRowProblems } from '../../lib/keyListTypes';
+import { type CodeListId, type CodeRow, type Discipline, codeRowProblems } from '../../lib/keyListTypes';
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
@@ -26,7 +26,9 @@ const kl = useKeyLists();
 const host = ref<HTMLDivElement | null>(null);
 let table: FilteredTable<CodeRow> | null = null;
 const items = computed(() => kl.codeLists[props.listId]?.items ?? []);
-const disciplineName = (code: string) => DISCIPLINES.find((d) => d.code === code)?.name ?? code;
+// the project's Disciplines enum (Project lists, Enums)
+const DISCIPLINES = computed(() => kl.overview?.disciplines ?? []);
+const disciplineName = (code: string) => DISCIPLINES.value.find((d) => d.code === code)?.name ?? code;
 const text = (t: string, type: string) => (type === 'display' ? escapeHtml(t) : t);
 
 function build() {
@@ -49,7 +51,7 @@ function build() {
 	if (hasDisciplines.value) {
 		selects[3] = {
 			options: [{ value: '', label: 'All' }, { value: '__none', label: '(none)' },
-				...DISCIPLINES.map((d) => ({ value: d.code, label: `${d.code} – ${d.name}` }))],
+				...DISCIPLINES.value.map((d) => ({ value: d.code, label: `${d.code} – ${d.name}` }))],
 			test: (v, r) => v === '' || (v === '__none' ? !r.disciplines?.length : !!r.disciplines?.includes(v as Discipline)),
 		};
 	}
@@ -95,7 +97,7 @@ function toggle(d: Discipline, on: boolean) {
 	const now = new Set(r.disciplines ?? []);
 	if (on) now.add(d);
 	else now.delete(d);
-	r.disciplines = DISCIPLINES.map((x) => x.code).filter((c) => now.has(c));
+	r.disciplines = DISCIPLINES.value.map((x) => x.code).filter((c) => now.has(c));
 }
 
 async function save(addAnother = false) {

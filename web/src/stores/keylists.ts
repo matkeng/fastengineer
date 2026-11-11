@@ -8,6 +8,7 @@ import {
 } from '../lib/engine';
 import type { Catalogue } from '../lib/genTypes';
 import type {
+	DrawingRow, DrawingsView, EnumsView, ProjectEnums,
 	Allocation, CableTypeForm, CableTypeList, CodeList, EelForm, EelView, PlcImportPreview, PlcList, PlcView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList, TemplateLists,
 } from '../lib/keyListTypes';
 import type { DistributionPanelList, PanelsView } from '../lib/panelTypes';
@@ -64,11 +65,16 @@ export const useKeyLists = defineStore('keylists', () => {
 	const runsheetDraft = ref<TypedRow[] | null>(null);
 	const runsheetDirty = computed(() => !!runsheetView.value && differ(runsheetDraft.value, runsheetView.value.rows));
 	const melList = ref<MelList | null>(null);
+	// Enums: a saved copy and a draft, Save / Discard. The Drawing List: no draft; a drawing is saved from its form.
+	const enumsView = ref<EnumsView | null>(null);
+	const enumsDraft = ref<ProjectEnums | null>(null);
+	const enumsDirty = computed(() => !!enumsView.value && differ(enumsDraft.value, enumsView.value.enums));
+	const drawings = ref<DrawingsView | null>(null);
 	// The Project Master lists (read only): all four in brief, and the one that is showing.
 	const masters = ref<MasterSummary[]>([]);
 	const masterKey = ref('cable_schedule');
 	const master = ref<MasterView | null>(null);
-	const dirty = computed(() => areasDirty.value || packagesDirty.value || plcDirty.value || catDirty.value || panelsDirty.value || runsheetDirty.value);
+	const dirty = computed(() => areasDirty.value || packagesDirty.value || plcDirty.value || catDirty.value || panelsDirty.value || runsheetDirty.value || enumsDirty.value);
 
 	async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
 		busy.value = true;
@@ -106,6 +112,8 @@ export const useKeyLists = defineStore('keylists', () => {
 		if (id === 'instrument-runsheet') void loadRunsheet(); // what its rows can refer to may have changed
 		if (id === 'mel') void loadMel();
 		if (id === 'master') void loadMaster();
+		if (id === 'drawing-list') void loadDrawings(); // its choices and equipment may have changed
+		if (id === 'enums' && !enumsDirty.value) void loadEnums();
 	}
 
 	async function loadLoadList() {
@@ -142,6 +150,8 @@ export const useKeyLists = defineStore('keylists', () => {
 		if (selected.value === 'mel') await loadMel();
 		if (selected.value === 'master') await loadMaster();
 		await loadMasters();
+		if (!enumsDirty.value) await loadEnums();
+		await loadDrawings();
 		const ct = await run(() => apiGet<CableTypeList>('/api/keylists/cable-types'));
 		if (ct) cableTypes.value = ct;
 		const e = await run(() => apiGet<EelView>('/api/eel'));
@@ -395,6 +405,50 @@ export const useKeyLists = defineStore('keylists', () => {
 		}
 	}
 
+	// -- Enums and the Drawing List --------------------------------------------------------
+
+	async function loadEnums() {
+		const v = await run(() => apiGet<EnumsView>('/api/enums'));
+		if (v) { enumsView.value = v; enumsDraft.value = clone(v.enums); }
+	}
+
+	async function saveEnums() {
+		if (!enumsDraft.value) return;
+		const v = await run(() => apiPut<EnumsView>('/api/enums', enumsDraft.value));
+		if (v) {
+			enumsView.value = v;
+			enumsDraft.value = clone(v.enums);
+			await refresh(); // the disciplines the other lists pick from
+			message.value = 'Saved';
+		}
+	}
+
+	async function loadDrawings() {
+		const v = await run(() => apiGet<DrawingsView>('/api/drawing-list'));
+		if (v) drawings.value = v;
+	}
+
+	async function putDrawings(items: unknown[]): Promise<boolean> {
+		const v = await run(() => apiPut<DrawingsView>('/api/drawing-list', { items }));
+		if (!v) return false;
+		drawings.value = v;
+		await refresh();
+		return true;
+	}
+
+	/** Add the drawing, or replace the saved one with the same id. False (errors set) if refused. */
+	function saveDrawing(row: Partial<DrawingRow> & { id: string }): Promise<boolean> {
+		const items: unknown[] = [...(drawings.value?.items ?? [])];
+		const i = items.findIndex((r) => (r as { id: string }).id === row.id);
+		if (i >= 0) items.splice(i, 1, row);
+		else items.push(row);
+		return putDrawings(items);
+	}
+
+	function deleteDrawing(id: string): Promise<boolean> {
+		return putDrawings((drawings.value?.items ?? []).filter((r) => r.id !== id));
+	}
+
 	async function loadMasters() {
 		const m = await apiGet<MasterSummary[]>('/api/master').catch(() => null);
 		if (m) masters.value = m;
@@ -473,6 +527,7 @@ export const useKeyLists = defineStore('keylists', () => {
 	function discard() {
 		if (selected.value === 'plc' && plcSaved.value) plcDraft.value = clone(plcSaved.value);
 		if (selected.value === 'distribution-panels' && panelsSaved.value) panelsDraft.value = clone(panelsSaved.value);
+		if (selected.value === 'enums' && enumsView.value) enumsDraft.value = clone(enumsView.value.enums);
 		if (selected.value === 'instrument-runsheet' && runsheetView.value) runsheetDraft.value = clone(runsheetView.value.rows);
 		if (selected.value === 'plant-areas' && areasSaved.value) areasDraft.value = clone(areasSaved.value);
 		if (selected.value === 'equipment-packages' && packagesSaved.value) packagesDraft.value = clone(packagesSaved.value);
@@ -486,6 +541,7 @@ export const useKeyLists = defineStore('keylists', () => {
 		saveLoadType, deleteLoadType, templateLists, loadTemplateLists, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem, cableTypes, saveCableType, deleteCableType, addDefaultCableTypes,
 		plcSaved, plcDraft, plcView, catSaved, catDraft, plcDirty, catDirty, loadPlc, savePlc, checkPlc, saveCatalogue,
 		addDefaultTypes, exportPlc, importPlc,
+		enumsView, enumsDraft, enumsDirty, loadEnums, saveEnums, drawings, loadDrawings, saveDrawing, deleteDrawing,
 		masters, masterKey, master, loadMasters, loadMaster,
 		runsheetView, runsheetDraft, runsheetDirty, loadRunsheet, saveRunsheet, melList, loadMel,
 		panelsSaved, panelsDraft, panelsView, panelSelected, panelsDirty, loadPanels, savePanels, checkPanels, placePanelLoads,
