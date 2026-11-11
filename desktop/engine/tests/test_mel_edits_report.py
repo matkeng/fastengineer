@@ -85,10 +85,10 @@ def test_the_next_file_is_checked_for_the_edits() -> None:
     assert {s for _, _, s in states()} == {"needed"}
 
     # the mechanical engineer's next revision takes some of them in
-    text = first.decode().replace("P-101,100,Feed pump A,Pump,40,", "P-101,100,Feed pump A,Pump,50.0,")
-    text = text.replace("F-301,300,Exhaust fan,Fan,5,460,1,0,,,\n", "")
-    text = "\n".join(line for line in text.splitlines() if not line.startswith("TK-501")) + "\n"
-    text += "MCC-9,100,New MCC,,,,,,,,\nP-900,,Sump pump,,2,,,,,,\n"
+    # line by line, so it works whatever the checkout's line endings are (CRLF on Windows)
+    lines = [line.replace("P-101,100,Feed pump A,Pump,40,", "P-101,100,Feed pump A,Pump,50.0,")
+             for line in first.decode().splitlines() if not line.startswith(("F-301,", "TK-501,"))]
+    text = "\n".join([*lines, "MCC-9,100,New MCC,,,,,,,,", "P-900,,Sump pump,,2,,,,,,"]) + "\n"
     res = client.post(f"/api/mel/recipes/{rid}/revisions/csv", params={"filename": "rev B.csv", "key": "Equipment Tag"},
                       content=text.encode())
     assert res.status_code == 200, res.text
