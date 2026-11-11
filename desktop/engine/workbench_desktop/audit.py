@@ -47,6 +47,7 @@ ENTITIES = {
     "load_list": "load list",
     "eel": "electrical equipment list",
     "plc": "PLC list",
+    "distribution_panels": "distribution panels list",
     "deliverable": "deliverable",
     "deliverable_revision": "deliverable revision",
     "cable_types": "cable types list",

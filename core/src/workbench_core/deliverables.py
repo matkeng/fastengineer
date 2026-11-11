@@ -20,8 +20,12 @@ from .generators.text import to_text
 from .refdata.models import RefValidationError, new_id
 from .refdata.validate import name_key
 
-DeliverableType = Literal["Cable Schedule", "Instrument List", "PLC I/O List", "Equipment List", "Load List"]
-DELIVERABLE_TYPES: list[str] = ["Cable Schedule", "Instrument List", "PLC I/O List", "Equipment List", "Load List"]
+DeliverableType = Literal["Cable Schedule", "Instrument List", "PLC I/O List", "Equipment List", "Load List",
+                          "Distribution Panel"]
+DELIVERABLE_TYPES: list[str] = ["Cable Schedule", "Instrument List", "PLC I/O List", "Equipment List", "Load List",
+                                "Distribution Panel"]
+#: The type whose content is one panel's schedule from the Distribution Panels list (source "panel").
+PANEL_TYPE = "Distribution Panel"
 
 
 class Deliverable(BaseModel):
@@ -32,8 +36,10 @@ class Deliverable(BaseModel):
     doc_title: str = ""
     #: "generator": a build of `generator_id`. "project": generated from the Project Load List
     #: and the load types, by the list of this deliverable's type (keylists.loadgen).
-    source: Literal["generator", "project"] = "generator"
+    #: "panel": the schedule of the distribution panel `panel_id` (keylists.distribution_panels).
+    source: Literal["generator", "project", "panel"] = "generator"
     generator_id: str = ""
+    panel_id: str = ""
     filter_column: str = ""  # blank: every row
     filter_values: list[str] = Field(default_factory=list)
     updated_at: datetime | None = None
@@ -63,6 +69,8 @@ class Revision(BaseModel):
     filter_column: str = ""
     filter_values: list[str] = Field(default_factory=list)
     changes: ChangeReport | None = None
+    #: Label and value lines frozen with the content (a distribution panel's header block).
+    summary: list[tuple[str, str | int | float | None]] = Field(default_factory=list)
 
 
 def next_letter(issued: list[str]) -> str:
@@ -105,10 +113,12 @@ def compare(previous: Revision | None, result: BuildResult, diff_key: str) -> Ch
     return change_report(previous.result.header, previous.result.rows, result.header, result.rows, diff_key)
 
 
-def check_deliverable(d: Deliverable, others: list[Deliverable], generators: set[str], columns: list[str] | None) -> Deliverable:
+def check_deliverable(d: Deliverable, others: list[Deliverable], generators: set[str], columns: list[str] | None,
+                      panels: set[str] | None = None) -> Deliverable:
     """Trimmed and checked: the name is required and unique, the generator exists, and a
     filter names a column of the generator's output (`columns`; None when not known yet)
-    and at least one value."""
+    and at least one value. A Distribution Panel deliverable takes its content from one of
+    the `panels` (ids of the Distribution Panels list; None when not known), nothing else does."""
     errors: dict[str, str] = {}
     d = d.model_copy(update={"name": d.name.strip(), "doc_number": d.doc_number.strip(), "doc_title": d.doc_title.strip(),
                              "filter_column": d.filter_column.strip(),
@@ -117,10 +127,18 @@ def check_deliverable(d: Deliverable, others: list[Deliverable], generators: set
         errors["name"] = "Name is required"
     elif any(o.id != d.id and name_key(o.name) == name_key(d.name) for o in others):
         errors["name"] = "Another deliverable has this name"
-    if d.source == "project":
-        d = d.model_copy(update={"generator_id": ""})
+    if d.type == PANEL_TYPE:
+        d = d.model_copy(update={"source": "panel", "generator_id": ""})
+        if panels is not None and d.panel_id not in panels:
+            errors["panel_id"] = "Choose a distribution panel"
+    elif d.source == "panel":
+        errors["source"] = "Only a Distribution Panel deliverable takes its content from a panel"
+    elif d.source == "project":
+        d = d.model_copy(update={"generator_id": "", "panel_id": ""})
     elif d.generator_id not in generators:
         errors["generator_id"] = "Choose a generator"
+    else:
+        d = d.model_copy(update={"panel_id": ""})
     if d.filter_column:
         if columns is not None and d.filter_column.casefold() not in [c.strip().casefold() for c in columns]:
             errors["filter_column"] = "Not a column of the generator's output"

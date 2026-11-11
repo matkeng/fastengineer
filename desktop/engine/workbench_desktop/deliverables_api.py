@@ -14,11 +14,12 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from workbench_core.deliverables import (DELIVERABLE_TYPES, Deliverable, Revision, RevisionInfo, apply_filter,
+from workbench_core.deliverables import (DELIVERABLE_TYPES, PANEL_TYPE, Deliverable, Revision, RevisionInfo, apply_filter,
                                          check_deliverable, compare, content_rows, next_letter)
 from workbench_core.generators.editable import BuildInfo, input_hash
-from workbench_core.generators.models import BuildResult, ChangeReport
+from workbench_core.generators.models import BuildResult, BuildStats, ChangeReport
 from workbench_core.generators.xlsx_export import csv_bytes, export_name, xlsx_bytes
+from workbench_core.keylists.distribution_panels import PANEL_COLUMNS, PANEL_DIFF_KEY, flatten, summary_lines
 from workbench_core.keylists.loadgen import BY_TYPE, generate, missing_load_types
 from workbench_core.refdata import RefValidationError
 
@@ -44,17 +45,25 @@ class Summary(BaseModel):
     revisions: int = 0
 
 
+class PanelChoice(BaseModel):
+    id: str
+    tag: str
+    title: str
+
+
 class Overview(BaseModel):
     types: list[str]
     deliverables: list[Summary]
     generators: list[GeneratorChoice]
     project_columns: dict[str, list[str]]  # deliverable type -> the columns of its Project Load List output
+    panels: list[PanelChoice] = Field(default_factory=list)  # the Distribution Panels list (for a Distribution Panel)
 
 
 class Current(BaseModel):
     """What issuing now would freeze: the generator's latest build through the filter."""
     source: str = "generator"  # "project": generated now from the Project Load List and the load types
     warnings: list[str] = Field(default_factory=list)
+    summary: list[tuple[str, str | int | float | None]] = Field(default_factory=list)  # a panel's header block
     build: BuildInfo | None = None
     stale: bool = False  # the generator was changed after that build
     rows: int = 0
@@ -85,6 +94,36 @@ def _get(did: str) -> Deliverable:
 
 
 PROJECT = "Project Load List"
+PANELS = "Distribution Panels"
+Lines = list[tuple[str, str | int | float | None]]
+
+
+def _source_name(d: Deliverable, generators: dict[str, str], panels: dict[str, str]) -> str:
+    if d.source == "panel":
+        return f"{PANELS}: {panels[d.panel_id]}" if d.panel_id in panels else ""
+    return PROJECT if d.source == "project" else generators.get(d.generator_id, "")
+
+
+def _panel_tags() -> dict[str, str]:
+    return {p.id: p.tag for p in get_keylists().distribution_panels().panels}
+
+
+def _panel(d: Deliverable) -> tuple[BuildResult, str, list[str], str | None, Lines]:
+    """A panel-source deliverable's content, worked out now: (result, diff key, warnings, problem,
+    the header block). The problem (the panel is gone, or has nothing on it) stops it being issued."""
+    from .distribution_panels_api import schedule_of  # imported late: it runs the imports
+
+    panel, schedule = schedule_of(d.panel_id)
+    if panel is None or schedule is None:
+        empty = BuildResult(header=list(PANEL_COLUMNS), rows=[], stats=BuildStats())
+        return empty, PANEL_DIFF_KEY, [], "Its distribution panel no longer exists. Choose another.", []
+    problem = None if panel.entries else f"{schedule.tag} has no circuits yet. Place them in Distribution Panels first."
+    return flatten(schedule), PANEL_DIFF_KEY, schedule.findings, problem, summary_lines(panel, schedule)
+
+
+def _generated(d: Deliverable) -> tuple[BuildResult, str, list[str], str | None, Lines]:
+    """The content of a deliverable that isn't a generator's build."""
+    return _panel(d) if d.source == "panel" else (*_project(d), [])
 
 
 def _project(d: Deliverable) -> tuple[BuildResult, str, list[str], str | None]:
@@ -114,6 +153,8 @@ def _project(d: Deliverable) -> tuple[BuildResult, str, list[str], str | None]:
 
 def _checked(d: Deliverable) -> Deliverable:
     gens = {g.id for g in get_generators().list()}
+    if d.type == PANEL_TYPE:
+        return check_deliverable(d, get_deliverables().list(), gens, list(PANEL_COLUMNS), set(_panel_tags()))
     if d.source == "project":
         return check_deliverable(d, get_deliverables().list(), gens, list(BY_TYPE[d.type].columns))
     columns = _columns(d.generator_id) if d.generator_id in gens else None
@@ -127,13 +168,16 @@ def overview() -> Overview:
     revs: dict[str, list[RevisionInfo]] = {}
     for r in store.revisions():
         revs.setdefault(r.deliverable_id, []).append(r)  # newest first
-    items = [Summary(deliverable=d, generator=PROJECT if d.source == "project" else names.get(d.generator_id, ""),
+    panels = get_keylists().distribution_panels().panels
+    tags = {p.id: p.tag for p in panels}
+    items = [Summary(deliverable=d, generator=_source_name(d, names, tags),
                      latest=(revs.get(d.id) or [None])[0],
                      revisions=len(revs.get(d.id, []))) for d in store.list()]
     items.sort(key=lambda s: (DELIVERABLE_TYPES.index(s.deliverable.type), s.deliverable.name.casefold()))
     return Overview(types=DELIVERABLE_TYPES, deliverables=items, generators=[
         GeneratorChoice(id=g.id, name=g.name, columns=_columns(g.id), builds=len(gens.list_builds(g.id))) for g in gens.list()],
-        project_columns={t: list(x.columns) for t, x in BY_TYPE.items()})
+        project_columns={t: list(x.columns) for t, x in BY_TYPE.items()} | {PANEL_TYPE: list(PANEL_COLUMNS)},
+        panels=[PanelChoice(id=p.id, tag=p.tag, title=p.title) for p in panels])
 
 
 class DeliverableBody(BaseModel):
@@ -141,8 +185,9 @@ class DeliverableBody(BaseModel):
     name: str
     doc_number: str = ""
     doc_title: str = ""
-    source: Literal["generator", "project"] = "generator"
+    source: Literal["generator", "project", "panel"] = "generator"
     generator_id: str = ""
+    panel_id: str = ""
     filter_column: str = ""
     filter_values: list[str] = Field(default_factory=list)
 
@@ -165,14 +210,14 @@ def create(body: DeliverableBody):
 def _current(d: Deliverable, with_rows: bool) -> Current:
     store, gens = get_deliverables(), get_generators()
     letter = next_letter([r.letter for r in store.revisions(d.id)])
-    if d.source == "project":
-        result, diff_key, warnings, problem = _project(d)
+    if d.source != "generator":
+        result, diff_key, warnings, problem, summary = _generated(d)
         try:
             result = apply_filter(result, d.filter_column, d.filter_values)
         except RefValidationError as exc:
-            return Current(source="project", next_letter=letter, problem=exc.message)
-        return Current(source="project", warnings=warnings, rows=content_rows(result), next_letter=letter, problem=problem,
-                       changes=compare(store.latest(d.id), result, diff_key), result=result if with_rows else None)
+            return Current(source=d.source, next_letter=letter, problem=exc.message)
+        return Current(source=d.source, warnings=warnings, summary=summary, rows=content_rows(result), next_letter=letter,
+                       problem=problem, changes=compare(store.latest(d.id), result, diff_key), result=result if with_rows else None)
     try:
         rec = gens.get(d.generator_id)
     except NotFound:
@@ -198,7 +243,7 @@ def detail(did: str, rows: bool = False) -> Detail:
     try:
         name, builds = gens.get(d.generator_id).name, gens.list_builds(d.generator_id)
     except NotFound:
-        name, builds = (PROJECT if d.source == "project" else ""), []
+        name, builds = _source_name(d, {}, _panel_tags()), []
     return Detail(deliverable=d, generator=name, revisions=get_deliverables().revisions(did), builds=builds,
                   current=_current(d, rows))
 
@@ -232,8 +277,9 @@ class IssueBody(BaseModel):
 @router.post("/{did}/revisions", response_model=RevisionInfo)
 def issue(did: str, body: IssueBody):
     d = _get(did)
-    if d.source == "project":
-        source, diff_key, _, problem = _project(d)
+    summary: Lines = []
+    if d.source != "generator":
+        source, diff_key, _, problem, summary = _generated(d)
         if problem:
             return invalid(RefValidationError(problem))
         build_seq = 0
@@ -263,7 +309,7 @@ def issue(did: str, body: IssueBody):
                             added=changes.added if changes else None, removed=changes.removed if changes else None,
                             changed=changes.changed if changes else None)
         return Revision(info=info, result=result, diff_key=diff_key, doc_number=d.doc_number, doc_title=d.doc_title,
-                        filter_column=d.filter_column, filter_values=d.filter_values, changes=changes)
+                        filter_column=d.filter_column, filter_values=d.filter_values, changes=changes, summary=summary)
 
     return get_deliverables().issue(d, make).info
 
@@ -332,7 +378,7 @@ def export_revision(rid: str, body: ExportBody, request: Request):
         raise HTTPException(415, "Expected application/json")
     rev = _revision(rid)
     cfg = _export_config(rev, _get(rev.info.deliverable_id).name)
-    data = xlsx_bytes(rev.result, cfg, f"{rev.info.build_seq}") if body.format == "xlsx" else csv_bytes(rev.result, cfg.date_format)
+    data = xlsx_bytes(rev.result, cfg, f"{rev.info.build_seq}", rev.summary) if body.format == "xlsx" else csv_bytes(rev.result, cfg.date_format)
     if body.path is None:
         name = export_name(cfg, "", rev.info.issued_at, f".{body.format}")
         return Response(data, media_type=MEDIA[body.format], headers={"Content-Disposition": f'attachment; filename="{name}"'})

@@ -38,3 +38,15 @@ def test_check() -> None:
         check_deliverable(Deliverable(type="Load List", name="lighting ", generator_id="zz", filter_column="Zone"),
                           [a], {"g1"}, ["Area"])
     assert set(e.value.fields) == {"name", "generator_id", "filter_column", "filter_values"}
+
+
+def test_a_distribution_panel_takes_its_content_from_a_panel() -> None:
+    d = check_deliverable(Deliverable(type="Distribution Panel", name="DP-1", generator_id="g", panel_id="p1"), [], set(), None, {"p1"})
+    assert (d.source, d.generator_id, d.panel_id) == ("panel", "", "p1")
+    with pytest.raises(RefValidationError) as exc:
+        check_deliverable(Deliverable(type="Distribution Panel", name="DP-1", panel_id="gone"), [], set(), None, {"p1"})
+    assert exc.value.fields == {"panel_id": "Choose a distribution panel"}
+    with pytest.raises(RefValidationError) as exc:
+        check_deliverable(Deliverable(type="Load List", name="L", source="panel", panel_id="p1"), [], set(), None, {"p1"})
+    assert set(exc.value.fields) == {"source"}
+    assert check_deliverable(Deliverable(type="Load List", name="L", source="project", panel_id="p1"), [], set(), None).panel_id == ""

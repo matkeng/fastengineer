@@ -25,7 +25,7 @@ def test_sample_data_fills_an_empty_project_and_every_deliverable_can_be_issued(
     added = res.json()["added"]
     assert set(added) == {"Plant Areas", "Equipment Packages", "Equipment Codes", "Instrument Codes", "Load Types",
                           "Electrical Equipment List", "PLC List", "List import (MEL)", "Lists & tables", "Deliverables",
-                          "Cable details (Load List)"}
+                          "Distribution Panels", "Cable details (Load List)"}
     assert res.json()["skipped"] == []
 
     loads = client.get("/api/loadlist").json()["rows"]
@@ -36,18 +36,28 @@ def test_sample_data_fills_an_empty_project_and_every_deliverable_can_be_issued(
     assert sorted(s["deliverable"]["type"] for s in overview["deliverables"]) == sorted(overview["types"])
     for s in overview["deliverables"]:
         d = s["deliverable"]
-        assert s["generator"] == "Project Load List" and d["source"] == "project"
+        if d["type"] == "Distribution Panel":
+            assert s["generator"] == "Distribution Panels: MCC-2" and (d["source"], d["panel_id"]) == ("panel", "sdp1")
+        else:
+            assert s["generator"] == "Project Load List" and d["source"] == "project"
         cur = client.get(f"/api/deliverables/{d['id']}", params={"rows": True}).json()["current"]
         assert cur["problem"] is None and cur["rows"] and cur["warnings"] == [], (d["name"], cur["problem"], cur["warnings"])
         res = client.post(f"/api/deliverables/{d['id']}/revisions", json={"description": "First issue"})
         assert res.status_code == 200, res.text
         assert res.json()["letter"] == "A"
 
+    # MCC-2's schedule: its five loads on ways 1 to 5, 105 kW in all, shared equally by the phases.
+    panel = client.get("/api/distribution-panels").json()["schedules"]["sdp1"]
+    assert [r["tag"] for r in panel["rows"] if r["span"] == 3 and r["tag"]] == ["C-401", "F-301", "F-302", "H-501", "LP-601"]
+    t = panel["totals"]
+    assert t["total_kw"] == pytest.approx(105 + (78 + 344 + 12 * 33 + 14 * 22) / 1000)
+    assert t["max_kva"] == pytest.approx(453.6) and panel["findings"] == [] and panel["rows"][24]["section"] == "Lighting Contactor"
+
 
 def test_sample_data_runs_once_and_leaves_existing_lists_alone():
     client.post("/api/sample-data")
     again = client.post("/api/sample-data").json()
-    assert again["added"] == {} and len(again["skipped"]) == 10
+    assert again["added"] == {} and len(again["skipped"]) == 11
 
 
 def test_sample_data_does_not_touch_a_list_that_has_data(data_dir):

@@ -9,7 +9,9 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from workbench_core.deliverables import DELIVERABLE_TYPES, Deliverable, check_deliverable
+from workbench_core.deliverables import DELIVERABLE_TYPES, PANEL_TYPE, Deliverable, check_deliverable
+from workbench_core.keylists.distribution_panels import (DistributionPanel, DistributionPanelList, PanelDivider, PanelEntry,
+                                                         PoleValues, auto_place, check_panels)
 from workbench_core.keylists import (EelList, EquipmentCode, EquipmentPackage, EquipmentPackageList, EquipmentType,
                                      InstrumentCode, PlantArea, PlantAreaList, check_code_list, check_eel,
                                      check_equipment_packages, check_load_types, check_plant_areas)
@@ -23,6 +25,7 @@ from .loadlist_api import current_rows
 from .storage import get_deliverables, get_keylists, get_loadlist, get_ref, get_store
 
 router = APIRouter(prefix="/api/sample-data", tags=["sample data"])
+SAMPLE_PANEL = "sdp1"
 
 MEL = b"""Tag,Area,Description,Type,kW,Voltage,Qty,Fed from
 P-101,100,Feed pump A,DOL,7.5,415,1,MCC-1
@@ -207,10 +210,48 @@ def load_sample_data() -> Added:
         return 3
 
     def deliverables() -> int:
+        panels = {p.id for p in lists.distribution_panels().panels}
+        done = 0
         for n, kind in enumerate(DELIVERABLE_TYPES, start=1):
             d = Deliverable(type=kind, name=f"Sample {kind.lower()}", doc_number=f"E-LST-{n:03d}", doc_title=kind, source="project")
-            dl.save(check_deliverable(d, dl.list(), set(), None), create=True)
-        return len(DELIVERABLE_TYPES)
+            if kind == PANEL_TYPE:  # the schedule of the sample panel, if this run made it
+                if SAMPLE_PANEL not in panels:
+                    continue
+                d = d.model_copy(update={"source": "panel", "panel_id": SAMPLE_PANEL})
+            dl.save(check_deliverable(d, dl.list(), set(), None, panels), create=True)
+            done += 1
+        return done
+
+    def panels() -> int:
+        """MCC-2's schedule: its loads on the first ways, then a spare breaker, an RCD and the
+        lighting control circuit, and two spare breakers behind the lighting contactor."""
+        loads = {r.ref(): r for r in rows}
+        if not (loads.get("eel/smcc2") and loads["eel/smcc2"].is_panel):
+            return 0
+        types = {t.id: t for t in lists.load_types().items}
+        panel = auto_place(DistributionPanel(id=SAMPLE_PANEL, load_ref="eel/smcc2", ways=12, isolator_rating=630, upstream_cb=630),
+                           loads, types)
+        for e in panel.entries:
+            e.rows = [PoleValues(cb_rating=63) for _ in e.rows]
+        way = max((e.way for e in panel.entries), default=0) + 1
+        if way + 1 > 8:
+            return 0
+        panel.entries += [
+            PanelEntry(way=way, pole="R", poles=3, kind="spare_cb", rows=[PoleValues(cb_rating=32) for _ in range(3)]),
+            PanelEntry(way=way + 1, pole="R", kind="rcd", description="RCD RTS module", rows=[PoleValues(cb_rating=6, qty=1, watts_each=78)]),
+            PanelEntry(way=way + 1, pole="W", kind="light_control", description="Lighting control circuit",
+                       rows=[PoleValues(cb_rating=6, qty=1, watts_each=344)]),
+            PanelEntry(way=9, pole="R", kind="other", description="Walkway lighting circuit 1", load_type="Light - Walkway",
+                       rows=[PoleValues(cb_rating=16, qty=12, watts_each=33)]),
+            PanelEntry(way=9, pole="W", kind="spare_cb", rows=[PoleValues(cb_rating=16)]),
+            PanelEntry(way=10, pole="R", kind="other", description="Walkway lighting circuit 2", load_type="Light - Walkway",
+                       rows=[PoleValues(cb_rating=16, qty=14, watts_each=22)])]
+        panel.dividers = [PanelDivider(before_way=9, label="Lighting Contactor")]
+        doc, errors = check_panels(DistributionPanelList(panels=[panel]), loads)
+        if errors:
+            return 0
+        lists.save_distribution_panels(doc)
+        return 1
 
     ec = lambda i, c, n: {"id": i, "code": c, "name": n, "disciplines": ["E"]}  # noqa: E731
     ic = lambda c, n, p: {"code": c, "name": n, "plc_code": p}  # noqa: E731
@@ -226,8 +267,9 @@ def load_sample_data() -> Added:
     fill("PLC List", not lists.plc().systems, plc)
     fill("List import (MEL)", not store.list_recipes(), mel)
     fill("Lists & tables", not (ref.enums() or ref.trees() or ref.tables()), user_lists)
-    fill("Deliverables", not dl.list(), deliverables)
     rows, _, _ = current_rows()  # brings the Load List up to date, so its allocations are filled in
+    fill("Distribution Panels", not lists.distribution_panels().panels, panels)
+    fill("Deliverables", not dl.list(), deliverables)
     if "List import (MEL)" in added or "Electrical Equipment List" in added:
         done = 0
         for r in rows:

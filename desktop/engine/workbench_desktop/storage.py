@@ -22,6 +22,7 @@ from workbench_core.deliverables import Deliverable, next_letter
 from workbench_core.deliverables import Revision as IssuedRevision
 from workbench_core.deliverables import RevisionInfo as IssueInfo
 from workbench_core.keylists.plc import PlcList, from_registers
+from workbench_core.keylists.distribution_panels import DistributionPanelList
 from workbench_core.keylists import (
     EEL_SOURCE,
     KEPT,
@@ -646,6 +647,25 @@ class KeyListStore:
                       label="PLC List", note=note)
         return plc
 
+    DISTRIBUTION_PANELS = "distribution-panels"
+
+    def distribution_panels(self) -> DistributionPanelList:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.DISTRIBUTION_PANELS,)).fetchone()
+        return DistributionPanelList.model_validate_json(row[0]) if row else DistributionPanelList()
+
+    def save_distribution_panels(self, panels: DistributionPanelList, note: str | None = None) -> DistributionPanelList:
+        panels = panels.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.DISTRIBUTION_PANELS,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.DISTRIBUTION_PANELS, panels.model_dump_json()))
+            # the record id is the one in the URL (/api/distribution-panels), for the version check
+            audit.log(self._db, "distribution_panels", self.DISTRIBUTION_PANELS,
+                      before or DistributionPanelList().model_dump_json(), panels.model_dump_json(),
+                      label="Distribution Panels", note=note)
+        return panels
+
     EEL = "electrical-equipment"
 
     def eel(self) -> EelList:
@@ -1020,6 +1040,10 @@ class DeliverableStore:
 
     def using(self, generator_id: str) -> list[str]:
         return [d.name for d in self.list() if d.generator_id == generator_id]
+
+    def using_panel(self, panel_id: str) -> list[str]:
+        """Names of the deliverables that issue this distribution panel's schedule."""
+        return [d.name for d in self.list() if getattr(d, "panel_id", "") == panel_id]
 
 
 class InUse(ValueError):

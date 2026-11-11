@@ -52,7 +52,8 @@ def _new(rid: str, **more) -> dict:
 def test_deliverables_and_their_rules() -> None:
     rid = _generator()
     ov = client.get(API).json()
-    assert ov["types"] == ["Cable Schedule", "Instrument List", "PLC I/O List", "Equipment List", "Load List"]
+    assert ov["types"] == ["Cable Schedule", "Instrument List", "PLC I/O List", "Equipment List", "Load List",
+                           "Distribution Panel"]
     assert ov["deliverables"] == [] and "Cable Number" in ov["generators"][0]["columns"]
     a = _new(rid)
     b = _new(rid, name="Lighting cables, 100 area", doc_number="E-SCH-002", filter_column="from", filter_values=["100-LB01"])
@@ -178,7 +179,8 @@ def test_deliverables_from_the_project_load_list() -> None:
     for s in ov["deliverables"]:  # the sample's own deliverables are not needed here
         assert client.delete(f"{API}/{s['deliverable']['id']}").status_code == 200
 
-    made = {kind: _project(kind) for kind in ov["types"]}
+    # every type but the Distribution Panel, whose content is a panel's schedule (see test_distribution_panels_api)
+    made = {kind: _project(kind) for kind in ov["types"] if kind != "Distribution Panel"}
     for kind, d in made.items():
         detail = client.get(f"{API}/{d['id']}", params={"rows": True}).json()
         cur = detail["current"]

@@ -60,7 +60,8 @@ def overview() -> dict:
             "disciplines": [{"code": c, "name": n} for c, n in DISCIPLINES.items()],
             "eel": {"items": len(lists.eel().items)},
             "plc": _plc_counts(lists.plc()),
-            "cable_types": {"items": len(lists.cable_types().items)}}
+            "cable_types": {"items": len(lists.cable_types().items)},
+            "distribution_panels": {"items": len(lists.distribution_panels().panels)}}
 
 
 def _plc_counts(plc) -> dict[str, int]:
