@@ -236,3 +236,15 @@ def test_inputs_export_preview_and_apply(tmp_path: Path):
     assert client.post(f"/api/generators/{rid}/inputs/import", params=q, content=b"nope").status_code == 400
     out = client.post(f"/api/generators/{rid}/inputs/export", json={"path": str(tmp_path / "in")}).json()
     assert out["path"].endswith("in.xlsx") and (tmp_path / "in.xlsx").stat().st_size > 2000
+
+
+def test_the_two_generator_types() -> None:
+    types = client.get("/api/generators/types").json()
+    assert [(t["id"], t["name"], t["available"]) for t in types] == [("power", "Power", True), ("instrument", "Instrument", False)]
+    assert (types[0]["loads"], types[0]["lists"][0]) == (0, {"type": "Cable Schedule", "rows": 0, "deliverables": 0})
+    client.post("/api/sample-data")
+    power = client.get("/api/generators/types").json()[0]
+    assert (power["loads"], power["load_types"], power["missing_load_types"]) == (12, 4, [])
+    by = {x["type"]: x for x in power["lists"]}
+    assert list(by) == ["Cable Schedule", "Equipment List", "Instrument List", "PLC I/O List", "Load List"]
+    assert by["Load List"] == {"type": "Load List", "rows": 12, "deliverables": 1} and by["Cable Schedule"]["rows"] > 12

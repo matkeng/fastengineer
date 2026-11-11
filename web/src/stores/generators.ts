@@ -18,7 +18,6 @@ export const useGenerators = defineStore('generators', () => {
 	const builds = ref<BuildInfo[]>([]);
 	const build = ref<BuildRecord | null>(null); // the build shown on the Build tab
 	const checkResult = ref<CheckResult | null>(null);
-	const lastImport = ref<ImportReport | null>(null);
 	const busy = ref(false);
 	const error = ref<string | null>(null);
 	const fieldErrors = ref<Record<string, string>>({});
@@ -51,15 +50,6 @@ export const useGenerators = defineStore('generators', () => {
 	async function refreshList() {
 		const l = await run(() => apiGet<GenSummary[]>('/api/generators'));
 		if (l) list.value = l;
-	}
-
-	async function importWorkbook(file: File) {
-		const q = new URLSearchParams({ filename: file.name });
-		const res = await run(() => apiPostBytes<{ record: GenRecord; report: ImportReport }>(`/api/generators/import?${q}`, file));
-		if (!res) return;
-		lastImport.value = res.report;
-		await refreshList();
-		await open(res.record.id);
 	}
 
 	async function open(id: string) {
@@ -228,9 +218,9 @@ export const useGenerators = defineStore('generators', () => {
 	return {
 		exportInputs, importInputs,
 		hwView, anyDirty, loadHardware,
-		list, saved, draft, builds, build, checkResult, lastImport, busy, error, fieldErrors, message, tab, dirty,
+		list, saved, draft, builds, build, checkResult, busy, error, fieldErrors, message, tab, dirty,
 		selectedTemplate, jumpToRow,
-		refreshList, importWorkbook, open, close, save, discard, remove, check, preview, loadBuilds, loadBuild,
+		refreshList, open, close, save, discard, remove, check, preview, loadBuilds, loadBuild,
 		startBuild, deleteBuild, exportBuild,
 	};
 });

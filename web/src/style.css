@@ -1097,3 +1097,13 @@ main.fill .key-dp { overflow: auto; }
 .reset-option .hint { margin: 0; }
 .reset-parts { display: flex; flex-direction: column; gap: 6px; margin-left: 24px; padding-left: 10px; border-left: 2px solid var(--border); }
 .reset-option.confirm { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+/* Generators: the two built-in types */
+.gen-types { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-bottom: 12px; align-items: start; }
+.gen-type { border: 1px solid var(--border); border-radius: 2px; padding: 12px 14px; background: var(--card); }
+.gen-type header { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin-bottom: 6px; font-size: 1.05rem; }
+.gen-type p { margin: 0 0 8px; }
+.gen-type.planned { background: var(--bg); color: var(--muted); border-style: dashed; }
+.gen-type .chip.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); }
+.gen-type-lists { margin: 0 0 10px; }
+.gen-type-lists td.n, .gen-type-lists th:not(:first-child) { text-align: right; width: 110px; }
+.gen-older { margin: 16px 0 4px; font-size: 0.95rem; }

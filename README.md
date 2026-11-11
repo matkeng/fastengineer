@@ -825,17 +825,27 @@ alone, so it is safe to run on a project in use.
 
 ## Deliverable generators
 
-> Imported generator workbooks are being **retired** for the power side: Load
-> Types and the Load List now generate the same deliverables inside the app (see
-> above). Generators keep working and remain the route for the instrument side
-> until that moves across too.
+The **Generators** section shows the two types of generator, both built into
+the app. Generators are no longer made by importing a workbook.
 
+- **Power** (available): every load of the Project Load List adds the rows its
+  load type has for each list (see
+  [Generated from the Project Load List](#generated-from-the-project-load-list-load-types-as-templates)).
+  It is always up to date, so there is nothing to import or build. The section
+  shows how many loads and load types there are, which loads have no load type
+  yet, and for each list (Cable Schedule, Equipment List, Instrument List, PLC
+  I/O List, Load List) how many rows it has now and how many deliverables take
+  their content from it (`GET /api/generators/types`).
+- **Instrument** (planned): instrument lists, instrument cable schedules and I/O
+  lists from the project's instruments. Shown, but not available yet.
 
-The **Generators** section imports a generator workbook (cable schedules, device list, IO list).
-You edit its runsheet and templates in spreadsheet-style grids, with paste from Excel, and preview a run.
-Then you check, build, see what changed since the previous build, and export the schedule.
-The engine (`core/src/workbench_core/generators`) reproduces the Excel/VBA generator workbooks cell for cell.
-It also has a command line (`python -m workbench_core.generators import|check|build|diff|export|golden`).
+A project that has generators from **imported workbooks** (made in an earlier
+version) keeps them, listed under the two types: they can still be opened,
+edited in spreadsheet-style grids, checked, built, compared with the previous
+build, exported and deleted, and deliverables that use them keep working. The
+engine (`core/src/workbench_core/generators`) still reads a generator workbook
+from its command line (`python -m workbench_core.generators
+import|check|build|diff|export|golden`) and API; only the app's import is gone.
 See [docs/GENERATORS.md](docs/GENERATORS.md).
 
 ## Tests

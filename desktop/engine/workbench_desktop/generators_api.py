@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Matthew Kelly
-"""Deliverable generators: import a generator workbook, edit its runsheet and templates,
-check, preview, build (with history and change reports) and export."""
+"""Deliverable generators. The app has two built-in types (see /types): Power, which makes its
+lists from the Project Load List and the load types, and Instrument, which is to come.
+
+Generators made from a generator workbook belong to earlier versions: the app no longer offers
+the import, but the ones a project has can still be edited, checked, built and exported here.
+(The import endpoint stays for the command line and the tests.)"""
 
 from __future__ import annotations
 
@@ -84,6 +88,57 @@ async def import_file(request: Request, filename: str = Query(...), name: str | 
     title = name or gen.config.doc_title or Path(filename).stem
     rec = get_generators().create(title, gen.id, filename, gen, tables, res.report)
     return ImportResponse(record=rec, report=res.report)
+
+
+# -- the built-in generators -----------------------------------------------------------------
+# Generators are not made from a workbook any more. There are two types, built into the app:
+# "power" (the Project Load List through the load types' rows) and "instrument" (to come).
+
+class PowerList(BaseModel):
+    type: str  # the deliverable type it produces
+    rows: int  # rows it would have now
+    deliverables: int  # deliverables of that type that take their content from it
+
+
+class GeneratorType(BaseModel):
+    id: Literal["power", "instrument"]
+    name: str
+    available: bool
+    description: str
+    loads: int = 0
+    load_types: int = 0
+    missing_load_types: list[str] = []  # tags of the loads no list can be made for yet
+    lists: list[PowerList] = []
+
+
+@router.get("/types", response_model=list[GeneratorType])
+def generator_types() -> list[GeneratorType]:
+    """The two types of generator, with what the Power generator would produce right now."""
+    from workbench_core.keylists.loadgen import LISTS, generate, missing_load_types
+
+    from .loadlist_api import current_rows
+    from .storage import get_deliverables, get_keylists
+
+    lists = get_keylists()
+    rows, _, _ = current_rows()
+    types = {t.id: t for t in lists.load_types().items}
+    areas = {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}
+    cables = lists.cable_types().items
+    used: dict[str, int] = {}
+    for d in get_deliverables().list():
+        if d.source == "project":
+            used[d.type] = used.get(d.type, 0) + 1
+    power = GeneratorType(
+        id="power", name="Power", available=True,
+        description="Every load of the Project Load List adds the rows its load type has for each list.",
+        loads=sum(1 for r in rows if r.status == "active"), load_types=len(types),
+        missing_load_types=missing_load_types(rows, types),
+        lists=[PowerList(type=spec.deliverable_type, rows=len(generate(key, rows, types, areas, cables).rows),
+                         deliverables=used.get(spec.deliverable_type, 0)) for key, spec in LISTS.items()])
+    instrument = GeneratorType(
+        id="instrument", name="Instrument", available=False,
+        description="Instrument lists, instrument cable schedules and I/O lists from the project's instruments. Not available yet.")
+    return [power, instrument]
 
 
 @router.get("", response_model=list[GenSummary])
