@@ -661,7 +661,7 @@ You don't create or name them: each project has one of each.
   | Vendor drg number, Vendor reference | text |
   | Equipment reference | one or more tags, separated by commas |
   | Scope | text |
-  | Hyperlink | where the drawing is kept: a web address (`https://…`), or the path of a file or folder (`\\\\server\\share\\…`, `C:\\…`) |
+  | Hyperlink | where the drawing is kept: a web address (`https://…`), or the path of a file or folder (`\\server\share\…`, `C:\…`) |
 
   - The **hyperlink** shows in the grid as a link that opens in a new window
     (clicking it does not open the form); the form has **Open** and **Copy**
