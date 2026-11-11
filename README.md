@@ -428,6 +428,24 @@ Differences from the PRD's implementation, from its known-issues list (§11):
 - Not included: pushing into a load-list database (there isn't one here yet;
   export instead) and Transpose columns (not applied in the PRD either).
 
+### Passing an import's settings to a colleague
+
+An import's settings can be saved as a `.json` file and read in by someone else,
+in another project or on another PC.
+
+- **Export settings** (on an open import) saves its column rules, hidden rows,
+  text columns, overrides, added rows, calculated columns and mapping, with the
+  import's name and kind of list. The uploaded files are not in it. It exports
+  what is saved, so save or discard changes first.
+- **Import settings…** (on an open import) replaces that import's settings with
+  the file's, after you confirm. They arrive as unsaved changes: **Save** keeps
+  them, **Discard** brings the old settings back. The name and the uploaded
+  files stay. The file must be for the same kind of list.
+- **New from settings…** (on the list of imports) makes a new import with the
+  file's name and settings; you then upload its file.
+- Rules that name a key or column the receiving file doesn't have are listed
+  under "rules not applied" on the import's overview, as for any revised file.
+
 ## Project lists
 
 The key lists every project has, with fixed columns and rules
