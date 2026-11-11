@@ -6,9 +6,10 @@ import type { IconName } from '../lib/icons';
 
 export type Section = 'dashboard' | 'compare' | 'symbols' | 'mel' | 'keylists' | 'generators' | 'deliverables' | 'history' | 'projects' | 'engine';
 
-export const SECTIONS: { id: Section; label: string; icon: IconName }[] = [
+/** `menu: false`: not a tab of its own; it is opened from another section. */
+export const SECTIONS: { id: Section; label: string; icon: IconName; menu?: false }[] = [
 	{ id: 'dashboard', label: 'Dashboard', icon: 'home' },
-	{ id: 'compare', label: 'Compare tables', icon: 'compare' },
+	{ id: 'compare', label: 'Compare tables', icon: 'compare', menu: false }, // opened from its card on the Projects tab
 	{ id: 'symbols', label: 'Symbol detection', icon: 'symbol' },
 	{ id: 'mel', label: 'List import', icon: 'recipe' },
 	{ id: 'keylists', label: 'Project lists', icon: 'tree' },

@@ -53,7 +53,9 @@ const dirty: Partial<Record<string, () => boolean>> = {
 	generators: () => gens.anyDirty,
 	deliverables: () => dl.dirty,
 };
-const sections = computed(() => SECTIONS.filter((s) => s.id !== 'projects' || projects.isAdmin));
+const sections = computed(() => SECTIONS.filter((s) => s.menu !== false && (s.id !== 'projects' || projects.isAdmin)));
+// Compare tables is opened from the Projects tab, so that tab stays lit while it shows.
+const menuTab = computed(() => (ui.tab === 'compare' ? 'projects' : ui.tab));
 // Sections that work without a project: the engine's own page and project administration.
 const noProjectNeeded = computed(() => ui.tab === 'engine' || ui.tab === 'projects');
 
@@ -125,7 +127,7 @@ onMounted(() => wb.connect());
 		</header>
 
 		<nav class="menubar" aria-label="Sections">
-			<button v-for="s in sections" :key="s.id" type="button" :class="{ active: ui.tab === s.id }" @click="ui.go(s.id)">
+			<button v-for="s in sections" :key="s.id" type="button" :class="{ active: menuTab === s.id }" @click="ui.go(s.id)">
 				<Icon :name="s.icon" />{{ s.label }}<span v-if="dirty[s.id]?.()" class="dirty-dot" title="Unsaved changes">●</span>
 			</button>
 		</nav>
@@ -136,6 +138,11 @@ onMounted(() => wb.connect());
 			<ProjectsView v-if="wb.status === 'ready' && ui.tab === 'projects' && projects.isAdmin" />
 			<template v-if="wb.status === 'ready' && projects.current">
 				<DashboardView v-if="ui.tab === 'dashboard'" />
+				<div v-show="ui.tab === 'compare'" class="back-bar">
+					<button type="button" class="secondary small" @click="ui.go('projects')">← Projects</button>
+					<strong>Compare tables</strong>
+					<span class="hint">Pick an old and a new table and see what was added, deleted, struck out and changed.</span>
+				</div>
 				<CompareView v-show="ui.tab === 'compare'" />
 				<SymView v-show="ui.tab === 'symbols'" @open-import="openImport" />
 				<MelView v-show="ui.tab === 'mel'" />

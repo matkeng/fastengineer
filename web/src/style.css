@@ -1112,3 +1112,9 @@ dialog.modal.type-lists { width: min(1080px, calc(100vw - 32px)); }
 .key-packages .type-row .actions .count { margin-left: 5px; font-family: var(--font-mono); font-size: 10px; padding: 0 5px; border-radius: 2px;
 	background: var(--chrome); border: 1px solid var(--border); color: var(--muted); }
 .key-packages .type-row .actions .has-rows .count { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text); }
+/* A tool opened from another section: where it came from, above it */
+.back-bar { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-bottom: 8px; }
+.back-bar .hint { margin: 0; }
+main:not(.fill) > .back-bar { max-width: 1280px; }
+.tool-card .row { align-items: center; flex-wrap: nowrap; gap: 16px; }
+.tool-card .row .hint { margin: 0; }
