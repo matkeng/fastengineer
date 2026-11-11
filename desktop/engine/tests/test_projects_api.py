@@ -35,6 +35,14 @@ def server(data_dir: Path):
     return data_dir
 
 
+def sql(path: Path, script: str) -> None:
+    """Change a database file directly, and let go of it (Windows keeps an open file locked)."""
+    import sqlite3
+    from contextlib import closing
+    with closing(sqlite3.connect(path)) as db, db:
+        db.executescript(script)
+
+
 def new_project(name: str, **body) -> dict:
     r = client.post("/api/projects", json={"name": name, **body}, headers=who(ANN))
     assert r.status_code == 200, r.text
@@ -62,10 +70,9 @@ def test_upgrading_a_server_keeps_its_users_in(tmp_path: Path) -> None:
     storage.configure(old)
     client.post("/api/ref/enums", json={"name": "Voltage"}, headers=who(BOB))
     identity.server_mode, identity.admins = True, {projects.user_key(ANN)}
+    storage.close()                                        # the engine is stopped for the upgrade
     (old / "engine.db").unlink()                           # as if upgrading from before projects
-    import sqlite3
-    with sqlite3.connect(old / "workbench.db") as db:
-        db.execute("DELETE FROM settings WHERE key = 'project'")
+    sql(old / "workbench.db", "DELETE FROM settings WHERE key = 'project'")
     storage.configure(old)
     assert lists(BOB, "default") == ["Voltage"]
     assert client.get("/api/ref", headers=who(CAT)).status_code == 403
@@ -238,7 +245,7 @@ def test_folders_dropped_in_or_gone_missing(server: Path, tmp_path: Path) -> Non
     import shutil
     outside = new_project("Plant X", path=str(tmp_path / "x"), members=[BOB])
     inside = new_project("Plant Y")
-    storage.configure(server)
+    storage.close()                                            # the engine is stopped while folders are moved
     # a project folder put into <data dir>/projects is found at the next start, with no other step
     shutil.copytree(inside["folder"], server / "projects" / "Restored")
     # a pointed-at folder that has gone (moved, disk not connected) is reported, not an error
@@ -255,18 +262,15 @@ def test_folders_dropped_in_or_gone_missing(server: Path, tmp_path: Path) -> Non
 
 
 def test_takes_over_from_the_central_list_of_an_earlier_version(server: Path, tmp_path: Path) -> None:
-    import sqlite3
     a = new_project("Plant A", members=[BOB])
     client.post("/api/ref/enums", json={"name": "Voltage"}, headers=who(BOB, a["id"]))
-    storage.configure(server)
+    storage.close()
     # Put things back the way the earlier version kept them: details in registry.db, folder named by id.
     folder = server / "projects" / "0123abcd"
     Path(a["folder"]).rename(folder)
-    with sqlite3.connect(folder / "workbench.db") as db:
-        db.execute("DELETE FROM settings WHERE key = 'project'")
+    sql(folder / "workbench.db", "DELETE FROM settings WHERE key = 'project'")
     (server / "engine.db").unlink()
-    with sqlite3.connect(server / "registry.db") as db:
-        db.executescript("""
+    sql(server / "registry.db", """
             CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, name_key TEXT, path TEXT, archived INTEGER,
                                    created_at TEXT, created_by TEXT);
             CREATE TABLE members (project_id TEXT, user_key TEXT, user TEXT);

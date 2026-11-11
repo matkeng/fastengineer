@@ -400,6 +400,15 @@ def configure(data_dir: Path | None) -> Registry:
     return _registry
 
 
+def close() -> None:
+    """Close every database (the engine stopping). Windows won't move, rename or delete a
+    project folder or database while it is open."""
+    global _registry
+    if _registry is not None:
+        _registry.close()
+        _registry = None
+
+
 def registry() -> Registry:
     return _registry or configure(None)
 

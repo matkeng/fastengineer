@@ -1545,6 +1545,13 @@ def configure(data_dir: Path | None) -> None:
     projects.configure(data_dir)
 
 
+def close() -> None:
+    """Close the data folder's databases (see ``projects.close``)."""
+    from . import projects
+
+    projects.close()
+
+
 def get_store() -> Store:
     """The store of the project the current request works in (see ``projects``)."""
     from . import projects
