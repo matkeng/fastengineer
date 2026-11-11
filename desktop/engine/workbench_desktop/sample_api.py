@@ -232,6 +232,24 @@ def load_sample_data() -> Added:
         lists.save_drawing_list(check_drawings(rows, enums))
         return len(rows)
 
+    def documents() -> int:
+        """A few documents of the sample plant. (Choices the project's Enums no longer have are left blank.)"""
+        from workbench_core.keylists.drawing_list import DOCUMENTS, check_drawings
+        from workbench_core.keylists.enums import lookup
+        enums = lists.enums()
+        has = {"discipline": lookup(enums.disciplines), "document_type": lookup(enums.document_types), "status": lookup(enums.drawing_statuses)}
+        want = [("100-E-SPC-001", "LV switchgear and MCC specification", "E", "Specification", "B", "IFT", "10/02/2026", "MCC-1, MCC-2"),
+                ("100-E-CAL-001", "Cable sizing calculation", "E", "Calculation", "A", "IFR", "05/03/2026", ""),
+                ("100-I-DS-001", "Pressure transmitter datasheet", "I", "Datasheet", "0", "IFA", "", "P-101")]
+        rows = []
+        for number, title, discipline, kind, rev, status, issued, equipment in want:
+            row = {"number": number, "project_name": "Sample plant", "title": title, "discipline": discipline, "document_type": kind,
+                   "revision": rev, "status": status, "issue_date": issued, "equipment_reference": equipment, "scope": "Detailed design",
+                   "hyperlink": f"https://dms.example.com/documents/{number}"}
+            rows.append({k: v for k, v in row.items() if k not in has or name_key(v) in has[k]})
+        lists.save_document_list(check_drawings(rows, enums, DOCUMENTS))
+        return len(rows)
+
     def runsheet() -> int:
         """A few rows for the Instrument generator: a pressure transmitter set on each pump."""
         from workbench_core.keylists.instrument_runsheet import TypedRow
@@ -298,6 +316,7 @@ def load_sample_data() -> Added:
     fill("Distribution Panels", not lists.distribution_panels().panels, panels)
     fill("Instrument Runsheet", not lists.instrument_runsheet().rows, runsheet)
     fill("Drawing List", not lists.drawing_list().items, drawings)
+    fill("Document List", not lists.document_list().items, documents)
     fill("Deliverables", not dl.list(), deliverables)
     if "List import (MEL)" in added or "Electrical Equipment List" in added:
         done = 0

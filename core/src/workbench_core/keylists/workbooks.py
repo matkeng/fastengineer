@@ -645,22 +645,20 @@ def export_mel(headers: list[str], rows: list) -> Sheets:
     return [("MEL", grid)]
 
 
-# -- the Drawing List ------------------------------------------------------------------------------
+# -- the Drawing List and the Document List ---------------------------------------------------------
 
-def export_drawing_list(rows: list[dict[str, str]]) -> Sheets:
-    """`rows`: the drawings as text (drawing_list.as_typed). The issue date is written as dd/mm/yyyy."""
-    from .drawing_list import FIELDS, HEADINGS
+def export_register(spec, rows: list[dict]) -> Sheets:
+    """`spec`: drawing_list.DRAWINGS or DOCUMENTS; `rows`: the items as text (field -> value).
+    The issue date is written as dd/mm/yyyy."""
+    return [(spec.name, [list(spec.headings)] + [[r.get(f) or None for f in spec.fields] for r in rows])]
 
-    return [("Drawing List", [list(HEADINGS)] + [[r.get(f) or None for f in FIELDS] for r in rows])]
 
-
-def import_drawing_list(sheets: dict[str, Rows], old: list) -> Parsed:
-    """The payload is the drawings as typed (field -> text); the engine checks them, resolving
-    each discipline, type and status against the project's Enums. A drawing keeps the identity
-    of the drawing with the same number. `old`: the drawings as they are."""
-    from .drawing_list import FIELDS, HEADINGS
-
-    file = _sheet(sheets, "Drawing List", ("Drawing number",))
+def import_register(sheets: dict[str, Rows], spec, old: list) -> Parsed:
+    """The payload is the items as typed (field -> text); the engine checks them, resolving each
+    discipline, type and status against the project's Enums. An item keeps the identity of the
+    one with the same number. `old`: the items as they are."""
+    file = _sheet(sheets, spec.name, (spec.headings[0],))
     keep = _keep([(d.id, d.number) for d in old])
-    rows = [{"id": keep(_get(r, "Drawing number"))} | {f: _get(r, h) for f, h in zip(FIELDS, HEADINGS)} for r in file]
-    return Parsed({"items": rows}, [r["number"] for r in rows], labels={r["id"]: r["number"] or "A drawing with no number" for r in rows})
+    rows = [{"id": keep(_get(r, spec.headings[0]))} | {f: _get(r, h) for f, h in zip(spec.fields, spec.headings)} for r in file]
+    return Parsed({"items": rows}, [r["number"] for r in rows],
+                  labels={r["id"]: r["number"] or f"A {spec.item} with no number" for r in rows})

@@ -20,6 +20,7 @@ from workbench_core.keylists import (EEL_SOURCE, EquipmentCode, EquipmentPackage
 from workbench_core.keylists import workbooks as wbk
 from workbench_core.keylists.cable_types import check_cable_types
 from workbench_core.keylists.distribution_panels import check_panels
+from workbench_core.keylists.drawing_list import REGISTERS
 from workbench_core.mel.models import ELEC_LOAD_FIELDS
 from workbench_core.refdata import RefValidationError, name_key
 
@@ -35,7 +36,7 @@ LISTS = {"plant-areas": ("Plant Areas", "plant area"), "equipment-packages": ("E
          "instrument-codes": ("Instrument Codes", "instrument code"), "cable-types": ("Cable Types", "cable type"),
          "eel": ("Electrical Equipment List", "item"), "load-list": ("Load List", "row"),
          "distribution-panels": ("Distribution Panels", "panel"), "instrument-runsheet": ("Instrument Runsheet", "row"),
-         "mel": ("MEL", "row"), "drawing-list": ("Drawing List", "drawing")}
+         "mel": ("MEL", "row"), "drawing-list": ("Drawing List", "drawing"), "document-list": ("Document List", "document")}
 #: Lists that are only read here: they can be exported, not imported or reset.
 READ_ONLY = ("mel",)
 
@@ -70,8 +71,8 @@ def _sheets(list_id: str) -> wbk.Sheets:
         return wbk.export_cable_types(lists.cable_types().items)
     if list_id == "eel":
         return wbk.export_eel(lists.eel(), _eel_names())
-    if list_id == "drawing-list":
-        return wbk.export_drawing_list([d.model_dump() for d in drawing_list_api.get_drawings().items])
+    if list_id in REGISTERS:
+        return wbk.export_register(REGISTERS[list_id], drawing_list_api.view_of(REGISTERS[list_id]).items)
     if list_id == "instrument-runsheet":
         return wbk.export_instrument_runsheet(instrument_runsheet_api.get_runsheet().rows)
     if list_id == "mel":
@@ -133,9 +134,9 @@ def _parse(list_id: str, data: bytes) -> tuple[wbk.Parsed, list[str]]:
     if list_id == "eel":
         old = lists.eel()
         return wbk.import_eel(sheets, old, _eel_names()), [i.tag for i in old.items]
-    if list_id == "drawing-list":
-        old = lists.drawing_list().items
-        return wbk.import_drawing_list(sheets, old), [d.number for d in old]
+    if list_id in REGISTERS:
+        old = (lists.drawing_list() if list_id == "drawing-list" else lists.document_list()).items
+        return wbk.import_register(sheets, REGISTERS[list_id], old), [d.number for d in old]
     if list_id == "instrument-runsheet":
         return wbk.import_instrument_runsheet(sheets), []
     rows = loadlist_api.current_rows()[0]
@@ -173,8 +174,8 @@ def _check(list_id: str, parsed: wbk.Parsed) -> None:
                         get_keylists().disciplines())
     elif list_id == "cable-types":
         check_cable_types(p["items"])  # type: ignore[index]
-    elif list_id == "drawing-list":
-        drawing_list_api.checked(p["items"])  # type: ignore[index]
+    elif list_id in REGISTERS:
+        drawing_list_api.checked(p["items"], REGISTERS[list_id])  # type: ignore[index]
     elif list_id == "instrument-runsheet":
         instrument_runsheet_api.checked(p)  # type: ignore[arg-type]
     elif list_id == "distribution-panels":
@@ -205,8 +206,8 @@ def _save(list_id: str, parsed: wbk.Parsed):
         return lists.save_cable_types(check_cable_types(p["items"]), note="Imported from a workbook")  # type: ignore[index]
     if list_id == "eel":
         return eel_api.save_eel(eel_api.EelUpdate.model_validate(p))
-    if list_id == "drawing-list":
-        return drawing_list_api.save_drawings(drawing_list_api.DrawingsBody(items=p["items"]))  # type: ignore[index]
+    if list_id in REGISTERS:
+        return drawing_list_api.save_register(REGISTERS[list_id], drawing_list_api.RegisterBody(items=p["items"]))  # type: ignore[index]
     if list_id == "instrument-runsheet":
         return instrument_runsheet_api.save_runsheet(instrument_runsheet_api.RunsheetBody(rows=p))  # type: ignore[arg-type]
     return distribution_panels_api.save_panels(p)  # type: ignore[arg-type]

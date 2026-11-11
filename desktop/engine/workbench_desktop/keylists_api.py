@@ -65,7 +65,9 @@ def overview() -> dict:
             "instrument_runsheet": {"items": len(lists.instrument_runsheet().rows)},
             "mel": {"items": _mel_count()},
             "drawing_list": {"items": len(lists.drawing_list().items)},
-            "enums": {"items": sum(len(getattr(lists.enums(), k)) for k in ("disciplines", "drawing_types", "drawing_statuses"))}}
+            "document_list": {"items": len(lists.document_list().items)},
+            "enums": {"items": sum(len(getattr(lists.enums(), k))
+                                   for k in ("disciplines", "drawing_types", "document_types", "drawing_statuses"))}}
 
 
 def _mel_count() -> int:

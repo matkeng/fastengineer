@@ -24,7 +24,7 @@ from workbench_core.deliverables import RevisionInfo as IssueInfo
 from workbench_core.keylists.plc import PlcList, from_registers
 from workbench_core.keylists.distribution_panels import DistributionPanelList
 from workbench_core.keylists.instrument_runsheet import InstrumentRunsheet
-from workbench_core.keylists.drawing_list import DrawingList
+from workbench_core.keylists.drawing_list import DocumentList, DrawingList
 from workbench_core.keylists.enums import ProjectEnums, default_enums
 from workbench_core.keylists import (
     EEL_SOURCE,
@@ -656,7 +656,12 @@ class KeyListStore:
         """The project's choice lists; a project that never saved them has the default set."""
         with self._lock:
             row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.ENUMS,)).fetchone()
-        return ProjectEnums.model_validate_json(row[0]) if row else default_enums()
+        if not row:
+            return default_enums()
+        enums = ProjectEnums.model_validate_json(row[0])
+        if '"document_types"' not in row[0]:  # saved before the Document List: it starts with the default document types
+            enums.document_types = default_enums().document_types
+        return enums
 
     def disciplines(self) -> dict[str, str]:
         """The project's disciplines, code -> name, in their order."""
@@ -689,6 +694,23 @@ class KeyListStore:
             audit.log(self._db, "drawing_list", self.DRAWING_LIST, before or DrawingList().model_dump_json(),
                       drawings.model_dump_json(), label="Drawing List", note=note)
         return drawings
+
+    DOCUMENT_LIST = "document-list"
+
+    def document_list(self) -> DocumentList:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.DOCUMENT_LIST,)).fetchone()
+        return DocumentList.model_validate_json(row[0]) if row else DocumentList()
+
+    def save_document_list(self, documents: DocumentList, note: str | None = None) -> DocumentList:
+        documents = documents.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.DOCUMENT_LIST,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.DOCUMENT_LIST, documents.model_dump_json()))
+            audit.log(self._db, "document_list", self.DOCUMENT_LIST, before or DocumentList().model_dump_json(),
+                      documents.model_dump_json(), label="Document List", note=note)
+        return documents
 
     INSTRUMENT_RUNSHEET = "instrument-runsheet"
 

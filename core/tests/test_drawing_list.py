@@ -92,3 +92,22 @@ def test_a_drawing_has_a_hyperlink() -> None:
     assert set(exc.value.fields) == {"b.hyperlink"}
     saved = check_drawings(rows[:1], default_enums()).items[0]
     assert saved.hyperlink == "https://dms.example.com/D-1" and as_typed(saved, default_enums())["hyperlink"] == saved.hyperlink
+
+
+def test_the_document_list_spec() -> None:
+    from workbench_core.keylists.drawing_list import DOCUMENTS, DRAWINGS, REGISTERS
+    assert list(REGISTERS) == ["drawing-list", "document-list"] and DRAWINGS.headings == HEADINGS
+    assert [f for f in DOCUMENTS.fields if f.startswith("title")] == ["title"] and len(DOCUMENTS.fields) == len(DRAWINGS.fields) - 2
+    enums = default_enums()
+    assert len(enums.document_types) == 16 and enums.document_types[1].name == "Datasheet"
+    docs = check_drawings([{"id": "a", "number": "S-1", "title": " Spec ", "discipline": "E", "document_type": "specification", "status": "IFC",
+                            "issue_date": "01/02/2026", "vendor_doc_number": "V-9", "hyperlink": "https://x.example/s-1"}], enums, DOCUMENTS)
+    d = docs.items[0]
+    assert (type(d).__name__, d.title, d.discipline_id, d.document_type_id, d.status_id, d.vendor_doc_number) == (
+        "Document", "Spec", "d-e", "doc1", "ds5", "V-9")
+    assert as_typed(d, enums, DOCUMENTS)["document_type"] == "Specification"
+    with pytest.raises(RefValidationError) as exc:
+        check_drawings([{"id": "a", "number": "", "document_type": "Layout"}], enums, DOCUMENTS)
+    assert exc.value.fields == {"a.number": "Document number is required",
+                                "a.document_type": "'Layout' is not a document type of the project's Enums"}
+    assert "Document List" in exc.value.message

@@ -4,7 +4,8 @@
 
 - **Disciplines**: used by Equipment Codes (which keep a discipline by its code) and by the
   Drawing List. Every discipline has a code.
-- **Drawing types** and **Drawing statuses**: used by the Drawing List. A code is optional
+- **Drawing types**: used by the Drawing List. **Document types**: used by the Document List.
+- **Drawing statuses**: used by both the Drawing List and the Document List. A code is optional
   (a status is usually known by its code, IFC; a drawing type by its name).
 
 A project starts with a default set and can change it: add, rename, reorder and remove items.
@@ -27,11 +28,15 @@ from .models import DISCIPLINES
 ENUMS: dict[str, tuple[str, str, bool]] = {
     "disciplines": ("Disciplines", "discipline", True),
     "drawing_types": ("Drawing types", "drawing type", False),
+    "document_types": ("Document types", "document type", False),
     "drawing_statuses": ("Drawing statuses", "drawing status", False),
 }
 DRAWING_TYPES: tuple[str, ...] = (
     "Single Line Diagram", "Schematic", "Termination Diagram", "Loop Diagram", "Block Diagram", "Cable Block Diagram", "Layout",
     "General Arrangement", "P&ID", "Hook-up", "Panel Schedule", "Schedule", "Index", "Standard Detail", "Datasheet", "Other")
+DOCUMENT_TYPES: tuple[str, ...] = (
+    "Specification", "Datasheet", "Calculation", "Report", "Study", "Procedure", "Philosophy", "Design Criteria", "Scope of Work",
+    "List", "Schedule", "Manual", "Certificate", "Inspection and Test Plan", "Vendor Document", "Other")
 #: (code, name) of the statuses a project starts with.
 DRAWING_STATUSES: tuple[tuple[str, str], ...] = (
     ("", "Draft"), ("IFR", "Issued for Review"), ("IFA", "Issued for Approval"), ("IFT", "Issued for Tender"),
@@ -51,6 +56,7 @@ class EnumItem(BaseModel):
 class ProjectEnums(BaseModel):
     disciplines: list[EnumItem] = Field(default_factory=list)
     drawing_types: list[EnumItem] = Field(default_factory=list)
+    document_types: list[EnumItem] = Field(default_factory=list)
     drawing_statuses: list[EnumItem] = Field(default_factory=list)
     updated_at: datetime | None = None
 
@@ -61,6 +67,7 @@ def default_enums() -> ProjectEnums:
     return ProjectEnums(
         disciplines=[EnumItem(id=f"d-{c.lower()}", code=c, name=n) for c, n in DISCIPLINES.items()],
         drawing_types=[EnumItem(id=f"dt{i}", name=n) for i, n in enumerate(DRAWING_TYPES, start=1)],
+        document_types=[EnumItem(id=f"doc{i}", name=n) for i, n in enumerate(DOCUMENT_TYPES, start=1)],
         drawing_statuses=[EnumItem(id=f"ds{i}", code=c, name=n) for i, (c, n) in enumerate(DRAWING_STATUSES, start=1)])
 
 

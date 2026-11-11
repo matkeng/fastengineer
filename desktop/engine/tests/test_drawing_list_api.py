@@ -26,7 +26,9 @@ def data_dir(tmp_path: Path):
 
 def test_a_project_starts_with_the_default_enums_and_no_drawings() -> None:
     view = client.get(ENUMS).json()
-    assert view["titles"] == {"disciplines": "Disciplines", "drawing_types": "Drawing types", "drawing_statuses": "Drawing statuses"}
+    assert view["titles"] == {"disciplines": "Disciplines", "drawing_types": "Drawing types", "document_types": "Document types",
+                              "drawing_statuses": "Drawing statuses"}
+    assert [t["name"] for t in view["enums"]["document_types"]][:3] == ["Specification", "Datasheet", "Calculation"]
     assert [d["code"] for d in view["enums"]["disciplines"]] == ["E", "I", "M", "P", "C", "S", "H", "PR", "G"]
     assert len(view["enums"]["drawing_types"]) == 16 and view["enums"]["drawing_statuses"][4] == {"id": "ds5", "code": "IFC", "name": "Issued for Construction"}
     assert view["need_code"] == ["disciplines"] and view["in_use"] == {}
@@ -34,7 +36,7 @@ def test_a_project_starts_with_the_default_enums_and_no_drawings() -> None:
     assert drawings["items"] == [] and [c["heading"] for c in drawings["columns"]][:2] == ["Drawing number", "Project name"]
     assert [i["name"] for i in drawings["choices"]["drawing_type"]][:2] == ["Single Line Diagram", "Schematic"]
     ov = client.get("/api/keylists").json()
-    assert ov["drawing_list"] == {"items": 0} and ov["enums"] == {"items": 33} and ov["disciplines"][-1] == {"code": "G", "name": "General"}
+    assert ov["drawing_list"] == {"items": 0} and ov["enums"] == {"items": 49} and ov["document_list"] == {"items": 0} and ov["disciplines"][-1] == {"code": "G", "name": "General"}
 
 
 def test_drawings_fixed_choices_and_equipment_warnings() -> None:
@@ -68,7 +70,7 @@ def test_enums_are_edited_per_project_and_items_in_use_are_kept() -> None:
     client.post("/api/sample-data")
     view = client.get(ENUMS).json()
     enums = view["enums"]
-    assert view["in_use"]["d-e"] == 6 and view["in_use"]["ds5"] == 1  # 3 drawings and 3 equipment codes use Electrical
+    assert view["in_use"]["d-e"] == 8 and view["in_use"]["ds5"] == 1  # 3 drawings, 2 documents and 3 equipment codes use Electrical
 
     # add a status, rename one that is in use: the drawing follows
     enums["drawing_statuses"].append({"id": "mine", "code": "IFI", "name": "Issued for Information"})
@@ -133,3 +135,47 @@ def test_the_drawing_list_workbook() -> None:
     bad = client.post("/api/list-workbooks/drawing-list/import", params={"filename": "d.xlsx", "apply": True}, content=out.getvalue())
     assert bad.status_code == 422 and "100-E-SCH-101: 'Nearly done' is not a status" in bad.json()["detail"]
     assert client.get(URL).json()["items"] == items
+
+
+DOCS = "/api/document-list"
+
+
+def test_the_document_list_is_the_same_register_with_one_title(tmp_path: Path) -> None:
+    empty = client.get(DOCS).json()
+    assert (empty["name"], empty["item"], empty["items"]) == ("Document List", "document", [])
+    assert [c["heading"] for c in empty["columns"]] == [
+        "Document number", "Project name", "Title", "Document discipline", "Document type", "Revision", "Status", "Issue date",
+        "Vendor doc number", "Vendor reference", "Equipment reference", "Scope", "Hyperlink"]
+    assert set(empty["choices"]) == {"discipline", "document_type", "status"} and empty["choices"]["document_type"][0]["name"] == "Specification"
+
+    client.post("/api/sample-data")
+    view = client.get(DOCS).json()
+    spec = view["items"][0]
+    assert (spec["number"], spec["title"], spec["discipline"], spec["document_type"], spec["status"], spec["issue_date"]) == (
+        "100-E-SPC-001", "LV switchgear and MCC specification", "E", "Specification", "IFT", "10/02/2026")
+    assert spec["hyperlink"].endswith("/documents/100-E-SPC-001") and spec["unknown_equipment"] == [] and "title_1" not in spec
+    assert client.get("/api/keylists").json()["document_list"] == {"items": 3}
+
+    rows = view["items"] + [{"id": "n1", "number": "100-PR-RPT-001", "title": "Process description", "discipline": "Process",
+                             "document_type": "report", "status": "Draft", "equipment_reference": "NOT-A-TAG"}]
+    ok = client.put(DOCS, json={"items": rows})
+    assert ok.status_code == 200, ok.text
+    assert (ok.json()["items"][3]["discipline"], ok.json()["items"][3]["document_type_id"], ok.json()["items"][3]["unknown_equipment"]) == (
+        "PR", "doc4", ["NOT-A-TAG"])
+    bad = client.put(DOCS, json={"items": rows + [{"id": "x", "number": "100-E-SPC-001", "document_type": "Single Line Diagram"}]})
+    assert bad.status_code == 422 and set(bad.json()["fields"]) == {"x.number", "x.document_type"}  # a drawing type is not a document type
+    assert "Document number '100-E-SPC-001' is used twice" in bad.json()["detail"]
+    assert "Document List" in str(client.get("/api/audit", params={"entity": "document_list"}).json())
+
+    # a document type in use can't be removed from the Enums
+    enums = client.get(ENUMS).json()["enums"]
+    refused = client.put(ENUMS, json=dict(enums, document_types=[t for t in enums["document_types"] if t["name"] != "Report"]))
+    assert refused.status_code == 422 and "Report (1 use)" in refused.json()["detail"]
+
+    # its workbook
+    data = client.post("/api/list-workbooks/document-list/export", json={}).content
+    ws = load_workbook(io.BytesIO(data))["Document List"]
+    assert (ws["A1"].value, ws["C1"].value, ws["M1"].value, ws["C2"].value) == ("Document number", "Title", "Hyperlink", spec["title"])
+    before = client.get(DOCS).json()["items"]
+    done = client.post("/api/list-workbooks/document-list/import", params={"filename": "d.xlsx", "apply": True}, content=data)
+    assert done.status_code == 200 and " 0 new" in done.json()["summary"] and client.get(DOCS).json()["items"] == before

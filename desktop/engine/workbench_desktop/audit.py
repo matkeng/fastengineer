@@ -51,6 +51,7 @@ ENTITIES = {
     "instrument_runsheet": "instrument runsheet",
     "enums": "enums",
     "drawing_list": "drawing list",
+    "document_list": "document list",
     "deliverable": "deliverable",
     "deliverable_revision": "deliverable revision",
     "cable_types": "cable types list",
