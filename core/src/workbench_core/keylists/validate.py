@@ -4,7 +4,8 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
+import re
+from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 
 from ..refdata.models import ColumnDef, RefValidationError, new_id
@@ -188,6 +189,77 @@ def _template_rows(raw: object, rid: str, errors: dict[str, str], owners: str = 
     return out
 
 
+#: What a component table can't be called: the load type's own fields (<<LoadType.Code>>…).
+_LOAD_TYPE_TAGS = {"code", "name", "ratingunit", "voltage", "phases", "from", "to", "stddrg", "buckettype", "loadtype",
+                   "fieldoptions", "multiload", "loadqty"}
+_TABLE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_ ]{0,24}$")  # 25 at most: a workbook sheet is "Table <name>"
+
+
+def _components(raw: object, rid: str, errors: dict[str, str]) -> list:
+    """A load type's component tables as typed in: a name (letters, digits, _ and spaces, starting
+    with a letter; unique in the type, ignoring case, spaces and _; not one of the load type's own
+    tag names), the field rows are matched on, value columns (named, unique, not Min or Max), and
+    rows whose Min and Max are numbers or blank, Min not above Max, and whose values are in the
+    columns. Wholly blank rows are dropped."""
+    from .models import ComponentRow, ComponentTable
+
+    def norm(s: str) -> str:
+        return re.sub(r"[\s_]+", "", s).casefold()
+
+    out = []
+    seen: set[str] = set()
+    for n, t in enumerate(raw if isinstance(raw, list) else []):
+        if not isinstance(t, dict):
+            continue
+        where = f"{rid}.components.{n}"
+        name = " ".join(str(t.get("name") or "").split())
+        if not _TABLE_NAME.match(name):
+            errors[f"{where}.name"] = "A table needs a name of up to 25 letters, digits, spaces or _, starting with a letter"
+        elif norm(name) in _LOAD_TYPE_TAGS:
+            errors[f"{where}.name"] = f"'{name}' is a load type field's tag: choose another name"
+        elif norm(name) in seen:
+            errors[f"{where}.name"] = f"Two tables are called {name}"
+        seen.add(norm(name))
+        field = str(t.get("match_field") or "").strip() or "load_rating"
+        columns: list[str] = []
+        for c in t.get("columns") or []:
+            c = " ".join(str(c).split())
+            if not c:
+                continue
+            if norm(c) in ("min", "max"):
+                errors[f"{where}.columns"] = f"'{c}' is taken: Min and Max are the range of each row"
+            elif norm(c) in {norm(x) for x in columns}:
+                errors[f"{where}.columns"] = f"Column '{c}' is in the table twice"
+            columns.append(c)
+        if not columns:
+            errors[f"{where}.columns"] = "A table needs at least one column (e.g. Part Number)"
+        rows = []
+        for i, r in enumerate(t.get("rows") or []):
+            if not isinstance(r, dict):
+                continue
+            bounds = []
+            for b in ("min", "max"):
+                text = str(r.get(b) if r.get(b) is not None else "").strip()
+                try:
+                    bounds.append(str(Decimal(text).normalize()) if text else None)
+                    if text and not Decimal(text).is_finite():
+                        raise InvalidOperation
+                except (InvalidOperation, ValueError):
+                    errors[f"{where}.rows.{i}"] = f"Row {i + 1}: {b.title()} must be a number or blank"
+                    bounds.append(None)
+            values = {str(k): str(v).strip() for k, v in (r.get("values") or {}).items() if v is not None and str(v).strip()}
+            unknown = [k for k in values if k not in columns]
+            if unknown:
+                errors[f"{where}.rows.{i}"] = f"Row {i + 1}: not a column of the table: {', '.join(unknown)}"
+            if bounds[0] is not None and bounds[1] is not None and Decimal(bounds[0]) > Decimal(bounds[1]):
+                errors[f"{where}.rows.{i}"] = f"Row {i + 1}: Min is more than Max"
+            if bounds[0] is None and bounds[1] is None and not values:
+                continue
+            rows.append(ComponentRow(min=bounds[0], max=bounds[1], values=values))
+        out.append(ComponentTable(id=str(t.get("id") or new_id()), name=name, match_field=field, columns=columns, rows=rows))
+    return out
+
+
 def check_load_types(rows: list[dict], columns: dict[str, list[str]] | None = None) -> LoadTypeList:
     """Check the rows of the Load Types list as they were typed in (numbers may be text).
 
@@ -237,6 +309,7 @@ def check_load_types(rows: list[dict], columns: dict[str, list[str]] | None = No
             problem("multi_load", "Not yes/no")
         r.multi_load = text in TRUE
         r.rows = _template_rows(raw.get("rows"), r.id, errors, columns=columns)
+        r.components = _components(raw.get("components"), r.id, errors)
         out.append(r)
     _check_unique(out, _LOAD_FIELDS, errors)
     if errors:

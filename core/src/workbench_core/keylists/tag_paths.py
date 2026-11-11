@@ -67,6 +67,9 @@ SCHEMA: dict[str, tuple[str, str, list[tuple[str, str]], list[tuple[str, str, st
         ("From", "from value"), ("To", "to value"), ("StdDrg", "STD drawing"), ("BucketType", "bucket type"),
         ("LoadType", "load type text"), ("FieldOptions", "field options"), ("MultiLoad", "multi load (Yes/No)"), ("LoadQty", "load quantity"),
     ], []),
+    "component": ("a component table's row", "first column", [
+        ("Min", "the row's range from"), ("Max", "the row's range to"), ("<column>", "any column of the table, e.g. PartNumber"),
+    ], []),
     "area": ("a plant area", "Tag", [
         ("Tag", "tag number"), ("Description", "description"), ("Type", "type (Area, Building, Room…)"), ("WBS", "WBS"),
     ], [("Parent", "area", "parent plant area")]),
@@ -102,6 +105,9 @@ SCHEMA: dict[str, tuple[str, str, list[tuple[str, str]], list[tuple[str, str, st
     ]),
 }
 _LINKS = {kind: {norm(n): k for n, k, _ in s[3]} for kind, s in SCHEMA.items()}
+#: Kinds whose records have links of their own besides SCHEMA's: a load type's component
+#: tables (<<LoadType.CB.PartNumber>>), checked when the record is there.
+DYNAMIC_LINKS = {"loadtype": "component"}
 _FIELDS = {kind: {norm(n) for n, _ in s[2] if not n.startswith("<")} for kind, s in SCHEMA.items()}
 #: The link names a Load List field can't take (it would hide the link).
 LINK_NAMES = {n for links in _LINKS.values() for n in links}
@@ -116,6 +122,34 @@ class Record:
 
 
 # -- the project's records ---------------------------------------------------------------------
+
+def _number(v: object) -> float | None:
+    if isinstance(v, bool) or v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    t = str(v).strip()
+    try:
+        return float(t) if t else None
+    except ValueError:
+        return None
+
+
+def component_row(table, load: Record | None) -> Record:
+    """The row of a component table a load gets: the first whose Min <= the load's match field
+    <= Max (a blank bound is open). When the load has no number there or no row fits, a blank
+    row (so its columns are still known, and a misspelt one is still reported)."""
+    blank = Record("component", {norm(c): "" for c in table.columns} | {"min": "", "max": ""}, name="")
+    x = _number(load.fields.get(norm(table.match_field))) if load is not None else None
+    if x is None:
+        return blank
+    for r in table.rows:
+        if (r.min is None or float(r.min) <= x) and (r.max is None or x <= float(r.max)):
+            fields: dict[str, object] = {norm(c): r.values.get(c, "") for c in table.columns}
+            fields |= {"min": r.min or "", "max": r.max or ""}
+            return Record("component", fields, name=r.values.get(table.columns[0], "") if table.columns else "")
+    return blank
+
 
 class Links:
     """The project's lists, indexed once, for following links. Every argument is optional: a
@@ -145,12 +179,17 @@ class Links:
         self._area_tags = {i: (a.tag, a.description) for i, a in self.areas.items()}
 
     # each returns None for a link that isn't there
-    def load_type(self, i):
+    def load_type(self, i, load: Record | None = None):
+        """A load type; with `load` (the load it is allocated to) its component tables are links
+        to the row each one picks for that load."""
         t = self.load_types.get(i or "")
-        return None if t is None else Record("loadtype", {
+        if t is None:
+            return None
+        tables = {norm(c.name): (lambda c=c: component_row(c, load)) for c in getattr(t, "components", [])}
+        return Record("loadtype", {
             "code": t.code, "name": t.name, "ratingunit": t.rating_unit, "voltage": t.voltage, "phases": t.phases,
             "from": t.from_value, "to": t.to_value, "stddrg": t.std_drg, "buckettype": t.bucket_type, "loadtype": t.load_type,
-            "fieldoptions": t.field_options, "multiload": t.multi_load, "loadqty": t.load_qty}, name=t.code)
+            "fieldoptions": t.field_options, "multiload": t.multi_load, "loadqty": t.load_qty}, tables, t.code)
 
     def area(self, i):
         a = self.areas.get(i or "")
@@ -224,10 +263,11 @@ class Links:
             supply: Callable[[], Record | None] = lambda: Record("load", {"tag": PRIMARY}, name=PRIMARY)  # noqa: E731
         else:
             supply = lambda: self.load(self.by_ref.get(row.supplied_from or ""))  # noqa: E731
-        links = {"loadtype": lambda: self.load_type(row.load_type_id), "plantarea": lambda: self.area(row.plant_area_id),
+        links = {"loadtype": lambda: self.load_type(row.load_type_id, rec), "plantarea": lambda: self.area(row.plant_area_id),
                  "suppliedfrom": supply, "eel": lambda: self.eel_item(row.key) if row.recipe_id == EEL_SOURCE else None,
                  "cable": lambda: self.cable(cable_code)}
-        return Record("load", fields, links, row.tag())
+        rec = Record("load", fields, links, row.tag())
+        return rec
 
     def runsheet(self, row, flat: dict[str, str]):
         """An Instrument Runsheet row as a record: its tags, and its links."""
@@ -364,11 +404,15 @@ def _check_path(kind: str, path: list[str]) -> str | None:
             return "a name is missing between the dots"
         last = i == len(path) - 1
         if not last:
+            if n not in _LINKS[kind] and kind in DYNAMIC_LINKS:
+                kind = DYNAMIC_LINKS[kind]
+                continue
             if n not in _LINKS[kind]:
                 links = ", ".join(x for x, _, _ in SCHEMA[kind][3]) or "none"
                 return f"'{seg}' is not a link of {SCHEMA[kind][0]} (its links: {links})"
             kind = _LINKS[kind][n]
-        elif n not in _LINKS[kind] and n not in _FIELDS[kind] and kind not in ("load", "runsheet"):
+        elif n not in _LINKS[kind] and n not in _FIELDS[kind] and kind not in ("load", "runsheet", "component") \
+                and kind not in DYNAMIC_LINKS:
             fields = ", ".join(x for x, _ in SCHEMA[kind][2])
             return f"'{seg}' is not a field of {SCHEMA[kind][0]} (its fields: {fields})"
     return None
@@ -405,14 +449,22 @@ def resolve(inner: str, flat: dict[str, str], root: Record | None) -> tuple[str 
                 cur = cur.links[n]()
                 if last:
                     value = cur.name if cur is not None else ""
+            elif not last and cur.kind in DYNAMIC_LINKS:
+                names = ", ".join(sorted(t for t in cur.links)) or "none"
+                return None, False, f"'{seg}' is not a component table of load type {cur.name} (its tables: {names})"
             elif not last:  # a link the path allows that this record doesn't have (Primary Supply's load type): blank
                 cur = None
             elif last and cur.kind in ("load", "runsheet"):
                 if not simple or len(path) > 1:
                     return None, False, f"'{seg}' is not a field of {SCHEMA[cur.kind][0]}"
                 return None, False, None
+            elif cur.kind == "component":
+                cols = ", ".join(k for k in cur.fields if k not in ("min", "max"))
+                return None, False, f"'{seg}' is not a column of the component table (its columns: {cols}, min, max)"
             else:
-                return None, False, f"'{seg}' is not a field of {SCHEMA[cur.kind][0]}"
+                fields = ", ".join(x for x, _ in SCHEMA[cur.kind][2])
+                tables = f"; its tables: {', '.join(sorted(cur.links))}" if cur.kind in DYNAMIC_LINKS and cur.links else ""
+                return None, False, f"'{seg}' is not a field of {SCHEMA[cur.kind][0]} (its fields: {fields}{tables})"
     try:
         text = apply(_text(value), mods)
     except ValueError as exc:
@@ -432,6 +484,9 @@ def help_paths(root: str, depth: int = 2) -> list[tuple[str, str]]:
             for f, m in SCHEMA[kind2][2]:
                 if not f.startswith("<"):
                     out.append((f"<<{prefix}{name}.{f}>>", f"the {desc}'s {m}"))
+            if kind2 in DYNAMIC_LINKS:
+                out.append((f"<<{prefix}{name}.<Table>.<Column>>>", f"a column of the row of one of the {desc}'s component "
+                            "tables that the load's value falls in, e.g. <<LoadType.CB.PartNumber>>"))
             if level < depth:
                 walk(kind2, f"{prefix}{name}.", f"{desc}'s", level + 1)
 

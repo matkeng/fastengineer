@@ -1235,3 +1235,16 @@ button.link.tag-help { padding: 0; border: 0; background: none; color: var(--acc
 .tag-help-cols dt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px; }
 .tag-help-cols dd { margin: 0 0 0 12px; color: var(--muted); }
 @media (max-width: 700px) { .tag-help-cols { grid-template-columns: 1fr; } }
+/* A load type's component tables */
+.comp-tables { display: flex; flex-direction: column; gap: 10px; }
+.comp-table { border: 1px solid var(--border); border-radius: 4px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.comp-head { align-items: flex-end; flex-wrap: wrap; }
+.comp-head .field { display: flex; flex-direction: column; gap: 2px; font-size: 0.82rem; }
+.comp-head .field input { width: 140px; }
+.comp-cols { flex-wrap: wrap; gap: 6px; }
+.comp-col { display: inline-flex; gap: 2px; }
+.comp-col input { width: 130px; }
+.comp-tag { align-self: center; }
+.comp-tables > button { align-self: flex-start; }
+.comp-head .field input, .comp-head .field select { height: 30px; }
+.comp-col input { height: 28px; font-size: 0.85rem; }

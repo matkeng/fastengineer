@@ -18,6 +18,7 @@ import AppModal from '../common/AppModal.vue';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
 import TagHelp from './TagHelp.vue';
 import TypeRowsWorkbook from './TypeRowsWorkbook.vue';
+import ComponentTablesEditor from './ComponentTablesEditor.vue';
 
 // Load types: a grid of every row; a row is added or edited in a form and saved from there.
 // Each load type also holds predefined rows for the deliverable lists (one tab per list): every
@@ -118,7 +119,12 @@ const editing = ref<{ isNew: boolean; form: LoadTypeForm; pdf: AttachedFile | nu
 // The dialog's tab: 'details' or the key of a deliverable list.
 const tab = ref('details');
 const lists = computed(() => kl.templateLists?.lists ?? []);
-const tagNames = computed(() => [...(kl.templateLists?.tags ?? []), ...(kl.templateLists?.paths ?? [])].map((t) => t.tag));
+// this load type's own component tables are offered as tags too: <<LoadType.CB.PartNumber>>
+const tableTags = computed(() => (editing.value?.form.components ?? []).filter((t) => t.name.trim()).flatMap((t) => {
+	const n = t.name.replace(/\s+/g, '');
+	return [`<<LoadType.${n}>>`, ...t.columns.map((c) => `<<LoadType.${n}.${c.replace(/\s+/g, '')}>>`), `<<LoadType.${n}.Min>>`, `<<LoadType.${n}.Max>>`];
+}));
+const tagNames = computed(() => [...(kl.templateLists?.tags ?? []).map((t) => t.tag), ...tableTags.value, ...(kl.templateLists?.paths ?? []).map((t) => t.tag)]);
 const modifierNames = computed(() => (kl.templateLists?.modifiers ?? []).map(modifierText));
 const rowCount = (rows: LoadType['rows'] | undefined) => Object.values(rows ?? {}).reduce((n, r) => n + r.length, 0);
 const list = computed(() => lists.value.find((l) => l.key === tab.value) ?? null);
@@ -171,6 +177,7 @@ function open(row: LoadType | null) {
 			std_drg: row?.std_drg ?? '', bucket_type: row?.bucket_type ?? '', load_type: row?.load_type ?? '',
 			field_options: row?.field_options ?? '', multi_load: row?.multi_load ?? false, load_qty: text(row?.load_qty),
 			rows: JSON.parse(JSON.stringify(row?.rows ?? {})),
+			components: JSON.parse(JSON.stringify(row?.components ?? [])),
 		},
 	};
 }
@@ -341,11 +348,14 @@ onBeforeUnmount(() => {
 				<button v-for="l in lists" :key="l.key" type="button" :class="{ active: tab === l.key }" @click="tab = l.key">
 					{{ l.name }}<span class="count">{{ editing.form.rows[l.key]?.length ?? 0 }}</span>
 				</button>
+				<button type="button" :class="{ active: tab === 'components' }" title="Parts per range of the load's rating, for <<LoadType.CB.PartNumber>>"
+					@click="tab = 'components'">Components<span class="count">{{ editing.form.components.length }}</span></button>
 			</nav>
+			<ComponentTablesEditor v-if="editing && tab === 'components'" :tables="editing.form.components" :errors="kl.fieldErrors" :form-id="editing.form.id" />
 			<div v-if="editing && list" class="tpl-rows">
 				<div class="row tight tpl-workbook"><span class="spacer" />
-					<TypeRowsWorkbook :name="editing.form.code" kind="load" :rows="editing.form.rows"
-						@replace="(rows) => { for (const [k, v] of Object.entries(rows)) editing!.form.rows[k] = v; }" /></div>
+					<TypeRowsWorkbook :name="editing.form.code" kind="load" :rows="editing.form.rows" :components="editing.form.components"
+						@replace="(rows, comps) => { for (const [k, v] of Object.entries(rows)) editing!.form.rows[k] = v; if (comps) editing!.form.components = comps; }" /></div>
 				<p class="hint small">
 					Every load of this type in the Load List adds these rows to the <strong>{{ list.name }}</strong>. Type <code>&lt;&lt;</code> in a cell
 					to pick a tag; it is replaced with that load's data.

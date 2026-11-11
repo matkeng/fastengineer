@@ -7,12 +7,13 @@
 // checked first; "Replace" puts its rows in the editor, saved with the form's Save.
 import { ref, toRaw } from 'vue';
 import { apiPostBytes, apiPostJsonForBlob, exportToPath, runningInTauri } from '../../lib/engine';
-import type { TemplateRows } from '../../lib/keyListTypes';
+import type { ComponentTable, TemplateRows } from '../../lib/keyListTypes';
 import AppModal from '../common/AppModal.vue';
 
-interface Read { rows: TemplateRows; counts: Record<string, number>; notes: string[] }
-const props = defineProps<{ name: string; kind: 'load' | 'equipment'; rows: TemplateRows }>();
-const emit = defineEmits<{ replace: [rows: TemplateRows] }>();
+interface Read { rows: TemplateRows; counts: Record<string, number>; notes: string[]; components?: ComponentTable[] | null }
+// `components`: a load type's component tables (a "Table <name>" sheet each)
+const props = defineProps<{ name: string; kind: 'load' | 'equipment'; rows: TemplateRows; components?: ComponentTable[] }>();
+const emit = defineEmits<{ replace: [rows: TemplateRows, components: ComponentTable[] | null] }>();
 const busy = ref(false);
 const error = ref('');
 const done = ref('');
@@ -25,7 +26,8 @@ const fileName = () => `${(props.name.trim() || 'type').replace(/[\\/:*?"<>|]+/g
 async function exportRows() {
 	busy.value = true;
 	error.value = done.value = '';
-	const body = { name: props.name, kind: props.kind, rows: JSON.parse(JSON.stringify(toRaw(props.rows))) };
+	const body = { name: props.name, kind: props.kind, rows: JSON.parse(JSON.stringify(toRaw(props.rows))),
+		components: JSON.parse(JSON.stringify(toRaw(props.components ?? []))) };
 	try {
 		if (runningInTauri) {
 			const { save } = await import('@tauri-apps/plugin-dialog');
@@ -64,7 +66,7 @@ async function pick(e: Event) {
 function replace() {
 	const i = importing.value;
 	if (!i) return;
-	emit('replace', i.read.rows);
+	emit('replace', i.read.rows, i.read.components ?? null);
 	done.value = `Read ${i.file.name}: save to keep it`;
 	importing.value = null;
 }
@@ -86,7 +88,7 @@ function replace() {
 					<li v-for="(n, list) in importing.read.counts" :key="list">{{ list }}: {{ n }} row(s)</li>
 				</ul>
 				<ul v-if="importing.read.notes.length" class="hint"><li v-for="n in importing.read.notes" :key="n">{{ n }}</li></ul>
-				<p class="hint small">Replace puts these rows in place of {{ name }}'s rows for those lists. Nothing is saved until you Save.</p>
+				<p class="hint small">Replace puts these rows in place of {{ name }}'s rows for those lists<template v-if="importing.read.components">, and its component tables in place of {{ name }}'s</template>. Nothing is saved until you Save.</p>
 			</template>
 			<template #footer>
 				<span class="spacer" />

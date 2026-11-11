@@ -335,6 +335,8 @@ def import_load_types(sheets: dict[str, Rows], old: LoadTypeList, columns: dict[
         item = {"id": keep(_get(r, "Code"))} | {f: _get(r, h) for f, h in zip(_LT_FIELDS, LOAD_TYPE_HEAD)}
         item["multi_load"] = "yes" if _yes(item["multi_load"]) else "no"
         item["rows"] = {k: [dict(x) for x in v] for k, v in before[item["id"]].rows.items()} if item["id"] in before else {}
+        # component tables aren't in this workbook (they are in a load type's own: export_type_rows)
+        item["components"] = [c.model_dump() for c in before[item["id"]].components] if item["id"] in before else []
         items.append(item)
     by_code = {name_key(i["code"]): i for i in items}
     for key in TEMPLATE_LISTS:
@@ -368,9 +370,16 @@ def _type_sheet(key: str) -> str:
 TAGS_SHEET = "Tags"
 
 
+TABLE_SHEET = "Table "  # + the component table's name
+
+
+def _bounds_heads(field: str) -> list[str]:
+    return [f"Min {field}", f"Max {field}"]
+
+
 def export_type_rows(rows: dict[str, list[dict[str, str]]], columns: dict[str, list[str]] | None = None,
                      tags: list[tuple[str, str]] = (), paths: list[tuple[str, str]] = (),
-                     modifiers: list[tuple[str, str]] = ()) -> Sheets:
+                     modifiers: list[tuple[str, str]] = (), components: list | None = None) -> Sheets:
     """One type's rows: a sheet per list (the project's columns, then the row settings), every
     list even when it has no rows, and a Tags sheet listing what a cell can use (for reference:
     an import ignores it). `tags`, `paths`, `modifiers`: [(example, what it is)]."""
@@ -378,12 +387,61 @@ def export_type_rows(rows: dict[str, list[dict[str, str]]], columns: dict[str, l
     for key in TEMPLATE_LISTS:
         heads = _rows_columns(key, columns)
         out.append((_type_sheet(key), [heads] + [[row.get(c) or None for c in heads] for row in rows.get(key, [])]))
+    for t in components or []:  # a load type's component tables: "Min <field>", "Max <field>", then its columns
+        out.append((f"{TABLE_SHEET}{t.name}"[:31], [_bounds_heads(t.match_field) + list(t.columns)] + [
+            [_num_or_text(r.min), _num_or_text(r.max)] + [r.values.get(c) or None for c in t.columns] for r in t.rows]))
     ref: Grid = [["Tag", "What it is", "Kind"]]
     ref += [[t, m, "the row's tag"] for t, m in tags]
     ref += [[t, m, "linked record (dot notation)"] for t, m in paths]
     ref += [[t, m, "modifier"] for t, m in modifiers]
     out.append((TAGS_SHEET, ref))
     return out
+
+
+def _num_or_text(v: str | None):
+    if v is None:
+        return None
+    try:
+        f = float(v)
+        return int(f) if f.is_integer() else f
+    except ValueError:
+        return v
+
+
+def read_component_tables(data: bytes, old: list | None = None) -> list[dict] | None:
+    """A load type's component tables from its workbook (the "Table <name>" sheets; None when it
+    has none): each sheet's first two headings are "Min <field>" and "Max <field>", the rest its
+    columns, in order. A table that was there before keeps its id. Raises ValueError."""
+    from openpyxl import load_workbook
+
+    try:
+        wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except Exception as exc:  # noqa: BLE001 - any unreadable file
+        raise ValueError("this is not an Excel workbook (.xlsx)") from exc
+    ids = {re.sub(r"[\s_]+", "", t.name).casefold(): t.id for t in old or []}
+    out = []
+    for ws in wb.worksheets:
+        if not ws.title.casefold().startswith(TABLE_SHEET.casefold()):
+            continue
+        name = ws.title[len(TABLE_SHEET):].strip()
+        rows = ws.iter_rows(values_only=True)
+        head = [_text(h) for h in next(rows, ())]
+        while head and not head[-1]:
+            head.pop()
+        if len(head) < 3 or not head[0].casefold().startswith("min") or not head[1].casefold().startswith("max"):
+            raise ValueError(f'the "{ws.title}" sheet must start with the columns "Min <field>" and "Max <field>", then the table\'s columns')
+        field = head[0][3:].strip() or "load_rating"
+        cols = head[2:]
+        table_rows = []
+        for r in rows:
+            cells = [_text(v) for v in r][:len(head)]
+            if not any(cells):
+                continue
+            cells += [""] * (len(head) - len(cells))
+            table_rows.append({"min": cells[0], "max": cells[1], "values": {c: v for c, v in zip(cols, cells[2:]) if v}})
+        out.append({"id": ids.get(re.sub(r"[\s_]+", "", name).casefold()), "name": name, "match_field": field, "columns": cols,
+                    "rows": table_rows})
+    return out or None
 
 
 def import_type_rows(sheets: dict[str, Rows], columns: dict[str, list[str]] | None = None) -> Parsed:

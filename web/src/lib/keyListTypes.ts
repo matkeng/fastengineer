@@ -34,7 +34,12 @@ export interface LoadType {
 	field_options: string; multi_load: boolean; load_qty: number | null; pdf: AttachedFile | null;
 	/** Predefined rows per deliverable list (key -> rows of column name -> text with <<tags>>). */
 	rows: TemplateRows;
+	/** Component tables: a part per range of a load's field, reached as <<LoadType.CB.PartNumber>>. */
+	components?: ComponentTable[];
 }
+/** A row of a component table: the range it is for (blank: open-ended) and its values by column. */
+export interface ComponentRow { min: string | null; max: string | null; values: Record<string, string> }
+export interface ComponentTable { id: string; name: string; match_field: string; columns: string[]; rows: ComponentRow[] }
 /** A load type's predefined rows: list key -> rows; a row is column name -> text. */
 export type TemplateRows = Record<string, Record<string, string>[]>;
 /** The deliverable lists a load type has rows for, and the tags a row can use. */
@@ -53,9 +58,9 @@ export interface LoadTypeList { items: LoadType[]; updated_at: string | null }
 export interface LoadTypeForm {
 	id: string; code: string; name: string; rating_unit: RatingUnit | ''; voltage: string; phases: Phases | '';
 	from_value: string; to_value: string; std_drg: string; bucket_type: string; load_type: string;
-	field_options: string; multi_load: boolean; load_qty: string; rows: TemplateRows;
+	field_options: string; multi_load: boolean; load_qty: string; rows: TemplateRows; components: ComponentTable[];
 }
-export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id' | 'rows'>;
+export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id' | 'rows' | 'components'>;
 
 export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | 'cable-types' | 'distribution-panels' | 'instrument-runsheet' | 'mel' | 'master' | 'enums' | 'drawing-list' | 'document-list' | CodeListId;
 

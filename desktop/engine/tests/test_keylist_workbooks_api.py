@@ -370,3 +370,37 @@ def test_one_types_rows_export_and_import() -> None:
     wb.save(buf)
     bad = client.post("/api/list-workbooks/type-rows/import", params={"kind": "load", "filename": "x.xlsx"}, content=buf.getvalue())
     assert bad.status_code == 422 and "Repeat is blank or one of: Per power cable" in bad.json()["detail"]
+
+
+def test_component_tables_fill_the_master_lists_and_round_trip() -> None:
+    import io as _io
+
+    from openpyxl import load_workbook as _load
+
+    assert client.post("/api/sample-data").status_code == 200
+    types = client.get("/api/keylists/load-types").json()["items"]
+    dol = next(t for t in types if t["code"] == "DOL")
+    dol["components"] = [{"name": "CB", "columns": ["Part Number"], "rows": [
+        {"min": "0", "max": "5", "values": {"Part Number": "GV2-ME10"}}, {"min": "5", "max": "", "values": {"Part Number": "GV2-ME14"}}]}]
+    dol["rows"]["equipment_list"] = [{"Tag": "<<Tag>>", "Model": "<<LoadType.CB.PartNumber>>"}]
+    saved = client.put("/api/keylists/load-types", json={"items": types})
+    assert saved.status_code == 200, saved.text
+    master = client.get("/api/master/equipment_list").json()["result"]
+    model = {r["cells"][0]: r["cells"][master["header"].index("Model")] for r in master["rows"]}
+    assert model["F-301"] == "GV2-ME10" and model["P-101"] == "GV2-ME14"  # 4 kW and 7.5 kW
+    # the load type's workbook has a sheet per table, and reads back
+    dol = next(t for t in client.get("/api/keylists/load-types").json()["items"] if t["code"] == "DOL")
+    res = client.post("/api/list-workbooks/type-rows/export", json={"name": "DOL", "kind": "load", "rows": dol["rows"],
+                                                                    "components": dol["components"]})
+    wb = _load(_io.BytesIO(res.content))
+    assert "Table CB" in wb.sheetnames and [c.value for c in wb["Table CB"][1]] == ["Min load_rating", "Max load_rating", "Part Number"]
+    wb["Table CB"].cell(row=3, column=3, value="GV3-P18")
+    buf = _io.BytesIO()
+    wb.save(buf)
+    back = client.post("/api/list-workbooks/type-rows/import", params={"kind": "load", "filename": "DOL rows.xlsx"}, content=buf.getvalue()).json()
+    assert back["components"][0]["rows"][1]["values"] == {"Part Number": "GV3-P18"} and back["counts"]["Component table CB"] == 2
+    # the whole list's workbook keeps a load type's tables
+    data = client.post("/api/list-workbooks/load-types/export", json={}).content
+    assert client.post("/api/list-workbooks/load-types/import", params={"filename": "x.xlsx", "apply": True}, content=data).status_code == 200
+    dol = next(t for t in client.get("/api/keylists/load-types").json()["items"] if t["code"] == "DOL")
+    assert dol["components"][0]["name"] == "CB"

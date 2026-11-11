@@ -77,6 +77,25 @@ class AttachedFile(BaseModel):
     uploaded_at: datetime
 
 
+class ComponentRow(BaseModel):
+    """A row of a component table: the range of the matched field it is for (blank: open-ended,
+    kept as normalised decimal text), and its values by column name."""
+    min: str | None = None
+    max: str | None = None
+    values: dict[str, str] = Field(default_factory=dict)
+
+
+class ComponentTable(BaseModel):
+    """A load type's table of components (circuit breaker, contactor… part numbers) that depend
+    on a load's value: a load gets the first row whose Min <= its `match_field` <= Max, and a
+    template row reaches it as <<LoadType.<name>.<column>>> (keylists.tag_paths)."""
+    id: str = Field(default_factory=new_id)
+    name: str  # what tags call it: CB in <<LoadType.CB.PartNumber>>
+    match_field: str = "load_rating"  # a Load List field's key (calculated ones too) or a load tag (rating, voltage…)
+    columns: list[str] = Field(default_factory=lambda: ["Part Number", "Manufacturer", "Description"])
+    rows: list[ComponentRow] = Field(default_factory=list)
+
+
 class LoadType(BaseModel):
     """A row of the Load Types list. from_value/to_value are a range of the rating (kW or
     amps), kept as normalised decimal text so they stay exact."""
@@ -98,6 +117,9 @@ class LoadType(BaseModel):
     #: Predefined rows per deliverable list (keylists.loadgen.TEMPLATE_LISTS): list key ->
     #: rows, each {column name: text with <<tags>>}. Every load of this type produces them.
     rows: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
+    #: Component tables (circuit breakers, contactors…): a part per range of a load's rating
+    #: or another of its fields, reached from template rows as <<LoadType.CB.PartNumber>>.
+    components: list[ComponentTable] = Field(default_factory=list)
 
 
 class LoadTypeList(BaseModel):

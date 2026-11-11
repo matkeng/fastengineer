@@ -943,6 +943,27 @@ Tags (not case-sensitive; type `<<` in a cell to pick one):
 | `<<CableNo>>`, `<<Phase>>` | 1, 2, … and L1 / L2 / L3 / N / E for each cable of a "Per power cable" row |
 | any mapped load-list field, e.g. `<<starter_type>>` | that field of the load |
 
+### Component tables of a load type
+
+A load type's **Components** tab holds tables of parts that depend on the load
+(`ComponentTable` on `LoadType`): one per kind of component, such as a **CB**
+or a **Contactor** table. A table is **matched on** a load field: the Load
+rating by default, or any number or calculated field of the Load List (Rated
+current…) or the load's voltage, quantity, cable length or size. Its rows are a
+**Min** and **Max**, then its own columns (Part Number, Manufacturer,
+Description… by default). A load gets the first row whose Min ≤ its value ≤ Max
+(a blank bound is open-ended, so 7.5 with rows 0–7.5 and 7.5– gets the first).
+
+Template rows reach the row as `<<LoadType.CB.PartNumber>>` (the table, then
+a column; spaces in names can be left out; `<<LoadType.CB>>` is its first
+column, `.Min` / `.Max` its range). A load with no value there, or one no row
+fits, gets blank (`|default:TBA` fills it); a table or column that doesn't
+exist is reported as a tag that matches nothing. Typing `<<LoadType.CB.`
+offers the table's columns. Tables are copied by **Clone**, kept by the Load
+Types workbook import, and are "Table <name>" sheets of the load type's own
+workbook (**Export rows .xlsx**), whose first two headings are "Min <field>"
+and "Max <field>".
+
 ### One type's rows as a workbook
 
 A load type's rows (in its form) and an equipment type's (in its **Lists**)

@@ -99,6 +99,7 @@ class TypeRowsBody(BaseModel):
     name: str  # the load type's code or the equipment type's name: the file is called after it
     kind: Literal["load", "equipment"]
     rows: dict[str, list[dict[str, str]]]  # as they are in the editor (saved or not)
+    components: list[dict] = []  # a load type's component tables, as they are in the editor
     path: str | None = None  # desktop: chosen in a Save As dialog
 
 
@@ -130,8 +131,11 @@ def export_type_rows(body: TypeRowsBody):
     else:
         tags = list(instrument_tags(number_count(lists.instrument_runsheet())))
         paths = help_paths("runsheet")
+    from workbench_core.keylists.models import ComponentTable
+
+    tables = [ComponentTable.model_validate(t) for t in body.components] if body.kind == "load" else []
     sheets = wbk.export_type_rows(body.rows, lists.master_columns().all(), tags, paths,
-                                  [(e, m) for _, (_, m, e) in MODIFIERS.items()])
+                                  [(e, m) for _, (_, m, e) in MODIFIERS.items()], tables)
     name = re.sub(r'[\\/:*?"<>|]+', "_", body.name.strip() or "type") + " rows"
     return _write(wbk.write_sheets(sheets), body.path, name)
 
@@ -140,6 +144,7 @@ class TypeRowsRead(BaseModel):
     rows: dict[str, list[dict[str, str]]]  # list key -> rows, for the lists whose sheet is in the file
     counts: dict[str, int]  # list name -> rows
     notes: list[str]
+    components: list[dict] | None = None  # a load type's component tables, when the file has "Table …" sheets
 
 
 @router.post("/type-rows/import", response_model=TypeRowsRead)
@@ -159,11 +164,22 @@ async def import_type_rows(request: Request, kind: Literal["load", "equipment"] 
         return JSONResponse(status_code=422, content={"detail": f"Could not read {Path(filename).name}: {exc}", "fields": {}})
     errors: dict[str, str] = {}
     rows = _template_rows(parsed.payload, "rows", errors, "load types" if kind == "load" else "equipment types", columns)
+    tables = None
+    if kind == "load":
+        from workbench_core.keylists.validate import _components
+        try:
+            raw = await run_in_threadpool(wbk.read_component_tables, data)
+        except ValueError as exc:
+            return JSONResponse(status_code=422, content={"detail": f"Could not read {Path(filename).name}: {exc}", "fields": {}})
+        if raw is not None:
+            tables = [t.model_dump() for t in _components(raw, "tables", errors)]
     if errors:
         return JSONResponse(status_code=422, content={"detail": _problems(errors, {}, f"{Path(filename).name} has problems:"),
                                                       "fields": {}})
     rows = {k: rows.get(k, []) for k in parsed.payload}  # a sheet with no rows empties that list
-    return TypeRowsRead(rows=rows, counts={OUTPUT_LISTS[k].deliverable_type: len(v) for k, v in rows.items()}, notes=parsed.notes)
+    counts = {OUTPUT_LISTS[k].deliverable_type: len(v) for k, v in rows.items()}
+    counts |= {f"Component table {t['name']}": len(t["rows"]) for t in tables or []}
+    return TypeRowsRead(rows=rows, counts=counts, notes=parsed.notes, components=tables)
 
 
 @router.post("/{list_id}/export")
