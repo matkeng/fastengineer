@@ -331,3 +331,15 @@ export function linkHref(link: string): string {
 	if (/^[a-z]:[\\/]/i.test(l)) return `file:///${l.replace(/\\/g, '/')}`; // C:\x -> file:///C:/x
 	return l.startsWith('/') ? `file://${l}` : '';
 }
+
+/** A unique name for a copy: codes as X-COPY, X-COPY2…; names as X (copy), X (copy 2)…
+ * `taken` is compared ignoring case and extra spaces, as the engine's uniqueness checks do. */
+export function copyName(base: string, taken: string[], style: 'code' | 'name'): string {
+	const key = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+	const used = new Set(taken.map(key));
+	const b = base.trim();
+	for (let n = 1; ; n++) {
+		const name = style === 'code' ? `${b}-COPY${n > 1 ? n : ''}` : `${b} (copy${n > 1 ? ` ${n}` : ''})`;
+		if (!used.has(key(name))) return name;
+	}
+}

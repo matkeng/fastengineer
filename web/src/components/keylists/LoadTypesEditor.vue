@@ -9,7 +9,7 @@ import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, type SelectFilter, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
 import { runningInTauri } from '../../lib/engine';
 import {
-	PHASES, RATING_UNITS, type AttachedFile, type LoadType, type LoadTypeField, type LoadTypeForm, fileSize, loadTypeProblems, modifierText,
+	PHASES, RATING_UNITS, type AttachedFile, type LoadType, type LoadTypeField, type LoadTypeForm, copyName, fileSize, loadTypeProblems, modifierText,
 } from '../../lib/keyListTypes';
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
@@ -173,6 +173,32 @@ function open(row: LoadType | null) {
 			rows: JSON.parse(JSON.stringify(row?.rows ?? {})),
 		},
 	};
+}
+
+/** A new load type with this one's details, rows (as they are in the form) and PDF: saved with Save. */
+async function clone() {
+	const e = editing.value;
+	if (!e) return;
+	const from = e.form.id;
+	const pdf = pdfChange.value === 'remove' ? null : pdfChange.value instanceof File ? pdfChange.value : e.pdf;
+	formErrors.value = {};
+	kl.error = null;
+	editing.value = {
+		isNew: true, pdf: null,
+		form: { ...JSON.parse(JSON.stringify(e.form)), id: newId(), code: copyName(e.form.code, items.value.map((r) => r.code), 'code'),
+			name: copyName(e.form.name, items.value.map((r) => r.name), 'name') },
+	};
+	pdfChange.value = null;
+	tab.value = 'details';
+	if (pdf instanceof File) pdfChange.value = pdf;
+	else if (pdf) {
+		const blob = await kl.loadTypePdf(from);
+		if (blob && editing.value) pdfChange.value = new File([blob], pdf.file_name, { type: 'application/pdf' });
+	}
+	await nextTick();
+	const code = document.querySelector<HTMLInputElement>('dialog[open] .form-grid input[type="text"]');
+	code?.focus();
+	code?.select();
 }
 
 function onClick(e: MouseEvent) {
@@ -382,6 +408,8 @@ onBeforeUnmount(() => {
 			<p v-if="kl.error" class="error">{{ kl.error }}</p>
 			<template #footer>
 				<button v-if="editing && !editing.isNew" type="button" class="secondary" :disabled="kl.busy" @click="remove">Delete</button>
+				<button v-if="editing && !editing.isNew" type="button" class="secondary" :disabled="kl.busy"
+					title="A new load type with this one's details, rows and PDF (saved when you Save)" @click="clone">Clone</button>
 				<span class="spacer" />
 				<button type="button" class="secondary" @click="close">Cancel</button>
 				<button v-if="editing?.isNew" type="button" class="secondary" :disabled="kl.busy" @click="save(true)">Save and add another</button>

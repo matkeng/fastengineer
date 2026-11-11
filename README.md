@@ -535,6 +535,11 @@ You don't create or name them: each project has one of each.
   **To value** (decimals, stored exactly; From must not exceed To), **STD Drg**,
   **Bucket type**, **Load type**, **Field options** (text), **Multi load**
   (yes/no) and **Load qty** (a whole number).
+  **Clone** in a load type's form opens a new load type with its details, rows
+  (as they are in the form) and PDF, coded `<code>-COPY` (then `-COPY2`…) and
+  named "… (copy)"; it is saved with **Save**. On Equipment Packages, **⧉**
+  duplicates an equipment type with its rows, as "… (copy)" straight after it
+  in the same package; the list's **Save** keeps it.
   A load type can also have a **PDF** attached (one per load type, up to
   50 MB): attach, replace or remove it in the form, open it from the form or
   the grid's PDF column (it is shown in the app), or save a copy. The file is

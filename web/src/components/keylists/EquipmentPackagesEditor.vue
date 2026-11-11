@@ -5,7 +5,7 @@ import ListWorkbook from './ListWorkbook.vue';
 import HistoryButton from '../audit/HistoryButton.vue';
 import { computed, nextTick, ref } from 'vue';
 import {
-	PACKAGE_TYPES, type EquipmentPackage, type EquipmentType, equipmentPackageMatches, equipmentPackageProblems, equipmentTypeMatches,
+	PACKAGE_TYPES, type EquipmentPackage, type EquipmentType, copyName, equipmentPackageMatches, equipmentPackageProblems, equipmentTypeMatches,
 } from '../../lib/keyListTypes';
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
@@ -83,6 +83,16 @@ function moveType(t: EquipmentType, by: -1 | 1) {
 	const i = list.indexOf(t);
 	const j = list.indexOf(other);
 	[list[i], list[j]] = [list[j], list[i]];
+}
+
+/** A copy of an equipment type, with its rows, straight after it (part of the draft: saved with Save). */
+function cloneType(t: EquipmentType) {
+	const list = d.value.types;
+	const copy: EquipmentType = { ...JSON.parse(JSON.stringify(t)), id: newId(), name: copyName(t.name, list.map((x) => x.name), 'name') };
+	list.splice(list.indexOf(t) + 1, 0, copy);
+	filter.value = '';
+	if (collapsed.value.has(t.package_id)) toggle(t.package_id);
+	void focusRow(copy.id);
 }
 
 function removeType(t: EquipmentType) {
@@ -193,6 +203,7 @@ const label = (p: EquipmentPackage) => [p.number, p.description].filter(Boolean)
 										@click="openLists(t)">Lists<span class="count">{{ rowCount(t) }}</span></button>
 									<button type="button" class="secondary small" :disabled="ti === 0 || filtering" title="Move up" @click="moveType(t, -1)">↑</button>
 									<button type="button" class="secondary small" :disabled="ti === r.types.length - 1 || filtering" title="Move down" @click="moveType(t, 1)">↓</button>
+									<button type="button" class="secondary small" title="Duplicate equipment type, with its rows" @click="cloneType(t)">⧉</button>
 									<button type="button" class="secondary small" title="Delete equipment type" @click="removeType(t)">✕</button>
 								</td>
 							</tr>
