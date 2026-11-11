@@ -145,6 +145,33 @@ def check_equipment_packages(packages: EquipmentPackageList) -> EquipmentPackage
     return packages.model_copy(update={"items": items, "types": types})
 
 
+def _template_rows(raw: object, rid: str, errors: dict[str, str]) -> dict[str, list[dict[str, str]]]:
+    """A load type's rows per deliverable list: known lists and columns only, text trimmed,
+    blank cells and wholly blank rows dropped."""
+    from .loadgen import LISTS, TEMPLATE_LISTS
+
+    out: dict[str, list[dict[str, str]]] = {}
+    if not isinstance(raw, dict):
+        return out
+    for key, rows in raw.items():
+        if key not in TEMPLATE_LISTS:
+            errors[f"{rid}.rows"] = f"'{key}' is not a list that load types have rows for"
+            continue
+        kept = []
+        for row in rows if isinstance(rows, list) else []:
+            if not isinstance(row, dict):
+                continue
+            unknown = [c for c in row if c not in LISTS[key].columns]
+            if unknown:
+                errors[f"{rid}.rows.{key}"] = f"Not a column of the {LISTS[key].deliverable_type}: {', '.join(unknown)}"
+            cells = {c: str(v).strip() for c, v in row.items() if c in LISTS[key].columns and v is not None and str(v).strip()}
+            if cells:
+                kept.append(cells)
+        if kept:
+            out[key] = kept
+    return out
+
+
 def check_load_types(rows: list[dict]) -> LoadTypeList:
     """Check the rows of the Load Types list as they were typed in (numbers may be text).
 
@@ -193,6 +220,7 @@ def check_load_types(rows: list[dict]) -> LoadTypeList:
         if text not in TRUE and text not in FALSE:
             problem("multi_load", "Not yes/no")
         r.multi_load = text in TRUE
+        r.rows = _template_rows(raw.get("rows"), r.id, errors)
         out.append(r)
     _check_unique(out, _LOAD_FIELDS, errors)
     if errors:

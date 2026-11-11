@@ -4,7 +4,7 @@
 import { computed, onMounted, ref } from 'vue';
 import pidSample from '../../../../samples/pid-sample.pdf?url';
 import type { Dashboard, DashEvent } from '../../lib/dashboardTypes';
-import { apiGet } from '../../lib/engine';
+import { apiGet, apiPostJson } from '../../lib/engine';
 import type { IconName } from '../../lib/icons';
 import { useGenerators } from '../../stores/generators';
 import { useMel } from '../../stores/mel';
@@ -85,12 +85,27 @@ const kpis = computed<Kpi[]>(() => {
 interface Starter { title: string; desc: string; icon: IconName; run: () => unknown; featured?: boolean }
 const starters = computed<Starter[]>(() => [
 	{ title: 'Try the P&ID example', desc: 'Sample drawing + ready-made library', icon: 'play', run: tryExample, featured: empty.value },
+	{ title: 'Load sample data', desc: 'A small invented plant in every empty list', icon: 'database', run: loadSample, featured: empty.value },
 	{ title: 'Query an Excel sheet', desc: 'Header row, key column, strikethrough', icon: 'table', run: () => ui.go('excel') },
 	{ title: 'Compare two tables', desc: 'Added, deleted, struck and changed', icon: 'compare', run: () => ui.go('compare') },
 	{ title: 'Analyse drawings', desc: 'Find symbols and read their tags', icon: 'symbol', run: () => ui.go('symbols') },
 	{ title: 'New list import', desc: 'MEL → load list, tags → instruments', icon: 'recipe', run: newImport },
 	{ title: 'Lists, trees & tables', desc: 'Your own lists, hierarchies and typed tables', icon: 'tree', run: () => ui.go('ref') },
 ]);
+
+/** Fill every list that is still empty with an invented small plant (nothing existing is changed). */
+async function loadSample() {
+	if (!confirm('Load sample data?\n\nEvery list that is still empty is filled with a small invented plant: plant areas, packages, codes, load types with their rows, an equipment list, a PLC, a MEL import and one deliverable of each type. Lists that already have data are left as they are.')) return;
+	try {
+		const res = await apiPostJson<{ added: Record<string, number>; skipped: string[] }>('/api/sample-data', {});
+		const added = Object.entries(res.added).map(([k, n]) => `${k}: ${n}`);
+		alert((added.length ? `Sample data added.\n\n${added.join('\n')}` : 'Nothing was added: every list already has data.')
+			+ (res.skipped.length && added.length ? `\n\nLeft as they were: ${res.skipped.join(', ')}.` : ''));
+		if (added.length) location.reload(); // every view reads the new data afresh
+	} catch (err) {
+		alert(`The sample data could not be loaded: ${err instanceof Error ? err.message : String(err)}`);
+	}
+}
 
 function newImport() {
 	if (mel.draft && mel.dirty && !confirm('Discard unsaved changes to the open list import?')) return;

@@ -123,16 +123,22 @@ def sync_rows(live: list[LoadListRow], gone: dict[str, str]) -> list[LoadListRow
     return get_loadlist().sync(live, gone, area_index, type_index)
 
 
-@router.get("", response_model=LoadListView)
-def load_list() -> LoadListView:
+def current_rows() -> tuple[list[LoadListRow], list[Source], list[str]]:
+    """The Load List as it is now, brought up to date with the imports and the Electrical
+    Equipment List: (rows, sources, warnings)."""
     live, gone, sources, warnings = import_rows()
     eel = get_keylists().eel()
     live += eel_rows(eel)
     gone[EEL_SOURCE] = EEL_GONE
     if eel.items:
         sources.append(Source(id=EEL_SOURCE, name=EEL_NAME, target="EEL", rows=len(eel.items), has_file=True))
+    return sync_rows(live, gone), sources, warnings
+
+
+@router.get("", response_model=LoadListView)
+def load_list() -> LoadListView:
+    rows, sources, warnings = current_rows()
     areas, types = _choices()
-    rows = sync_rows(live, gone)
 
     used = {f for r in rows for f in r.values}
     tags: dict[str, tuple[str, list[str]]] = {}

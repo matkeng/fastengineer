@@ -3,7 +3,7 @@
 <script setup lang="ts">
 import type { ColumnsConfig } from 'datatables.net';
 import { invoke } from '@tauri-apps/api/core';
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, type SelectFilter, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
 import { runningInTauri } from '../../lib/engine';
@@ -14,8 +14,11 @@ import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
 import AppModal from '../common/AppModal.vue';
+import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
 
 // Load types: a grid of every row; a row is added or edited in a form and saved from there.
+// Each load type also holds predefined rows for the deliverable lists (one tab per list): every
+// load of that type in the Load List produces those rows, with the <<tags>> filled in from it.
 const kl = useKeyLists();
 const host = ref<HTMLDivElement | null>(null);
 let table: FilteredTable<LoadType> | null = null;
@@ -63,6 +66,16 @@ function build() {
 			return name ? `<button type="button" class="link pdf-link" data-pdf="${escapeHtml(row.id)}" title="Open ${escapeHtml(name)}">📄 ${escapeHtml(name)}</button>` : '';
 		},
 	});
+	columns.push({
+		title: 'Rows',
+		data: (row: LoadType) => rowCount(row.rows),
+		className: 'dt-right',
+		render: (n: number, type: string, row: LoadType) => {
+			if (type !== 'display') return n;
+			const tip = lists.value.map((l) => `${l.name}: ${row.rows?.[l.key]?.length ?? 0}`).join('\n');
+			return n ? `<span title="${escapeHtml(tip)}">${n}</span>` : '<span class="hint" title="No predefined rows: loads of this type add nothing to the deliverables">–</span>';
+		},
+	});
 	const selects: Record<number, SelectFilter<LoadType>> = {};
 	COLS.forEach((c, i) => {
 		if (c.kind === 'choice') {
@@ -99,6 +112,32 @@ function build() {
 
 // -- the form ---------------------------------------------------------------------------
 const editing = ref<{ isNew: boolean; form: LoadTypeForm; pdf: AttachedFile | null } | null>(null);
+// The dialog's tab: 'details' or the key of a deliverable list.
+const tab = ref('details');
+const lists = computed(() => kl.templateLists?.lists ?? []);
+const tagNames = computed(() => (kl.templateLists?.tags ?? []).map((t) => t.tag));
+const rowCount = (rows: LoadType['rows'] | undefined) => Object.values(rows ?? {}).reduce((n, r) => n + r.length, 0);
+const list = computed(() => lists.value.find((l) => l.key === tab.value) ?? null);
+const listRows = computed(() => (list.value && editing.value ? (editing.value.form.rows[list.value.key] ??= []) : []));
+const gridCols = computed((): GridColumn[] => (list.value?.columns ?? []).map((c) => ({ label: c, width: /Description|Remarks/.test(c) ? 200 : 130 })));
+const gridCells = computed(() => listRows.value.map((r) => (list.value?.columns ?? []).map((c) => r[c] ?? '')));
+const tagClass = (r: number, c: number) => (/<<[^<>]+>>/.test(gridCells.value[r]?.[c] ?? '') ? 'has-tag' : '');
+
+function setCells(edits: CellEdit[]) {
+	const cols = list.value?.columns ?? [];
+	for (const e of edits) {
+		const row = listRows.value[e.r];
+		if (!row || !cols[e.c]) continue;
+		if (e.value.trim()) row[cols[e.c]] = e.value;
+		else delete row[cols[e.c]];
+	}
+}
+const insertRows = (at: number, count: number) => listRows.value.splice(at, 0, ...Array.from({ length: count }, () => ({})));
+function removeRows(idx: number[]) {
+	if (!list.value || !editing.value) return;
+	const drop = new Set(idx);
+	editing.value.form.rows[list.value.key] = listRows.value.filter((_, i) => !drop.has(i));
+}
 // A PDF chosen in the form, or 'remove': applied when the form is saved.
 const pdfChange = ref<File | 'remove' | null>(null);
 const pdfInput = ref<HTMLInputElement | null>(null);
@@ -111,6 +150,7 @@ function open(row: LoadType | null) {
 	formErrors.value = {};
 	kl.error = null;
 	pdfChange.value = null;
+	tab.value = 'details';
 	editing.value = {
 		isNew: !row,
 		pdf: row?.pdf ?? null,
@@ -119,6 +159,7 @@ function open(row: LoadType | null) {
 			voltage: text(row?.voltage), phases: row?.phases ?? '', from_value: text(row?.from_value), to_value: text(row?.to_value),
 			std_drg: row?.std_drg ?? '', bucket_type: row?.bucket_type ?? '', load_type: row?.load_type ?? '',
 			field_options: row?.field_options ?? '', multi_load: row?.multi_load ?? false, load_qty: text(row?.load_qty),
+			rows: JSON.parse(JSON.stringify(row?.rows ?? {})),
 		},
 	};
 }
@@ -140,7 +181,10 @@ async function save(addAnother = false) {
 	const e = editing.value;
 	if (!e) return;
 	formErrors.value = loadTypeProblems(e.form, items.value.filter((r) => r.id !== e.form.id));
-	if (Object.keys(formErrors.value).length) return;
+	if (Object.keys(formErrors.value).length) {
+		tab.value = 'details';
+		return;
+	}
 	if (pdfChange.value instanceof File) {
 		const f = pdfChange.value;
 		if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') formErrors.value.pdf = 'Choose a PDF file';
@@ -154,6 +198,7 @@ async function save(addAnother = false) {
 			if (k.startsWith(`${e.form.id}.`)) mine[k.slice(e.form.id.length + 1) as LoadTypeField] = msg;
 		}
 		formErrors.value = mine;
+		if (Object.keys(mine).some((k) => !k.startsWith('rows'))) tab.value = 'details';
 		return;
 	}
 	// The row is saved now; then the PDF (it can only be attached to a saved row).
@@ -229,7 +274,8 @@ async function saveCopy(id: string, name: string) {
 	}
 }
 
-watch(() => [host.value, kl.loadTypes], build);
+watch(() => [host.value, kl.loadTypes, kl.templateLists], build);
+onMounted(() => void kl.loadTemplateLists());
 onBeforeUnmount(() => {
 	table?.api.destroy();
 	closeViewer();
@@ -252,7 +298,24 @@ onBeforeUnmount(() => {
 		</div>
 
 		<AppModal :open="!!editing" :title="editing?.isNew ? 'Add load type' : 'Edit load type'" @close="close">
-			<form v-if="editing" class="form-grid two-col" @submit.prevent="save()">
+			<nav v-if="editing" class="subtabs small">
+				<button type="button" :class="{ active: tab === 'details' }" @click="tab = 'details'">Details</button>
+				<button v-for="l in lists" :key="l.key" type="button" :class="{ active: tab === l.key }" @click="tab = l.key">
+					{{ l.name }}<span class="count">{{ editing.form.rows[l.key]?.length ?? 0 }}</span>
+				</button>
+			</nav>
+			<div v-if="editing && list" class="tpl-rows">
+				<p class="hint small">
+					Every load of this type in the Load List adds these rows to the <strong>{{ list.name }}</strong>. Type <code>&lt;&lt;</code> in a cell
+					to pick a tag; it is replaced with that load's data.
+					<span class="tag-help" :title="(kl.templateLists?.tags ?? []).map((t) => `${t.tag}  ${t.meaning}`).join('\n')">All tags ⓘ</span>
+				</p>
+				<EditGrid :columns="gridCols" :cells="gridCells" :tag-suggestions="tagNames" :cell-class="tagClass"
+					:height="Math.min(360, 96 + 26 * Math.max(4, listRows.length))" @set="setCells" @insert="insertRows" @remove="removeRows" />
+				<p v-if="!listRows.length" class="hint small">No rows yet: loads of this type add nothing to the {{ list.name }}. Use “+ Row”.</p>
+				<p v-for="(msg, k) in kl.fieldErrors" v-show="String(k).startsWith(`${editing.form.id}.rows`)" :key="k" class="warn small">{{ msg }}</p>
+			</div>
+			<form v-if="editing" v-show="tab === 'details'" class="form-grid two-col" @submit.prevent="save()">
 				<label v-for="c in COLS" :key="c.field" class="field" :class="{ check: c.kind === 'yesno' }">
 					<template v-if="c.kind === 'yesno'">
 						<input v-model="editing.form.multi_load" type="checkbox" /><span>{{ c.label }}</span>

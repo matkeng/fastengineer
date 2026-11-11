@@ -28,15 +28,21 @@ export interface LoadType {
 	id: string; code: string; name: string; rating_unit: RatingUnit; voltage: number; phases: Phases;
 	from_value: string | null; to_value: string | null; std_drg: string; bucket_type: string; load_type: string;
 	field_options: string; multi_load: boolean; load_qty: number | null; pdf: AttachedFile | null;
+	/** Predefined rows per deliverable list (key -> rows of column name -> text with <<tags>>). */
+	rows: TemplateRows;
 }
+/** A load type's predefined rows: list key -> rows; a row is column name -> text. */
+export type TemplateRows = Record<string, Record<string, string>[]>;
+/** The deliverable lists a load type has rows for, and the tags a row can use. */
+export interface TemplateLists { lists: { key: string; name: string; columns: string[] }[]; tags: { tag: string; meaning: string }[] }
 export interface LoadTypeList { items: LoadType[]; updated_at: string | null }
 /** A load type as it is typed into the form: numbers are text until the engine converts them. */
 export interface LoadTypeForm {
 	id: string; code: string; name: string; rating_unit: RatingUnit | ''; voltage: string; phases: Phases | '';
 	from_value: string; to_value: string; std_drg: string; bucket_type: string; load_type: string;
-	field_options: string; multi_load: boolean; load_qty: string;
+	field_options: string; multi_load: boolean; load_qty: string; rows: TemplateRows;
 }
-export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id'>;
+export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id' | 'rows'>;
 
 export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | 'cable-types' | CodeListId;
 

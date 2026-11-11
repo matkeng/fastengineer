@@ -724,7 +724,12 @@ main.fill .key-packages { overflow: hidden; }
 /* Load Types: a grid of every row and a two-column form. */
 .key-loads .key-title { margin: 0; font-size: 1rem; }
 .key-loads .result-table td { white-space: nowrap; }
-.key-loads dialog.modal { width: min(720px, calc(100vw - 32px)); }
+.key-loads dialog.modal { width: min(1080px, calc(100vw - 32px)); }
+.key-loads .form-grid.two-col { max-width: 720px; }
+.tpl-rows { display: flex; flex-direction: column; gap: 8px; min-height: 260px; }
+.tpl-rows p { margin: 0; }
+.tpl-rows .tag-help { margin-left: 6px; border-bottom: 1px dotted var(--muted); cursor: help; white-space: nowrap; }
+.tpl-rows .has-tag { color: var(--accent); }
 .form-grid.two-col { grid-template-columns: 1fr 1fr; column-gap: 16px; align-items: start; }
 .form-grid.two-col .field input:not([type='checkbox']), .form-grid.two-col .field select { flex: 0 0 auto; height: 30px; }
 .form-grid.two-col .field select { width: 100%; }

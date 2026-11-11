@@ -19,11 +19,12 @@ from workbench_core.deliverables import (DELIVERABLE_TYPES, Deliverable, Revisio
 from workbench_core.generators.editable import BuildInfo, input_hash
 from workbench_core.generators.models import BuildResult, ChangeReport
 from workbench_core.generators.xlsx_export import csv_bytes, export_name, xlsx_bytes
+from workbench_core.keylists.loadgen import BY_TYPE, generate, missing_load_types
 from workbench_core.refdata import RefValidationError
 
 from . import identity
 from .refdata_api import invalid
-from .storage import InUse, NotFound, get_deliverables, get_generators
+from .storage import InUse, NotFound, get_deliverables, get_generators, get_keylists
 
 router = APIRouter(prefix="/api/deliverables", tags=["deliverables"])
 MEDIA = {"csv": "text/csv", "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
@@ -47,10 +48,13 @@ class Overview(BaseModel):
     types: list[str]
     deliverables: list[Summary]
     generators: list[GeneratorChoice]
+    project_columns: dict[str, list[str]]  # deliverable type -> the columns of its Project Load List output
 
 
 class Current(BaseModel):
     """What issuing now would freeze: the generator's latest build through the filter."""
+    source: str = "generator"  # "project": generated now from the Project Load List and the load types
+    warnings: list[str] = Field(default_factory=list)
     build: BuildInfo | None = None
     stale: bool = False  # the generator was changed after that build
     rows: int = 0
@@ -80,8 +84,38 @@ def _get(did: str) -> Deliverable:
         raise HTTPException(404, "That deliverable no longer exists.") from exc
 
 
+PROJECT = "Project Load List"
+
+
+def _project(d: Deliverable) -> tuple[BuildResult, str, list[str], str | None]:
+    """A project-source deliverable's content, generated now: (result, diff key, warnings, problem).
+    The problem (loads with no load type) stops it being issued."""
+    from .loadlist_api import current_rows  # imported late: it runs the imports
+
+    lists = get_keylists()
+    spec = BY_TYPE[d.type]
+    rows, _, _ = current_rows()
+    types = {t.id: t for t in lists.load_types().items}
+    areas = {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}
+    result = generate(spec.key, rows, types, areas)
+    warnings = []
+    if result.unresolved_count:
+        warnings.append(f"{result.unresolved_count} tag(s) in the load types' rows match nothing and were left as they are: "
+                        + ", ".join(result.unresolved_tokens[:10]))
+    missing = missing_load_types(rows, types)
+    problem = None
+    if missing:
+        problem = (f"{len(missing)} load(s) in the Load List have no load type: {', '.join(missing[:12])}"
+                   + (f" and {len(missing) - 12} more" if len(missing) > 12 else "") + ". Allocate them first.")
+    elif not any(r.status == "active" for r in rows):
+        problem = "The Load List has no loads yet."
+    return result, spec.diff_key, warnings, problem
+
+
 def _checked(d: Deliverable) -> Deliverable:
     gens = {g.id for g in get_generators().list()}
+    if d.source == "project":
+        return check_deliverable(d, get_deliverables().list(), gens, list(BY_TYPE[d.type].columns))
     columns = _columns(d.generator_id) if d.generator_id in gens else None
     return check_deliverable(d, get_deliverables().list(), gens, columns)
 
@@ -93,11 +127,13 @@ def overview() -> Overview:
     revs: dict[str, list[RevisionInfo]] = {}
     for r in store.revisions():
         revs.setdefault(r.deliverable_id, []).append(r)  # newest first
-    items = [Summary(deliverable=d, generator=names.get(d.generator_id, ""), latest=(revs.get(d.id) or [None])[0],
+    items = [Summary(deliverable=d, generator=PROJECT if d.source == "project" else names.get(d.generator_id, ""),
+                     latest=(revs.get(d.id) or [None])[0],
                      revisions=len(revs.get(d.id, []))) for d in store.list()]
     items.sort(key=lambda s: (DELIVERABLE_TYPES.index(s.deliverable.type), s.deliverable.name.casefold()))
     return Overview(types=DELIVERABLE_TYPES, deliverables=items, generators=[
-        GeneratorChoice(id=g.id, name=g.name, columns=_columns(g.id), builds=len(gens.list_builds(g.id))) for g in gens.list()])
+        GeneratorChoice(id=g.id, name=g.name, columns=_columns(g.id), builds=len(gens.list_builds(g.id))) for g in gens.list()],
+        project_columns={t: list(x.columns) for t, x in BY_TYPE.items()})
 
 
 class DeliverableBody(BaseModel):
@@ -105,6 +141,7 @@ class DeliverableBody(BaseModel):
     name: str
     doc_number: str = ""
     doc_title: str = ""
+    source: Literal["generator", "project"] = "generator"
     generator_id: str = ""
     filter_column: str = ""
     filter_values: list[str] = Field(default_factory=list)
@@ -128,6 +165,14 @@ def create(body: DeliverableBody):
 def _current(d: Deliverable, with_rows: bool) -> Current:
     store, gens = get_deliverables(), get_generators()
     letter = next_letter([r.letter for r in store.revisions(d.id)])
+    if d.source == "project":
+        result, diff_key, warnings, problem = _project(d)
+        try:
+            result = apply_filter(result, d.filter_column, d.filter_values)
+        except RefValidationError as exc:
+            return Current(source="project", next_letter=letter, problem=exc.message)
+        return Current(source="project", warnings=warnings, rows=content_rows(result), next_letter=letter, problem=problem,
+                       changes=compare(store.latest(d.id), result, diff_key), result=result if with_rows else None)
     try:
         rec = gens.get(d.generator_id)
     except NotFound:
@@ -153,7 +198,7 @@ def detail(did: str, rows: bool = False) -> Detail:
     try:
         name, builds = gens.get(d.generator_id).name, gens.list_builds(d.generator_id)
     except NotFound:
-        name, builds = "", []
+        name, builds = (PROJECT if d.source == "project" else ""), []
     return Detail(deliverable=d, generator=name, revisions=get_deliverables().revisions(did), builds=builds,
                   current=_current(d, rows))
 
@@ -187,28 +232,34 @@ class IssueBody(BaseModel):
 @router.post("/{did}/revisions", response_model=RevisionInfo)
 def issue(did: str, body: IssueBody):
     d = _get(did)
-    gens = get_generators()
+    if d.source == "project":
+        source, diff_key, _, problem = _project(d)
+        if problem:
+            return invalid(RefValidationError(problem))
+        build_seq = 0
+    else:
+        gens = get_generators()
+        try:
+            rec = gens.get(d.generator_id)
+        except NotFound:
+            return invalid(RefValidationError("Its generator no longer exists. Choose another generator."))
+        try:
+            build = gens.get_build(body.build_id) if body.build_id else gens.latest_build(d.generator_id)
+        except NotFound:
+            build = None
+        if build is None or build.info.generator_id != d.generator_id:
+            return invalid(RefValidationError(f"There is no build of {rec.name} to issue. Build it in Generators first."))
+        source, diff_key, build_seq = build.result, rec.generator.config.diff_key, build.info.seq
     try:
-        rec = gens.get(d.generator_id)
-    except NotFound:
-        return invalid(RefValidationError("Its generator no longer exists. Choose another generator."))
-    try:
-        build = gens.get_build(body.build_id) if body.build_id else gens.latest_build(d.generator_id)
-    except NotFound:
-        build = None
-    if build is None or build.info.generator_id != d.generator_id:
-        return invalid(RefValidationError(f"There is no build of {rec.name} to issue. Build it in Generators first."))
-    try:
-        result = apply_filter(build.result, d.filter_column, d.filter_values)
+        result = apply_filter(source, d.filter_column, d.filter_values)
     except RefValidationError as exc:
         return invalid(exc)
-    diff_key = rec.generator.config.diff_key
 
     def make(letter: str, previous: Revision | None) -> Revision:
         changes = compare(previous, result, diff_key)
         info = RevisionInfo(deliverable_id=d.id, letter=letter, issued_at=datetime.now(timezone.utc),
                             issued_by=identity.current().user, description=body.description.strip(),
-                            build_seq=build.info.seq, rows=content_rows(result),
+                            build_seq=build_seq, rows=content_rows(result),
                             added=changes.added if changes else None, removed=changes.removed if changes else None,
                             changed=changes.changed if changes else None)
         return Revision(info=info, result=result, diff_key=diff_key, doc_number=d.doc_number, doc_title=d.doc_title,

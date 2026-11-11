@@ -8,7 +8,7 @@ import {
 } from '../lib/engine';
 import type { Catalogue } from '../lib/genTypes';
 import type {
-	Allocation, CableTypeForm, CableTypeList, CodeList, EelForm, EelView, PlcImportPreview, PlcList, PlcView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList,
+	Allocation, CableTypeForm, CableTypeList, CodeList, EelForm, EelView, PlcImportPreview, PlcList, PlcView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList, TemplateLists,
 } from '../lib/keyListTypes';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -136,6 +136,12 @@ export const useKeyLists = defineStore('keylists', () => {
 	}
 
 	/** Add the row, or replace the saved row with the same id. */
+	/** The deliverable lists a load type has rows for and the tags (fixed in the engine; fetched once). */
+	const templateLists = ref<TemplateLists | null>(null);
+	async function loadTemplateLists() {
+		if (!templateLists.value) templateLists.value = (await run(() => apiGet<TemplateLists>(`${LOAD_TYPES}/lists`))) ?? null;
+	}
+
 	function saveLoadType(row: LoadTypeForm): Promise<boolean> {
 		const items: unknown[] = [...(loadTypes.value?.items ?? [])];
 		const i = items.findIndex((r) => (r as { id: string }).id === row.id);
@@ -363,7 +369,7 @@ export const useKeyLists = defineStore('keylists', () => {
 	return {
 		overview, selected, busy, error, fieldErrors, message, areasSaved, areasDraft, packagesSaved, packagesDraft,
 		loadTypes, areasDirty, packagesDirty, dirty, refresh, select, load, saveAreas, savePackages, discard,
-		saveLoadType, deleteLoadType, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem, cableTypes, saveCableType, deleteCableType, addDefaultCableTypes,
+		saveLoadType, deleteLoadType, templateLists, loadTemplateLists, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem, cableTypes, saveCableType, deleteCableType, addDefaultCableTypes,
 		plcSaved, plcDraft, plcView, catSaved, catDraft, plcDirty, catDirty, loadPlc, savePlc, checkPlc, saveCatalogue,
 		addDefaultTypes, exportPlc, importPlc,
 		discardCatalogue: () => { if (catSaved.value) catDraft.value = clone(catSaved.value); },

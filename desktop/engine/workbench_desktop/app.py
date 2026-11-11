@@ -29,6 +29,7 @@ from .eel_api import router as eel_router
 from .plc_api import router as plc_router
 from .deliverables_api import router as deliverables_router
 from .projects_api import router as projects_router
+from .sample_api import router as sample_router
 from .storage import get_store
 
 app = FastAPI(title="Drawing Workbench engine", version=workbench_core.__version__)
@@ -107,6 +108,7 @@ app.include_router(generators_router)
 app.include_router(dashboard_router)
 app.include_router(audit_router)
 app.include_router(projects_router)
+app.include_router(sample_router)
 
 
 @app.get("/api/whoami")

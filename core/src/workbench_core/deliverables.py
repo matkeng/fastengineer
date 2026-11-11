@@ -30,7 +30,10 @@ class Deliverable(BaseModel):
     name: str
     doc_number: str = ""
     doc_title: str = ""
-    generator_id: str
+    #: "generator": a build of `generator_id`. "project": generated from the Project Load List
+    #: and the load types, by the list of this deliverable's type (keylists.loadgen).
+    source: Literal["generator", "project"] = "generator"
+    generator_id: str = ""
     filter_column: str = ""  # blank: every row
     filter_values: list[str] = Field(default_factory=list)
     updated_at: datetime | None = None
@@ -114,7 +117,9 @@ def check_deliverable(d: Deliverable, others: list[Deliverable], generators: set
         errors["name"] = "Name is required"
     elif any(o.id != d.id and name_key(o.name) == name_key(d.name) for o in others):
         errors["name"] = "Another deliverable has this name"
-    if d.generator_id not in generators:
+    if d.source == "project":
+        d = d.model_copy(update={"generator_id": ""})
+    elif d.generator_id not in generators:
         errors["generator_id"] = "Choose a generator"
     if d.filter_column:
         if columns is not None and d.filter_column.casefold() not in [c.strip().casefold() for c in columns]:

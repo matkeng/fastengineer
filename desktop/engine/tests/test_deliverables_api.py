@@ -156,3 +156,87 @@ def test_issue_from_an_earlier_build() -> None:
     rows = client.get(f"{API}/revisions/{rev['id']}").json()["result"]["rows"]
     assert not any("LATER" in str(c) for r in rows for c in r["cells"])
     assert client.post(f"{API}/{d['id']}/revisions", json={"build_id": "nope"}).status_code == 422
+
+
+# -- deliverables generated from the Project Load List ------------------------------------------
+
+def _project(kind: str, **more) -> dict:
+    res = client.post(API, json={"type": kind, "name": f"Project {kind}", "source": "project"} | more)
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def _cells(did: str) -> list[list]:
+    cur = client.get(f"{API}/{did}", params={"rows": True}).json()["current"]
+    return [r["cells"] for r in cur["result"]["rows"]]
+
+
+def test_deliverables_from_the_project_load_list() -> None:
+    assert client.post("/api/sample-data").status_code == 200
+    ov = client.get(API).json()
+    assert ov["project_columns"]["Cable Schedule"][:2] == ["Cable Number", "From"]
+    for s in ov["deliverables"]:  # the sample's own deliverables are not needed here
+        assert client.delete(f"{API}/{s['deliverable']['id']}").status_code == 200
+
+    made = {kind: _project(kind) for kind in ov["types"]}
+    for kind, d in made.items():
+        detail = client.get(f"{API}/{d['id']}", params={"rows": True}).json()
+        cur = detail["current"]
+        assert detail["generator"] == "Project Load List" and cur["source"] == "project"
+        assert cur["problem"] is None and cur["rows"] > 0 and cur["warnings"] == []
+        assert cur["result"]["header"] == ov["project_columns"][kind]
+    cables = _cells(made["Cable Schedule"]["id"])
+    first = next(c for c in cables if c[0] == "P-101-P1")
+    assert first[1:5] == ["MCC-1", "Motor control centre 1", "P-101", "Feed pump A"]
+    assert len(_cells(made["Load List"]["id"])) == 12
+
+    # a filter on one of the list's columns; a column it doesn't have is refused
+    part = _project("Cable Schedule", name="MCC-1 cables", filter_column="From", filter_values=["MCC-1"])
+    assert {c[1] for c in _cells(part["id"])} == {"MCC-1"}
+    bad = client.post(API, json={"type": "Cable Schedule", "name": "x", "source": "project", "filter_column": "Zone"})
+    assert bad.status_code == 422 and "filter_column" in bad.json()["fields"]
+
+    cable = made["Cable Schedule"]
+    rev_a = client.post(f"{API}/{cable['id']}/revisions", json={"description": "For review"}).json()
+    assert rev_a["letter"] == "A" and rev_a["rows"] == len(cables)
+
+    # a load with no load type blocks issuing, and is named
+    loads = client.get("/api/loadlist").json()["rows"]
+    pump = next(r for r in loads if r["values"].get("tag") == "P-101")
+    key = {"recipe_id": pump["recipe_id"], "key": pump["key"]}
+    assert client.put("/api/loadlist/allocations", json={"rows": [key], "load_type_id": None}).status_code == 200
+    cur = client.get(f"{API}/{cable['id']}").json()["current"]
+    assert "1 load(s)" in cur["problem"] and "P-101" in cur["problem"]
+    no = client.post(f"{API}/{cable['id']}/revisions", json={})
+    assert no.status_code == 422 and "P-101" in no.json()["detail"]
+    assert client.put("/api/loadlist/allocations", json={"rows": [key], "load_type_id": "sdol"}).status_code == 200
+
+    # change a template row: the current content differs from Rev A, and Rev B records it
+    types = client.get("/api/keylists/load-types").json()["items"]
+    dol = next(t for t in types if t["code"] == "DOL")
+    dol["rows"]["cable_schedule"][0]["Size"] = "4"
+    dol["rows"]["cable_schedule"].append({"Cable Number": "<<Tag>>-E1", "From": "<<Tag>>", "To": "Earth bar", "Cable Type": "Earth"})
+    assert client.put("/api/keylists/load-types", json={"items": types}).status_code == 200
+    cur = client.get(f"{API}/{cable['id']}").json()["current"]
+    assert cur["problem"] is None and cur["changes"]["added"] == 4 and cur["changes"]["changed"] == 4
+    rev_b = client.post(f"{API}/{cable['id']}/revisions", json={"description": "Earths added"}).json()
+    assert (rev_b["letter"], rev_b["added"], rev_b["changed"], rev_b["build_seq"]) == ("B", 4, 4, 0)
+    a = client.get(f"{API}/revisions/{rev_a['id']}").json()
+    assert not any(r["cells"][0] == "P-101-E1" for r in a["result"]["rows"])  # Rev A is frozen
+    wb = load_workbook(io.BytesIO(client.post(f"{API}/revisions/{rev_b['id']}/export", json={}).content))
+    assert any(row[0] == "P-101-E1" for row in wb.active.iter_rows(values_only=True))
+
+
+def test_a_project_deliverable_with_no_loads_or_unknown_tags() -> None:
+    d = _project("Equipment List")
+    cur = client.get(f"{API}/{d['id']}").json()["current"]
+    assert cur["problem"] == "The Load List has no loads yet."
+    assert client.post(f"{API}/{d['id']}/revisions", json={}).status_code == 422
+
+    client.post("/api/sample-data")
+    types = client.get("/api/keylists/load-types").json()["items"]
+    types[0]["rows"]["equipment_list"][0]["Remarks"] = "See <<NoSuchTag>>"
+    assert client.put("/api/keylists/load-types", json={"items": types}).status_code == 200
+    cur = client.get(f"{API}/{d['id']}").json()["current"]
+    assert cur["problem"] is None and "NoSuchTag" in cur["warnings"][0]
+    assert client.post(f"{API}/{d['id']}/revisions", json={}).status_code == 200  # a warning, not a block

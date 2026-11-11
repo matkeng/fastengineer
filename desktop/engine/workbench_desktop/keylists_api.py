@@ -161,6 +161,14 @@ class LoadTypesUpdate(BaseModel):
     items: list[dict]  # as typed in: check_load_types converts the numbers and names each problem
 
 
+@router.get("/load-types/lists")
+def load_type_lists() -> dict:
+    """The deliverable lists a load type has rows for (with their columns), and the tags a row can use."""
+    from workbench_core.keylists.loadgen import LISTS, TAGS, TEMPLATE_LISTS
+    return {"lists": [{"key": k, "name": LISTS[k].deliverable_type, "columns": list(LISTS[k].columns)} for k in TEMPLATE_LISTS],
+            "tags": [{"tag": f"<<{t}>>", "meaning": m} for t, m in TAGS]}
+
+
 @router.put("/load-types", response_model=LoadTypeList)
 def update_load_types(body: LoadTypesUpdate):
     try:

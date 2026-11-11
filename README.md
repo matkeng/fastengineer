@@ -594,8 +594,9 @@ The lists a project issues, in the **Deliverables** section
 - A deliverable is a **Cable Schedule**, **Instrument List**, **PLC I/O List**,
   **Equipment List** or **Load List**, with a name (unique), document number and
   title. A project can have several of each type.
-- Its content is the output of a **generator** build, optionally only the rows
-  where one output column is one of a list of values (for example one area).
+- Its content comes from the **Project Load List** (see below) or from a
+  **generator** build, optionally only the rows where one column is one of a
+  list of values (for example one area).
 - **Issue Rev A / B / C…** (then AA, AB…) freezes the content of the generator's
   latest build, or of an earlier build you pick, with the date, who issued it and
   a description. Issuing never builds: you issue a build you have seen. The
@@ -613,7 +614,60 @@ The lists a project issues, in the **Deliverables** section
   deliverable can't be deleted. Deleting a generator's builds does not affect
   issued revisions.
 
+### Generated from the Project Load List (Load Types as templates)
+
+The power side of a project needs no generator workbook. The Load List is the
+runsheet and the **Load Types** are the templates
+(`core/src/workbench_core/keylists/loadgen.py`):
+
+- Each load type has predefined **rows for each list**: Cable Schedule, Equipment
+  List, Instrument List and PLC I/O List (the tabs of the load type's dialog; the
+  grid takes paste from Excel).
+- Every active load in the Load List adds the rows of its allocated load type,
+  in tag order, with the `<<tags>>` in the cells replaced by that load's data.
+  A deliverable of type Load List has one row per load and needs no template rows.
+- The content is generated on the spot whenever you look at the deliverable, so
+  there is nothing to build; **issuing** freezes it as the next revision.
+- A load with **no load type** blocks issuing (the message names the loads). A
+  tag that matches nothing is left in the text and reported as a warning.
+
+| List | Columns |
+|---|---|
+| Cable Schedule | Cable Number, From, From Description, To, To Description, Cable Type, Cores, Size, Voltage, Length (m), Route, Remarks |
+| Equipment List | Tag, Description, Equipment Type, Plant Area, Rating, Units, Voltage, Phases, Supplied From, Manufacturer, Model, Remarks |
+| Instrument List | Tag, Description, Instrument Type, Plant Area, Service, Signal, IO Type, Range, Units, Remarks |
+| PLC I/O List | Tag, Description, Signal, IO Type, PLC System, Rack, Slot, Channel, Plant Area, Remarks |
+| Load List | Tag, Description, Plant Area, Load Type, Rating, Units, Voltage, Phases, Supplied From, Distribution Panel |
+
+Tags (not case-sensitive; type `<<` in a cell to pick one):
+
+| Tag | Filled with |
+|---|---|
+| `<<Tag>>`, `<<Description>>`, `<<Area>>`, `<<Rating>>`, `<<EquipType>>`, `<<Qty>>` | the load's own data from the import or the Electrical Equipment List |
+| `<<Units>>`, `<<Voltage>>`, `<<Phases>>` | the load's value, else the load type's |
+| `<<PlantArea>>`, `<<PlantAreaDesc>>` | the allocated plant area |
+| `<<LoadType>>`, `<<LoadTypeName>>`, `<<StdDrg>>`, `<<BucketType>>` | the allocated load type |
+| `<<SuppliedFrom>>`, `<<SuppliedFromDesc>>` | the panel it is supplied from, or Primary Supply |
+| `<<Row>>` | 1, 2, … within the load's rows of that list |
+| any mapped load-list field, e.g. `<<starter_type>>` | that field of the load |
+
+### Sample data
+
+**Load sample data** on the Dashboard (`POST /api/sample-data`) fills every list
+that is still empty with a small invented plant: plant areas, equipment packages
+and types, equipment and instrument codes, four load types with rows for every
+list, three switchboards in the Electrical Equipment List, a PLC, a MEL import
+of nine loads, a list, tree and table under Lists & tables, and one deliverable
+of each type from the Project Load List. Lists that already have data are left
+alone, so it is safe to run on a project in use.
+
 ## Deliverable generators
+
+> Imported generator workbooks are being **retired** for the power side: Load
+> Types and the Load List now generate the same deliverables inside the app (see
+> above). Generators keep working and remain the route for the instrument side
+> until that moves across too.
+
 
 The **Generators** section imports a generator workbook (cable schedules, device list, IO list).
 You edit its runsheet and templates in spreadsheet-style grids, with paste from Excel, and preview a run.

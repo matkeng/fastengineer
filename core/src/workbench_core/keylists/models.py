@@ -91,6 +91,9 @@ class LoadType(BaseModel):
     multi_load: bool = False
     load_qty: int | None = None
     pdf: AttachedFile | None = None
+    #: Predefined rows per deliverable list (keylists.loadgen.TEMPLATE_LISTS): list key ->
+    #: rows, each {column name: text with <<tags>>}. Every load of this type produces them.
+    rows: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
 
 
 class LoadTypeList(BaseModel):

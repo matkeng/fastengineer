@@ -9,14 +9,17 @@ import type { Changes, RevisionInfo } from '../../lib/deliverableTypes';
 import { type BuildResult, type OutputRow, type Scalar, cellText } from '../../lib/genTypes';
 import { useDeliverables } from '../../stores/deliverables';
 import { useGenerators } from '../../stores/generators';
+import { useKeyLists } from '../../stores/keylists';
 import { useUi } from '../../stores/ui';
 import HistoryButton from '../audit/HistoryButton.vue';
 import AppModal from '../common/AppModal.vue';
 
-// Deliverables: the lists a project issues. Each takes its content from a generator's builds
+// Deliverables: the lists a project issues. Each takes its content from the Project Load List
+// (generated on the spot from the load types' rows) or from a generator's builds,
 // and is issued in lettered revisions (A, B, ...), frozen when the user issues them.
 const dl = useDeliverables();
 const gens = useGenerators();
+const kl = useKeyLists();
 const ui = useUi();
 
 const types = computed(() => dl.overview?.types ?? []);
@@ -24,7 +27,22 @@ const generators = computed(() => dl.overview?.generators ?? []);
 const groups = computed(() => types.value.map((t) => ({ type: t, items: (dl.overview?.deliverables ?? []).filter((s) => s.deliverable.type === t) })));
 const d = computed(() => dl.detail);
 const cur = computed(() => d.value?.current ?? null);
-const columns = computed(() => generators.value.find((g) => g.id === dl.form?.generator_id)?.columns ?? []);
+const PROJECT = '@project'; // the source drop-down's value for the Project Load List
+const isProject = computed(() => d.value?.deliverable.source === 'project');
+const columns = computed(() => {
+	const f = dl.form;
+	if (!f) return [];
+	return f.source === 'project' ? dl.overview?.project_columns[f.type] ?? [] : generators.value.find((g) => g.id === f.generator_id)?.columns ?? [];
+});
+const source = computed({
+	get: () => (dl.form?.source === 'project' ? PROJECT : dl.form?.generator_id ?? ''),
+	set: (v: string) => {
+		if (!dl.form) return;
+		dl.form.source = v === PROJECT ? 'project' : 'generator';
+		dl.form.generator_id = v === PROJECT ? '' : v;
+		if (!columns.value.includes(dl.form.filter_column)) dl.form.filter_column = '';
+	},
+});
 const when = (iso: string) => new Date(iso).toLocaleString();
 
 onMounted(() => dl.refresh());
@@ -43,13 +61,13 @@ async function select(id: string) {
 const adding = ref<{ type: string; name: string; generator_id: string } | null>(null);
 function startAdd(type?: string) {
 	dl.error = null;
-	adding.value = { type: type ?? types.value[0] ?? '', name: '', generator_id: generators.value[0]?.id ?? '' };
+	adding.value = { type: type ?? types.value[0] ?? '', name: '', generator_id: PROJECT };
 }
 async function add() {
 	const a = adding.value;
 	if (!a) return;
 	if (dl.dirty && !confirm('Discard unsaved changes to the open deliverable?')) return;
-	if (await dl.create(a.type, a.name, a.generator_id)) adding.value = null;
+	if (await dl.create(a.type, a.name, a.generator_id === PROJECT ? null : a.generator_id)) adding.value = null;
 }
 
 async function remove() {
@@ -77,6 +95,11 @@ async function withdraw() {
 async function amend(rev: RevisionInfo) {
 	const text = prompt(`Description of Rev ${rev.letter}:`, rev.description);
 	if (text !== null && text !== rev.description) await dl.amend(rev, text);
+}
+
+function openKeyList(id: 'load-list' | 'load-types') {
+	void kl.select(id);
+	ui.go('keylists');
 }
 
 async function openGenerator() {
@@ -195,9 +218,12 @@ onBeforeUnmount(() => table?.api.destroy());
 						<select v-model="dl.form.type"><option v-for="t in types" :key="t" :value="t">{{ t }}</option></select></label>
 					<label class="field"><span>Document number</span><input v-model="dl.form.doc_number" class="mono" /></label>
 					<label class="field"><span>Document title</span><input v-model="dl.form.doc_title" /></label>
-					<label class="field"><span>Generator<span class="req"> *</span></span>
-						<select v-model="dl.form.generator_id" :class="{ invalid: dl.fieldErrors.generator_id }">
-							<option v-for="g in generators" :key="g.id" :value="g.id">{{ g.name }}</option>
+					<label class="field"><span>Content from<span class="req"> *</span></span>
+						<select v-model="source" :class="{ invalid: dl.fieldErrors.generator_id }">
+							<option :value="PROJECT">Project Load List</option>
+							<optgroup v-if="generators.length" label="Generators">
+								<option v-for="g in generators" :key="g.id" :value="g.id">{{ g.name }}</option>
+							</optgroup>
 						</select></label>
 					<label class="field"><span>Only rows where</span>
 						<select v-model="dl.form.filter_column" :class="{ invalid: dl.fieldErrors.filter_column }">
@@ -212,9 +238,21 @@ onBeforeUnmount(() => table?.api.destroy());
 
 				<div class="dl-current" :class="{ problem: cur?.problem }">
 					<template v-if="cur?.problem">
-						<strong>Nothing to issue yet.</strong> {{ cur.problem }}
+						<span><strong>Nothing to issue yet.</strong> {{ cur.problem }}</span>
 						<span class="spacer" />
-						<button type="button" class="secondary" @click="openGenerator">Open the generator</button>
+						<button v-if="isProject" type="button" class="secondary" @click="openKeyList('load-list')">Open the Load List</button>
+						<button v-else type="button" class="secondary" @click="openGenerator">Open the generator</button>
+					</template>
+					<template v-else-if="isProject && cur">
+						<span>
+							<strong>Current content:</strong> {{ cur.rows }} row(s), generated now from the Project Load List and its load types' rows.
+							<template v-if="cur.changes">Since Rev {{ d.revisions[0]?.letter }}: {{ pending(cur.changes) }}.</template>
+							<span v-for="w in cur.warnings" :key="w" class="warnText"> {{ w }}</span>
+						</span>
+						<span class="spacer" />
+						<button type="button" class="secondary" @click="openKeyList('load-list')">Load List</button>
+						<button type="button" class="secondary" @click="openKeyList('load-types')">Load Types</button>
+						<button type="button" :disabled="dl.busy || dl.dirty" :title="dl.dirty ? 'Save the deliverable first' : ''" @click="startIssue">Issue Rev {{ cur.next_letter }}…</button>
 					</template>
 					<template v-else-if="cur?.build">
 						<span>
@@ -274,11 +312,10 @@ onBeforeUnmount(() => table?.api.destroy());
 				<h2>Deliverables</h2>
 				<p class="hint">
 					The lists this project issues: cable schedules, instrument lists, PLC I/O lists, equipment lists and load lists.
-					Each takes its content from a generator's builds and is issued in revisions A, B, C… when you say so. An issued
+					Each takes its content from the Project Load List (every load adds its load type's rows) or from a generator's builds, and is issued in revisions A, B, C… when you say so. An issued
 					revision is a frozen copy you can view, compare with the one before, and export at any time.
 				</p>
-				<p v-if="!generators.length" class="warn">There are no generators in this project yet. Import one in Generators first.</p>
-				<button v-else type="button" @click="startAdd()">New deliverable</button>
+				<button type="button" @click="startAdd()">New deliverable</button>
 				<p v-if="dl.error && !adding" class="error">{{ dl.error }}</p>
 			</section>
 		</div>
@@ -290,12 +327,15 @@ onBeforeUnmount(() => table?.api.destroy());
 				<label class="field"><span>Name<span class="req"> *</span></span>
 					<input v-model="adding.name" placeholder="e.g. Lighting cable schedule" :class="{ invalid: dl.fieldErrors.name }" />
 					<span v-if="dl.fieldErrors.name" class="warn small">{{ dl.fieldErrors.name }}</span></label>
-				<label class="field"><span>Generator<span class="req"> *</span></span>
+				<label class="field"><span>Content from<span class="req"> *</span></span>
 					<select v-model="adding.generator_id" :class="{ invalid: dl.fieldErrors.generator_id }">
-						<option v-for="g in generators" :key="g.id" :value="g.id">{{ g.name }}</option>
+						<option :value="PROJECT">Project Load List</option>
+						<optgroup v-if="generators.length" label="Generators">
+							<option v-for="g in generators" :key="g.id" :value="g.id">{{ g.name }}</option>
+						</optgroup>
 					</select>
 					<span v-if="dl.fieldErrors.generator_id" class="warn small">{{ dl.fieldErrors.generator_id }}</span></label>
-				<p v-if="!generators.length" class="warn">Import a generator in Generators first.</p>
+				<p v-if="adding.generator_id === PROJECT" class="hint small">Every load in the Load List adds the rows its load type has for this type of list. Nothing to build: it is always up to date.</p>
 				<button type="submit" hidden />
 			</form>
 			<template #footer>
@@ -315,7 +355,7 @@ onBeforeUnmount(() => table?.api.destroy());
 				<p v-if="cur.stale && !issuing.build_id" class="warn">The generator has changed since its latest build. Those changes are not in this revision.</p>
 				<label class="field"><span>Description</span>
 					<input v-model="issuing.description" placeholder="e.g. Issued for review" /></label>
-				<label class="field"><span>From build</span>
+				<label v-if="!isProject" class="field"><span>From build</span>
 					<select v-model="issuing.build_id">
 						<option value="">Latest (build {{ cur.build?.seq }})</option>
 						<option v-for="b in d.builds.slice(1)" :key="b.id" :value="b.id">Build {{ b.seq }}, {{ when(b.created_at) }}</option>

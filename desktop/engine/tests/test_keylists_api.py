@@ -341,3 +341,22 @@ def test_code_lists_save_rules_conflicts_and_log(data_dir: Path, list_id: str, e
 def test_unknown_discipline_is_a_field_error() -> None:
     r = client.put("/api/keylists/equipment-codes", json={"items": [{"id": "c1", "code": "A", "name": "A", "disciplines": ["Q"]}]})
     assert r.status_code == 422 and r.json()["fields"] == {"c1.disciplines": "Not a discipline: Q"}
+
+
+def test_load_type_template_rows() -> None:
+    info = client.get(f"{LOAD_URL}/lists").json()
+    assert [x["key"] for x in info["lists"]] == ["cable_schedule", "equipment_list", "instrument_list", "plc_io_list"]
+    assert info["lists"][0]["columns"][0] == "Cable Number" and any(t["tag"] in ("Tag", "<<Tag>>") for t in info["tags"])
+
+    rows = {"cable_schedule": [{"Cable Number": "  <<Tag>>-P1 ", "From": "<<SuppliedFrom>>", "Size": ""}, {"Remarks": "  "}],
+            "plc_io_list": []}
+    saved = client.put(LOAD_URL, json={"items": [dict(LOADS[0], rows=rows)] + LOADS[1:]})
+    assert saved.status_code == 200, saved.text
+    first = next(t for t in client.get(LOAD_URL).json()["items"] if t["id"] == LOADS[0]["id"])
+    assert first["rows"]["cable_schedule"] == [{"Cable Number": "<<Tag>>-P1", "From": "<<SuppliedFrom>>"}]  # trimmed, blanks gone
+    assert all(t["rows"].get("cable_schedule", []) == [] for t in client.get(LOAD_URL).json()["items"] if t["id"] != LOADS[0]["id"])
+
+    bad = client.put(LOAD_URL, json={"items": [dict(LOADS[0], rows={"cable_schedule": [{"Colour": "red"}]})] + LOADS[1:]})
+    assert bad.status_code == 422 and "Colour" in str(bad.json()["fields"])
+    bad = client.put(LOAD_URL, json={"items": [dict(LOADS[0], rows={"drawing_list": [{"Tag": "x"}]})] + LOADS[1:]})
+    assert bad.status_code == 422
