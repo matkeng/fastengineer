@@ -114,8 +114,13 @@ def save_generator(rid: str, body: SaveBody):
 
 
 @router.delete("/{rid}")
-def delete_generator(rid: str) -> dict[str, bool]:
+def delete_generator(rid: str):
     _record(rid)
+    from .storage import get_deliverables
+    used = get_deliverables().using(rid)
+    if used:
+        return _invalid(f"This generator feeds the deliverable(s) {', '.join(used)} and can't be deleted. "
+                        "Point them at another generator, or delete them, first.")
     get_generators().delete(rid)
     return {"ok": True}
 

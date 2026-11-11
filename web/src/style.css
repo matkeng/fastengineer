@@ -791,6 +791,28 @@ main.fill .key-plc { overflow: auto; }
 .key-cables .result-table td { white-space: nowrap; }
 .key-cables .row.tight { display: flex; gap: 6px; align-items: center; }
 .key-cables .row.tight input { flex: 1; }
+/* Deliverables */
+.deliverables .key-title { margin: 0; font-size: 1rem; }
+.deliverables .ref-side section > button { margin-top: 2px; }
+.deliverables .ref-nav .none-yet { cursor: default; font-size: 12px; }
+.deliverables .ref-nav .count.none { opacity: 0.5; }
+main.fill .dl-editor { overflow: auto; }
+.dl-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 12px; }
+.dl-fields .field input, .dl-fields .field select { width: 100%; }
+@media (max-width: 1100px) { .dl-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.dl-current { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; margin: 4px 0 10px;
+	border: 1px solid var(--border); border-left: 3px solid var(--accent); background: var(--chrome); border-radius: 2px; }
+.dl-current.problem { border-left-color: var(--warn); }
+.dl-h { margin: 4px 0; font-size: 0.9rem; }
+.dl-revs { width: 100%; margin-bottom: 10px; }
+.dl-revs td { white-space: nowrap; cursor: default; }
+.dl-revs td.desc { white-space: normal; width: 40%; }
+.dl-revs td.rev-letter { font-weight: 700; font-size: 1.05em; }
+.dl-revs td.num { text-align: right; }
+.dl-revs tr.on td { background: var(--select); }
+.dl-revs td.actions { text-align: right; }
+.dl-view-head { margin-bottom: 6px; }
+.dl-editor .results { min-height: 260px; }
 /* Inputs directly in a column layout must not grow vertically. */
 .ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }
 

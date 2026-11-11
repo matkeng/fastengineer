@@ -10,6 +10,7 @@ import AppModal from './components/common/AppModal.vue';
 import Icon from './components/common/Icon.vue';
 import CompareView from './components/compare/CompareView.vue';
 import DashboardView from './components/dashboard/DashboardView.vue';
+import DeliverablesView from './components/deliverables/DeliverablesView.vue';
 import ExcelWizard from './components/excel/ExcelWizard.vue';
 import GenView from './components/generators/GenView.vue';
 import KeyListsView from './components/keylists/KeyListsView.vue';
@@ -18,6 +19,7 @@ import RefView from './components/ref/RefView.vue';
 import SymView from './components/symbols/SymView.vue';
 import { apiGet, lastConflict } from './lib/engine';
 import { useCompare } from './stores/compare';
+import { useDeliverables } from './stores/deliverables';
 import { useExcelWizard } from './stores/excelWizard';
 import { useGenerators } from './stores/generators';
 import { useKeyLists } from './stores/keylists';
@@ -35,6 +37,7 @@ const cmp = useCompare();
 const mel = useMel();
 const rd = useRefData();
 const kl = useKeyLists();
+const dl = useDeliverables();
 const sym = useSymbols();
 const projects = useProjects();
 const gens = useGenerators();
@@ -50,6 +53,7 @@ const fill = computed(
 			ui.tab === 'symbols' ||
 			(ui.tab === 'generators' && !!gens.draft) ||
 			ui.tab === 'keylists' ||
+			ui.tab === 'deliverables' ||
 			ui.tab === 'ref'),
 );
 const dirty: Partial<Record<string, () => boolean>> = {
@@ -58,6 +62,7 @@ const dirty: Partial<Record<string, () => boolean>> = {
 	keylists: () => kl.dirty,
 	ref: () => rd.dirty,
 	generators: () => gens.anyDirty,
+	deliverables: () => dl.dirty,
 };
 const sections = computed(() => SECTIONS.filter((s) => s.id !== 'projects' || projects.isAdmin));
 // Sections that work without a project: the engine's own page and project administration.
@@ -149,6 +154,7 @@ onMounted(() => wb.connect());
 				<KeyListsView v-show="ui.tab === 'keylists'" />
 				<RefView v-show="ui.tab === 'ref'" />
 				<GenView v-show="ui.tab === 'generators'" />
+				<DeliverablesView v-show="ui.tab === 'deliverables'" />
 				<AuditView v-if="ui.tab === 'history'" />
 			</template>
 			<section v-else-if="wb.status === 'ready' && !noProjectNeeded" class="card">

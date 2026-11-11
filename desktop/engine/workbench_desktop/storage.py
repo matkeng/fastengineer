@@ -18,6 +18,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from workbench_core.keylists.cable_types import CableType, CableTypeList, default_cable_types
+from workbench_core.deliverables import Deliverable, next_letter
+from workbench_core.deliverables import Revision as IssuedRevision
+from workbench_core.deliverables import RevisionInfo as IssueInfo
 from workbench_core.keylists.plc import PlcList, from_registers
 from workbench_core.keylists import (
     EEL_SOURCE,
@@ -176,6 +179,19 @@ CREATE TABLE IF NOT EXISTS load_list (
     row_key TEXT NOT NULL,
     data TEXT NOT NULL,
     PRIMARY KEY (recipe_id, row_key)
+);
+-- Deliverables (issued lists) and their revisions: `data` is the frozen content of a revision.
+CREATE TABLE IF NOT EXISTS deliverables (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS deliverable_revisions (
+    id TEXT PRIMARY KEY,
+    deliverable_id TEXT NOT NULL REFERENCES deliverables(id),
+    letter TEXT NOT NULL,
+    info TEXT NOT NULL,
+    data TEXT NOT NULL,
+    UNIQUE (deliverable_id, letter)
 );
 -- Key lists: the project's built-in lists, one JSON document each (id 'plant-areas', ...).
 CREATE TABLE IF NOT EXISTS key_lists (
@@ -881,6 +897,122 @@ class LoadListStore:
         return counts
 
 
+class DeliverableStore:
+    """Deliverables and their issued revisions. Shares the Store's connection and lock."""
+
+    def __init__(self, store: Store):
+        self._db = store._db
+        self._lock = store._lock
+
+    def list(self) -> list[Deliverable]:
+        with self._lock:
+            rows = self._db.execute("SELECT data FROM deliverables").fetchall()
+        return [Deliverable.model_validate_json(r[0]) for r in rows]
+
+    def get(self, did: str) -> Deliverable:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM deliverables WHERE id = ?", (did,)).fetchone()
+        if not row:
+            raise NotFound(did)
+        return Deliverable.model_validate_json(row[0])
+
+    def save(self, d: Deliverable, create: bool = False) -> Deliverable:
+        d = d.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "deliverables", "id = ?", (d.id,))
+            if not create and before is None:
+                raise NotFound(d.id)
+            self._db.execute("INSERT INTO deliverables VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (d.id, d.model_dump_json()))
+            audit.log(self._db, "deliverable", d.id, before, d.model_dump_json())
+        return d
+
+    def delete(self, did: str) -> None:
+        """Only a deliverable with no revisions (the caller says so to the user first)."""
+        with self._lock, self._db:
+            (n,) = self._db.execute("SELECT COUNT(*) FROM deliverable_revisions WHERE deliverable_id = ?", (did,)).fetchone()
+            if n:
+                raise InUse(f"It has {n} issued revision(s).")
+            before = audit.data_of(self._db, "deliverables", "id = ?", (did,))
+            if before is not None:
+                audit.log(self._db, "deliverable", did, before, None)
+            self._db.execute("DELETE FROM deliverables WHERE id = ?", (did,))
+
+    def revisions(self, did: str | None = None) -> list[IssueInfo]:
+        """Newest first (all deliverables' when `did` is None)."""
+        sql, args = "SELECT info FROM deliverable_revisions", ()
+        if did is not None:
+            sql, args = sql + " WHERE deliverable_id = ?", (did,)
+        with self._lock:
+            rows = self._db.execute(sql, args).fetchall()
+        return sorted((IssueInfo.model_validate_json(r[0]) for r in rows), key=lambda r: r.issued_at, reverse=True)
+
+    def revision(self, rid: str) -> IssuedRevision:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM deliverable_revisions WHERE id = ?", (rid,)).fetchone()
+        if not row:
+            raise NotFound(rid)
+        return IssuedRevision.model_validate_json(row[0])
+
+    def latest(self, did: str) -> IssuedRevision | None:
+        revs = self.revisions(did)
+        return self.revision(revs[0].id) if revs else None
+
+    def issue(self, d: Deliverable, make) -> IssuedRevision:
+        """Issue the next revision. `make(letter, previous)` builds it once the letter is taken,
+        inside the transaction, so two people issuing at once can't get the same letter."""
+        with self._lock, self._db:
+            rows = self._db.execute("SELECT info FROM deliverable_revisions WHERE deliverable_id = ?", (d.id,)).fetchall()
+            infos = sorted((IssueInfo.model_validate_json(r[0]) for r in rows), key=lambda r: r.issued_at)
+            previous = None
+            if infos:
+                (data,) = self._db.execute("SELECT data FROM deliverable_revisions WHERE id = ?", (infos[-1].id,)).fetchone()
+                previous = IssuedRevision.model_validate_json(data)
+            rev = make(next_letter([i.letter for i in infos]), previous)
+            self._db.execute("INSERT INTO deliverable_revisions VALUES (?, ?, ?, ?, ?)",
+                             (rev.info.id, d.id, rev.info.letter, rev.info.model_dump_json(), rev.model_dump_json()))
+            audit.log(self._db, "deliverable_revision", rev.info.id, None, rev.info.model_dump_json(), parent_id=d.id,
+                      label=f"{d.name}: Rev {rev.info.letter}", note=f"Rev {rev.info.letter} issued")
+        return rev
+
+    def set_description(self, rid: str, description: str) -> IssueInfo:
+        with self._lock, self._db:
+            row = self._db.execute("SELECT deliverable_id, info, data FROM deliverable_revisions WHERE id = ?", (rid,)).fetchone()
+            if not row:
+                raise NotFound(rid)
+            did, old, data = row
+            rev = IssuedRevision.model_validate_json(data)
+            info = rev.info.model_copy(update={"description": description.strip()})
+            rev = rev.model_copy(update={"info": info})
+            self._db.execute("UPDATE deliverable_revisions SET info = ?, data = ? WHERE id = ?",
+                             (info.model_dump_json(), rev.model_dump_json(), rid))
+            audit.log(self._db, "deliverable_revision", rid, old, info.model_dump_json(), parent_id=did,
+                      label=f"Rev {info.letter}")
+        return info
+
+    def withdraw(self, rid: str, reason: str) -> IssueInfo:
+        """Withdraw a revision: only the latest of its deliverable. Its letter is free again."""
+        with self._lock, self._db:
+            row = self._db.execute("SELECT deliverable_id, info FROM deliverable_revisions WHERE id = ?", (rid,)).fetchone()
+            if not row:
+                raise NotFound(rid)
+            did, old = row
+            info = IssueInfo.model_validate_json(old)
+            others = [IssueInfo.model_validate_json(r[0]) for r in self._db.execute(
+                "SELECT info FROM deliverable_revisions WHERE deliverable_id = ?", (did,))]
+            newest = max(others, key=lambda r: r.issued_at)
+            if newest.id != rid:
+                raise InUse(f"Only the latest revision (Rev {newest.letter}) can be withdrawn.")
+            name = json.loads(audit.data_of(self._db, "deliverables", "id = ?", (did,)) or "{}").get("name", "")
+            self._db.execute("DELETE FROM deliverable_revisions WHERE id = ?", (rid,))
+            audit.log(self._db, "deliverable_revision", rid, old, None, parent_id=did,
+                      label=f"{name}: Rev {info.letter}", note=f"Rev {info.letter} withdrawn: {reason.strip()}")
+        return info
+
+    def using(self, generator_id: str) -> list[str]:
+        return [d.name for d in self.list() if d.generator_id == generator_id]
+
+
 class InUse(ValueError):
     pass
 
@@ -1413,6 +1545,10 @@ def get_store() -> Store:
 
 def get_ref() -> RefStore:
     return RefStore(get_store())
+
+
+def get_deliverables() -> DeliverableStore:
+    return DeliverableStore(get_store())
 
 
 def get_loadlist() -> LoadListStore:

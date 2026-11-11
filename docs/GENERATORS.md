@@ -20,6 +20,9 @@ cell for cell, in **compatibility mode**.
 
 ## In the app (Generators section)
 
+A build becomes an issued document in the **Deliverables** section: a deliverable points at a
+generator and freezes one of its builds as Rev A, B, C… (see the README's Deliverables section).
+
 1. **Import** a generator workbook (`.xlsx` / `.xlsm`) with "Import workbook…", by dropping it on the page, or with "Use the sample generator".
    The import report lists what was read, which formulas became calculated columns, and any data issues.
 2. **Runsheet** (an editable grid, one row per run): the header shows each column's label and `<<TAG>>`.

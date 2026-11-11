@@ -11,7 +11,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from .excel_api import store as workbooks
-from .storage import get_generators, get_keylists, get_loadlist, get_ref, get_store
+from .storage import get_deliverables, get_generators, get_keylists, get_loadlist, get_ref, get_store
 from . import symbols_api  # looked up per request, so tests can stub its OCR provider
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -61,6 +61,8 @@ class Counts(BaseModel):
     equipment_codes: int = 0
     instrument_codes: int = 0
     eel_items: int = 0
+    deliverables: int = 0
+    deliverable_revisions: int = 0
     generators: int = 0
     gen_builds: int = 0
     plc_panels: int = 0
@@ -153,6 +155,14 @@ def dashboard() -> Dashboard:
     c.equipment_codes = len(get_keylists().code_list("equipment-codes").items)
     c.instrument_codes = len(get_keylists().code_list("instrument-codes").items)
     c.eel_items = len(get_keylists().eel().items)
+    dl = get_deliverables()
+    names = {d.id: d.name for d in dl.list()}
+    c.deliverables = len(names)
+    for r in dl.revisions():
+        c.deliverable_revisions += 1
+        events.append(Event(kind="revision_issued", section="deliverables", id=r.deliverable_id,
+                            title=f"{names.get(r.deliverable_id, '')}: Rev {r.letter} issued",
+                            detail=f"{r.rows} rows" + (f" · {r.description}" if r.description else ""), at=r.issued_at))
     c.load_list_rows = sum(r.status == "active" for r in get_loadlist().rows())
 
     # Symbol detection

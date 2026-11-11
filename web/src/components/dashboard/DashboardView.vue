@@ -8,6 +8,7 @@ import { apiGet } from '../../lib/engine';
 import type { IconName } from '../../lib/icons';
 import { useGenerators } from '../../stores/generators';
 import { useMel } from '../../stores/mel';
+import { useDeliverables } from '../../stores/deliverables';
 import { useRefData } from '../../stores/refdata';
 import { useSymbols } from '../../stores/symbols';
 import { type Section, useUi } from '../../stores/ui';
@@ -20,6 +21,7 @@ const wb = useWorkbench();
 const sym = useSymbols();
 const mel = useMel();
 const rd = useRefData();
+const dl = useDeliverables();
 const gens = useGenerators();
 const data = ref<Dashboard | null>(null);
 const error = ref<string | null>(null);
@@ -71,6 +73,7 @@ const kpis = computed<Kpi[]>(() => {
 			sub: `${k.plant_areas} plant areas · ${k.equipment_packages} packages · ${k.equipment_types} equipment types · ${k.load_types} load types · ${k.eel_items} EEL items · ${k.load_list_rows} load list rows · ${k.equipment_codes} equipment codes · ${k.instrument_codes} instrument codes` },
 		{ label: 'Lists, trees & tables', icon: 'database', value: k.enums + k.trees + k.tables, go: 'ref',
 			sub: `${k.enums} lists · ${k.trees} trees · ${k.tables} tables · ${k.rows} rows` },
+		{ label: 'Deliverables', icon: 'file', value: k.deliverables, go: 'deliverables', sub: `${k.deliverable_revisions} revision(s) issued` },
 		{ label: 'Generators', icon: 'generator', value: k.generators, go: 'generators',
 			sub: `${k.gen_builds} build(s)${k.latest_build_at ? `, last ${ago(k.latest_build_at)}` : ''}${k.plc_cards ? ` · ${k.plc_panels} PLC panel(s), ${k.plc_cards} cards` : ''}` },
 		{ label: 'Engine', icon: 'cpu', value: wb.status === 'ready' ? 'OK' : '–', go: 'engine',
@@ -117,7 +120,7 @@ async function tryExample() {
 
 const EVENT_ICON: Record<DashEvent['kind'], IconName> = {
 	run: 'run', drawing: 'file', revision: 'upload', recipe: 'recipe', enum: 'enum', tree: 'tree', table: 'table',
-	generator: 'generator', build: 'build',
+	generator: 'generator', build: 'build', revision_issued: 'file',
 };
 
 async function openEvent(e: DashEvent) {
@@ -131,6 +134,10 @@ async function openEvent(e: DashEvent) {
 			await mel.open(e.id);
 		}
 		ui.go('mel');
+	} else if (e.section === 'deliverables') {
+		await dl.refresh();
+		await dl.open(e.id);
+		ui.go('deliverables');
 	} else if (e.section === 'generators') {
 		if (gens.draft?.id !== e.id) {
 			if (gens.anyDirty && !confirm('Discard unsaved changes to the open generator?')) return;

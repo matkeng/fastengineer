@@ -584,6 +584,35 @@ Reference data you define and keep (`core/src/workbench_core/refdata/`, API
 - Everything is stored in the same local database as MEL imports, so it's there
   next time the app starts.
 
+## Deliverables
+
+The lists a project issues, in the **Deliverables** section
+(`core/src/workbench_core/deliverables.py`, API
+`desktop/engine/workbench_desktop/deliverables_api.py`, UI
+`web/src/components/deliverables/`).
+
+- A deliverable is a **Cable Schedule**, **Instrument List**, **PLC I/O List**,
+  **Equipment List** or **Load List**, with a name (unique), document number and
+  title. A project can have several of each type.
+- Its content is the output of a **generator** build, optionally only the rows
+  where one output column is one of a list of values (for example one area).
+- **Issue Rev A / B / C…** (then AA, AB…) freezes the content of the generator's
+  latest build, or of an earlier build you pick, with the date, who issued it and
+  a description. Issuing never builds: you issue a build you have seen. The
+  panel above the revisions shows what a new revision would contain and what has
+  changed since the last one, and warns when the generator has changed since its
+  latest build.
+- Each revision keeps its rows and the changes against the revision before it
+  (added, removed, changed, old → new per column). View either at any time, and
+  export a revision to Excel or CSV; the document number, revision letter and
+  title name the file.
+- Issued revisions can't be edited; only the description can be amended. The
+  **latest** revision can be **withdrawn** with a reason: its frozen copy is
+  deleted, the letter is used by the next issue, and the change log records it.
+- A deliverable with revisions can't be deleted, and a generator that feeds a
+  deliverable can't be deleted. Deleting a generator's builds does not affect
+  issued revisions.
+
 ## Deliverable generators
 
 The **Generators** section imports a generator workbook (cable schedules, device list, IO list).
