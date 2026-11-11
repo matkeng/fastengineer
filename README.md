@@ -667,6 +667,45 @@ You don't create or name them: each project has one of each.
   - The mapping sheet, the Load List's columns and its Excel export's
     reference columns all use the project's fields and names. The Load List
     deliverable's own columns are unchanged.
+- **Calculated fields of the Load List** (`keylists/load_calcs.py`): a field
+  of kind **calculated** is worked out for every row, like a spreadsheet
+  formula referring to other cells of the row: active, reactive and apparent
+  power, rated current, harmonic, utility and diversity factors, annual
+  consumption and so on. **+ Add calculated field** in **Edit fields…**, then
+  **ƒ Formula…**:
+  - **Applies when**: a condition for the rows it is relevant to (blank: every
+    row). Other rows get **Otherwise** (blank: nothing) and aren't checked.
+  - **Formula**: one expression. `<<key>>` is a cell of the row: any Load List
+    field (an import's value as it is, a number stays a number), another
+    calculated field, the load's cable (`<<cable_length>>`, `<<cable_size>>`…)
+    and what the app works out (`<<units>>`, `<<voltage>>` and `<<phases>>`
+    fall back to the load type's; `<<loadtype>>`, `<<plantarea>>`,
+    `<<suppliedfrom>>`…). **Insert a reference…** lists them all. The same
+    functions and operators as List import's calculated columns, and `A if
+    condition else B`. A blank cell is `''`: `(<<field>> or 0)` counts it as 0.
+  - **Decimals**: a number answer is rounded.
+  - **Checks on the answer**: expressions that hold for a good answer, with
+    `<<value>>` the answer (e.g. `0 < <<value>> <= 1`), each an **error** or a
+    **warning** with a message.
+  - **▶ Try it on the Load List** works the unsaved formula out for every
+    active row and lists the answers, problems first.
+
+  Calculated fields are worked out in the order they use each other (a loop
+  is refused), whenever the Load List is read. A formula that can't be worked
+  out for a row (a blank or text where a number is needed, division by zero)
+  leaves the cell blank with an error. In the Load List a calculated column is
+  marked ƒ, and a cell with a problem ⛔ (error) or ⚠ (warning), with what is
+  wrong as its tooltip. Calculated fields aren't import targets; they are
+  columns of a Load List deliverable and `<<tags>>` for load types' rows, like
+  any other field. A field a calculation uses can't be deleted.
+
+  Example, with Power factor (`pf`) and Efficiency (`eff`) fields mapped from
+  the MEL: Active power `<<load_rating>> * 0.746 / <<eff>> if <<units>> == 'HP'
+  else <<load_rating>> / <<eff>>` (applies when `<<load_rating>> != ''`);
+  Apparent power `<<active_power_kw>> / <<pf>>`; Reactive power
+  `sqrt(<<apparent_power_kva>>**2 - <<active_power_kw>>**2)`; Rated current
+  `<<apparent_power_kva>> * 1000 / (sqrt(3) * <<voltage>>)`; Annual
+  consumption `<<active_power_kw>> * <<utility_factor>> * <<diversity_factor>> * 8760`.
 - **Reset the Load List** (`POST /api/loadlist/reset`): a **Reset…** button on
   the Load List, and under the open project on the **Projects** page. A dialog
   asks what to reset and has to be confirmed before anything changes.

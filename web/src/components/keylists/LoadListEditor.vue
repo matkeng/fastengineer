@@ -89,6 +89,7 @@ function build() {
 	table?.api.destroy();
 	table = null;
 	const v = view.value;
+	const calculated = new Set(v.calculated ?? []);
 	const rows = toRaw(v.rows);
 	const options = { plant_area: optionsHtml('plant_area'), load_type: optionsHtml('load_type') };
 
@@ -162,10 +163,20 @@ function build() {
 		},
 		...v.fields.filter((f) => f !== 'tag' && f !== 'desc').map((f): ColumnsConfig => ({
 			// The import's own text for what is edited here is marked, so the two can't be mixed up.
-			title: escapeHtml(v.labels[f] ?? LOAD_FIELD_LABELS[f] ?? f) + (FROM_IMPORT.has(f) ? ' (import)' : ''),
+			title: escapeHtml(v.labels[f] ?? LOAD_FIELD_LABELS[f] ?? f) + (FROM_IMPORT.has(f) ? ' (import)' : '')
+				+ (calculated.has(f) ? ' <span class="calc-mark" title="Calculated for each row (Edit fields…)">ƒ</span>' : ''),
 			data: (row: LoadListRow) => row.values[f] ?? null,
-			className: typeof v.rows.find((r) => r.values[f] != null)?.values[f] === 'number' ? 'dt-right' : '',
-			render: (x: string | number | boolean | null, type: string) => {
+			className: (typeof v.rows.find((r) => r.values[f] != null && r.values[f] !== '')?.values[f] === 'number' ? 'dt-right' : '')
+				+ (calculated.has(f) ? ' calc-col' : ''),
+			render: (x: string | number | boolean | null, type: string, row: LoadListRow) => {
+				// a calculated cell with a problem is marked, with what is wrong as its tooltip
+				const issues = calculated.has(f) ? (row.calc_issues ?? []).filter((i) => i.field === f) : [];
+				if (issues.length && type === 'display') {
+					const bad = issues.some((i) => i.severity === 'error');
+					const text = x === null || x === undefined || x === '' ? '' : escapeHtml(String(x));
+					return `<span class="calc-${bad ? 'error' : 'warning'}" title="${escapeHtml(issues.map((i) => `${i.severity}: ${i.message}`).join('\n'))}">${bad ? '⛔' : '⚠'} ${text}</span>`;
+				}
+				if (issues.length && type === 'filter') return `${String(x ?? '')} problem ${issues.map((i) => i.severity).join(' ')}`;
 				if (x === null || x === undefined) return '';
 				if (typeof x === 'boolean') return type === 'display' ? (x ? '<span class="yes">✓</span>' : '') : x ? 'Yes' : 'No';
 				if (type === 'sort' || type === 'type') return typeof x === 'number' ? x : String(x).toLowerCase();

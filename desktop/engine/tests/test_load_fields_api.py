@@ -46,7 +46,7 @@ def _import(mapping: list[dict]) -> str:
 
 def test_the_built_in_fields_until_changed_and_what_is_refused() -> None:
     fields = _fields()
-    assert [f["key"] for f in fields][:3] == ["area", "sub_area", "tag"] and fields[2] == {"key": "tag", "label": "Tag", "kind": "text", "locked": True}
+    assert [f["key"] for f in fields][:3] == ["area", "sub_area", "tag"] and fields[2] == {"key": "tag", "label": "Tag", "kind": "text", "locked": True, "calc": None}
     assert next(f for f in fields if f["key"] == "load_rating")["kind"] == "number"
     assert next(f for f in fields if f["key"] == "starter_type")["locked"] is False
 
@@ -154,3 +154,56 @@ def test_an_existing_load_list_deliverable_keeps_its_ten_columns(data_dir: Path)
     ll = client.get(f"/api/deliverables/{ll['id']}").json()["deliverable"]
     assert ll["columns"] == ["Tag", "Description", "Plant Area", "Load Type", "Rating", "Units", "Voltage", "Phases",
                              "Supplied From", "Distribution Panel"]
+
+
+def test_calculated_fields() -> None:
+    assert client.post("/api/sample-data").status_code == 200
+    fields = _fields()
+    calc = {"key": "", "label": "Active power (kW)", "kind": "calc",
+            "calc": {"applies_if": "<<load_rating>> != ''", "formula": "<<load_rating>> * 0.746 if <<units>> == 'HP' else <<load_rating>>",
+                     "decimals": 2, "checks": [{"rule": "<<value>> < 100", "message": "Over 100 kW", "severity": "warning"}]}}
+    amps = {"key": "", "label": "Rated current (A)", "kind": "calc",
+            "calc": {"formula": "<<active_power_kw>> * 1000 / (sqrt(3) * <<voltage>> * 0.85)", "decimals": 1,
+                     "checks": [{"rule": "<<value>> > 0", "message": "", "severity": "error"}]}}
+    edited = [*fields, calc, amps]
+
+    # refused: a field that isn't there, and no formula
+    bad = _put([*fields, calc | {"calc": calc["calc"] | {"formula": "<<nope>> * 2"}}])
+    assert bad.status_code == 422 and "not a field" in bad.json()["fields"][f"{len(fields)}.formula"]
+    assert _put([*fields, calc | {"calc": None}]).json()["fields"][f"{len(fields)}.formula"] == "A calculated field needs a formula"
+
+    # a preview of the unsaved calculation, on the Load List as it is now
+    pre = client.post(f"{API}/preview", json={"fields": edited, "field": len(edited) - 1})
+    assert pre.status_code == 200, pre.text
+    p = pre.json()
+    assert p["total"] == 12 and p["errors"] == 0
+    c401 = next(r for r in p["rows"] if r["tag"] == "C-401")
+    assert c401["value"] == round(75 * 1000 / (3 ** 0.5 * 415 * 0.85), 1)
+    assert client.get(API).json()["fields"][-1]["kind"] != "calc"  # nothing saved
+
+    saved = _put(edited)
+    assert saved.status_code == 200, saved.text
+    view = client.get(API).json()
+    assert view["fields"][-1]["calc"]["formula"].startswith("<<active_power_kw>>") and "sqrt" in view["functions"]
+    assert any(r["ref"] == "<<loadtype>>" for r in view["app_refs"])
+
+    # the Load List shows the answers, and what fails a check
+    ll = client.get("/api/loadlist").json()
+    assert ll["calculated"] == ["active_power_kw", "rated_current_a"] and "rated_current_a" in ll["fields"]
+    rows = {r["key"]: r for r in ll["rows"]}
+    assert rows["C-401"]["values"]["active_power_kw"] == 75 and rows["C-401"]["values"]["rated_current_a"] == c401["value"]
+    big = {r["key"] for r in ll["rows"] if isinstance(r["values"]["active_power_kw"], (int, float)) and r["values"]["active_power_kw"] >= 100}
+    assert {r["key"] for r in ll["rows"] if any(i["message"] == "Over 100 kW" for i in r["calc_issues"])} == big
+
+    # calculated fields aren't import targets, but are columns of a Load List deliverable and tags for load types' rows
+    rid = client.get("/api/mel/recipes").json()[0]["id"]
+    assert "active_power_kw" not in client.get(f"/api/mel/recipes/{rid}").json()["fields"]
+    assert "Rated current (A)" in client.get("/api/deliverables").json()["project_columns"]["Load List"]
+    made = client.post("/api/deliverables", json={"type": "Load List", "name": "Currents", "source": "project",
+                                                  "columns": ["Tag", "Active power (kW)", "Rated current (A)"]})
+    cur = client.get(f"/api/deliverables/{made.json()['id']}", params={"rows": True}).json()["current"]
+    assert ["C-401", 75, c401["value"]] in [r["cells"] for r in cur["result"]["rows"]]
+
+    # a field a calculation uses can't be deleted
+    rating_used = _put([f for f in client.get(API).json()["fields"] if f["key"] != "active_power_kw"])
+    assert rating_used.status_code == 422 and "<<active_power_kw>>" in " ".join(rating_used.json()["fields"].values())

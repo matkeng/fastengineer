@@ -305,7 +305,7 @@ def output_list(result: PipelineResult, recipe: Recipe, load_fields=None) -> Loa
     (load_fields.LoadFields; default the built-in ones), with which are numbers and yes/no."""
     maps = {m.field: m for m in recipe.mapping if m.column or m.manual is not None}
     project = load_fields is not None and recipe.target != "PIL"
-    fields = [f for f in fields_for(recipe.target, load_fields.keys() if project else None) if f in maps]
+    fields = [f for f in fields_for(recipe.target, load_fields.importable() if project else None) if f in maps]
     numeric = load_fields.numeric() if project else TARGET_NUMERIC.get(recipe.target, NUMERIC_FIELDS)
     boolean = load_fields.boolean() if project else TARGET_BOOLEAN.get(recipe.target, {"is_a_loadcentre", "is_deleted"})
     warnings: list[str] = []

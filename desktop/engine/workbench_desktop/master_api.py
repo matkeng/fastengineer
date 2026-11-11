@@ -234,19 +234,33 @@ class FieldView(BaseModel):
     label: str
     kind: str
     locked: bool  # the app reads it: it can be renamed and moved, not deleted
+    calc: dict | None = None  # a calculated field's calculation (mel.load_fields.LoadCalc)
+
+
+class Reference(BaseModel):
+    ref: str  # "<<load_rating>>"
+    label: str  # what it is
 
 
 class LoadFieldsView(BaseModel):
     fields: list[FieldView]
     kinds: list[str]
+    app_refs: list[Reference]  # what the app works out for a row, that a calculation can use besides the fields
+    functions: list[str]  # the functions a calculation can call
+    text_functions: list[str]
 
 
 def _load_fields_view() -> LoadFieldsView:
+    from workbench_core.keylists.load_calcs import APP_REFS
+    from workbench_core.mel.functions import FUNCTIONS, METHODS
     from workbench_core.mel.load_fields import LOCKED
 
     lf = get_keylists().load_fields()
-    return LoadFieldsView(fields=[FieldView(key=f.key, label=f.label, kind=f.kind, locked=f.key in LOCKED) for f in lf.fields],
-                          kinds=["text", "number", "yes/no"])
+    return LoadFieldsView(fields=[FieldView(key=f.key, label=f.label, kind=f.kind, locked=f.key in LOCKED,
+                                            calc=f.calc.model_dump() if f.calc else None) for f in lf.fields],
+                          kinds=["text", "number", "yes/no", "calc"],
+                          app_refs=[Reference(ref=f"<<{r}>>", label=m) for r, m in APP_REFS],
+                          functions=sorted(FUNCTIONS), text_functions=list(METHODS))
 
 
 @load_fields_router.get("", response_model=LoadFieldsView)
@@ -271,6 +285,7 @@ class LoadFieldsImpact(BaseModel):
     added: list[str]  # labels
     deleted: list[DeletedField]
     rekinded: dict[str, list[str]]  # key -> [old kind, new kind]
+    recalculated: list[str]  # labels of calculated fields whose calculation changed
     reordered: bool
 
 
@@ -288,6 +303,7 @@ def save_load_fields(body: LoadFieldsBody, dry_run: bool = False):
     what saving would do."""
     import re
 
+    from workbench_core.keylists.load_calcs import check_calcs
     from workbench_core.mel.load_fields import FieldEdit, plan_change
     from workbench_core.refdata import RefValidationError
 
@@ -299,6 +315,7 @@ def save_load_fields(body: LoadFieldsBody, dry_run: bool = False):
     old = lists.load_fields()
     try:
         change = plan_change(old, [FieldEdit.model_validate(f) for f in body.fields])
+        check_calcs(change.fields)
     except RefValidationError as exc:
         return invalid(exc)
     except ValueError as exc:
@@ -319,7 +336,55 @@ def save_load_fields(body: LoadFieldsBody, dry_run: bool = False):
     added = {f.key: f.label for f in change.fields.fields}
     impact = LoadFieldsImpact(relabelled={k: list(v) for k, v in change.relabelled.items()}, added=[added[k] for k in change.added],
                               deleted=deleted, rekinded={k: list(v) for k, v in change.rekinded.items()},
+                              recalculated=[added[k] for k in change.recalculated],
                               reordered=[k for k in change.fields.keys() if k in old.keys()] != [k for k in old.keys() if k in change.fields.keys()])
     if not dry_run:
         lists.save_load_fields(change)
     return LoadFieldsSaved(view=_load_fields_view(), impact=impact, saved=not dry_run)
+
+
+class PreviewBody(LoadFieldsBody):
+    field: int  # the position in `fields` of the calculated field to work out
+
+
+class PreviewRow(BaseModel):
+    tag: str
+    value: str | float | int | bool | None
+    issues: list[dict[str, str]]
+
+
+class Preview(BaseModel):
+    rows: list[PreviewRow]  # the active rows, the ones with a problem first, at most 200
+    total: int
+    errors: int
+    warnings: int
+
+
+@load_fields_router.post("/preview", response_model=Preview)
+def preview_calc(body: PreviewBody):
+    """Work out one calculated field of the edited (unsaved) fields for the Load List's active
+    rows as they are now. Problems with the fields are refused as when saving."""
+    from workbench_core.keylists.load_calcs import check_calcs
+    from workbench_core.mel.load_fields import FieldEdit, plan_change
+    from workbench_core.refdata import RefValidationError
+
+    from .loadlist_api import current_rows, with_calcs
+    from .refdata_api import invalid
+
+    try:
+        change = plan_change(get_keylists().load_fields(), [FieldEdit.model_validate(f) for f in body.fields])
+        check_calcs(change.fields)
+    except RefValidationError as exc:
+        return invalid(exc)
+    except ValueError as exc:
+        return invalid(RefValidationError(f"Not a list of fields: {exc}"))
+    if not 0 <= body.field < len(change.fields.fields) or change.fields.fields[body.field].kind != "calc":
+        return invalid(RefValidationError("That is not a calculated field."))
+    key = change.fields.fields[body.field].key
+    rows = [r.model_copy(deep=True) for r in current_rows()[0] if r.status == "active"]
+    with_calcs(rows, change.fields, only=key)
+    out = [PreviewRow(tag=r.tag(), value=r.values.get(key), issues=[i for i in r.calc_issues if i["field"] == key]) for r in rows]
+    out.sort(key=lambda p: not p.issues)
+    issues = [i for p in out for i in p.issues]
+    return Preview(rows=out[:200], total=len(out), errors=sum(1 for i in issues if i["severity"] == "error"),
+                   warnings=sum(1 for i in issues if i["severity"] == "warning"))

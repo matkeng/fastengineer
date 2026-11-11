@@ -143,6 +143,8 @@ export interface LoadListRow {
 	recipe_id: string; key: string; source: string; target: string;
 	values: Record<string, string | number | boolean | null>;
 	status: 'active' | 'deleted'; deleted_reason: string;
+	/** What is wrong with its calculated fields (worked out with them). */
+	calc_issues?: { field: string; severity: 'error' | 'warning'; message: string }[];
 	plant_area_id: string | null; plant_area_by: 'auto' | 'user' | null;
 	load_type_id: string | null; load_type_by: 'auto' | 'user' | null;
 	/** A distribution panel: other rows can be supplied from it. */
@@ -171,6 +173,8 @@ export interface LoadListView {
 	fields: string[]; rows: LoadListRow[];
 	/** Field key -> the project's name for it (the Project Master Load List's fields). */
 	labels: Record<string, string>;
+	/** The keys of the calculated fields. */
+	calculated?: string[];
 	sources: { id: string; name: string; target: string; rows: number; has_file: boolean }[];
 	plant_areas: LoadListChoice[]; load_types: LoadListChoice[]; warnings: string[];
 	/** The choices for a load's cable, from the Cable Types list. */

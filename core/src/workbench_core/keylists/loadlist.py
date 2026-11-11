@@ -69,6 +69,9 @@ class LoadListRow(BaseModel):
     cable_size: str = ""  # core size, mm2 (a Diameter value of the Cable Types list)
     earth_size: str = ""  # the separate earth cable of a single-core set, mm2
     updated_at: datetime | None = None  # when a person last changed its allocations
+    #: What is wrong with its calculated fields (keylists.load_calcs): [{field, severity, message}].
+    #: Worked out with them each time the Load List is read; not kept.
+    calc_issues: list[dict[str, str]] = Field(default_factory=list)
 
     def ref(self) -> str:
         """How other rows refer to this one (import ids have no "/")."""

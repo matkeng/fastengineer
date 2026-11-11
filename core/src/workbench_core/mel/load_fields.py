@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from ..refdata.models import RefValidationError
 from .models import ELEC_LOAD_FIELDS, NUMERIC_FIELDS
 
-Kind = Literal["text", "number", "yes/no"]
+Kind = Literal["text", "number", "yes/no", "calc"]
 BOOLEAN_FIELDS = {"is_a_loadcentre", "is_deleted"}
 
 #: What each built-in field is called until a project relabels it.
@@ -54,10 +54,32 @@ def _kind(key: str) -> Kind:
     return "number" if key in NUMERIC_FIELDS else "yes/no" if key in BOOLEAN_FIELDS else "text"
 
 
+class CalcCheck(BaseModel):
+    """A check on a calculated field's answer: `rule` is an expression that holds for a good
+    answer (<<value>> is the answer, other <<fields>> of the row can be used too)."""
+    rule: str
+    message: str = ""  # shown when the rule doesn't hold (default: the rule)
+    severity: Literal["error", "warning"] = "error"
+
+
+class LoadCalc(BaseModel):
+    """How a calculated field is worked out for each row of the Load List, like a spreadsheet
+    formula that refers to the row's other cells as <<field>>.
+
+    Rows where `applies_if` (blank: every row) does not hold get `otherwise` (blank: nothing);
+    the others get `formula`, rounded to `decimals` when it is a number, then each of `checks`."""
+    applies_if: str = ""
+    formula: str = ""
+    otherwise: str = ""
+    decimals: int | None = Field(default=None, ge=0, le=10)
+    checks: list[CalcCheck] = Field(default_factory=list)
+
+
 class LoadField(BaseModel):
     key: str
     label: str
     kind: Kind = "text"
+    calc: LoadCalc | None = None  # kind "calc" only
 
 
 class LoadFields(BaseModel):
@@ -66,6 +88,13 @@ class LoadFields(BaseModel):
 
     def keys(self) -> list[str]:
         return [f.key for f in self.fields]
+
+    def importable(self) -> list[str]:
+        """The fields an import maps onto: all but the calculated ones."""
+        return [f.key for f in self.fields if f.kind != "calc"]
+
+    def calcs(self) -> list[LoadField]:
+        return [f for f in self.fields if f.kind == "calc" and f.calc is not None]
 
     def labels(self) -> dict[str, str]:
         return {f.key: f.label for f in self.fields}
@@ -82,10 +111,11 @@ def default_load_fields() -> LoadFields:
 
 
 class FieldEdit(BaseModel):
-    """One field as edited: its key ("" for a new field), label and kind."""
+    """One field as edited: its key ("" for a new field), label and kind (and calculation)."""
     key: str = ""
     label: str
     kind: Kind = "text"
+    calc: LoadCalc | None = None
 
 
 class FieldChange(BaseModel):
@@ -94,6 +124,7 @@ class FieldChange(BaseModel):
     deletes: list[str] = Field(default_factory=list)  # keys
     added: list[str] = Field(default_factory=list)  # keys
     rekinded: dict[str, tuple[str, str]] = Field(default_factory=dict)  # key -> (old kind, new kind)
+    recalculated: list[str] = Field(default_factory=list)  # keys of calculated fields whose calculation changed
 
 
 def new_key(label: str, taken: set[str]) -> str:
@@ -105,6 +136,15 @@ def new_key(label: str, taken: set[str]) -> str:
     while key in taken or key.replace("_", "") in _DERIVED:
         key, n = f"{base}_{n}", n + 1
     return key
+
+
+def _calc(e: FieldEdit, errors: dict[str, str], i: int) -> LoadCalc | None:
+    if e.kind != "calc":
+        return None
+    if e.calc is None or not e.calc.formula.strip():
+        errors[f"{i}.formula"] = "A calculated field needs a formula"
+        return e.calc
+    return e.calc.model_copy(update={"checks": [c for c in e.calc.checks if c.rule.strip()]})
 
 
 def plan_change(old: LoadFields, edits: list[FieldEdit]) -> FieldChange:
@@ -143,12 +183,15 @@ def plan_change(old: LoadFields, edits: list[FieldEdit]) -> FieldChange:
                 change.relabelled[e.key] = (was.label, label)
             if kind != was.kind:
                 change.rekinded[e.key] = (was.kind, kind)
-            out.append(LoadField(key=e.key, label=label, kind=kind))
+            calc = _calc(e, errors, i)
+            if kind == "calc" and was.kind == "calc" and calc != was.calc:
+                change.recalculated.append(e.key)
+            out.append(LoadField(key=e.key, label=label, kind=kind, calc=calc))
         else:
             key = new_key(label, taken)
             taken.add(key)
             change.added.append(key)
-            out.append(LoadField(key=key, label=label, kind=e.kind))
+            out.append(LoadField(key=key, label=label, kind=e.kind, calc=_calc(e, errors, i)))
     change.deletes = [k for k in before if k not in used]
     locked = [before[k].label for k in change.deletes if k in LOCKED]
     if locked:
@@ -159,5 +202,5 @@ def plan_change(old: LoadFields, edits: list[FieldEdit]) -> FieldChange:
     return change
 
 
-__all__ = ["LoadField", "LoadFields", "FieldEdit", "FieldChange", "LOCKED", "DEFAULT_LABELS", "default_load_fields",
+__all__ = ["CalcCheck", "LoadCalc", "LoadField", "LoadFields", "FieldEdit", "FieldChange", "LOCKED", "DEFAULT_LABELS", "default_load_fields",
            "plan_change", "new_key"]

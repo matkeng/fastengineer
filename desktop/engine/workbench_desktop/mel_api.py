@@ -91,7 +91,7 @@ def get_recipe(recipe_id: str) -> RecipeDetail:
     lf = get_keylists().load_fields()
     load = recipe.target != "PIL"
     return RecipeDetail(recipe=recipe, revisions=get_store().list_revisions(recipe_id),
-                        fields=fields_for(recipe.target, lf.keys()), labels=lf.labels() if load else {},
+                        fields=fields_for(recipe.target, lf.importable()), labels=lf.labels() if load else {},
                         output_name=output_name(recipe.target))
 
 

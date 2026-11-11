@@ -1204,3 +1204,23 @@ dialog.modal:has(.mcol) { width: min(720px, calc(100vw - 32px)); }
 .mcol-lock { display: inline-block; width: 1.2em; text-align: center; }
 .mcol-confirm { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); }
 .mcol-confirm ul { margin: 4px 0 0; padding-left: 18px; }
+/* A calculated Load List field's formula */
+dialog.modal:has(.lf-calc) { width: min(980px, calc(100vw - 32px)); }
+.lf-calc { flex: 1 0 100%; display: flex; flex-direction: column; gap: 4px; margin: 4px 0 6px 1.8em; padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); }
+.lf-part { display: flex; flex-direction: column; gap: 2px; }
+.lf-part > span { font-size: 0.82rem; font-weight: 600; }
+.lf-calc input, .lf-calc textarea, .lf-calc select { flex: initial; }
+.lf-calc input:not([type='number']), .lf-calc textarea { width: 100%; min-width: 0; }
+.lf-pair { display: flex; gap: 8px; }
+.lf-pair .lf-part:first-child { flex: 1; }
+.lf-dec input { width: 90px !important; }
+.lf-check { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; }
+.lf-check input:first-child { flex: 2 1 260px !important; width: auto !important; }
+.lf-check input:nth-child(2) { flex: 1 1 200px !important; width: auto !important; }
+.lf-preview { max-height: 260px; overflow: auto; }
+.lf-preview table { width: 100%; }
+.mcol-list li > button.on { background: var(--accent); color: #fff; }
+.calc-mark { font-style: italic; font-weight: 700; color: var(--accent); }
+td.calc-col { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.calc-error { color: var(--danger, #c62828); font-weight: 600; cursor: help; }
+.calc-warning { color: #b26a00; cursor: help; }

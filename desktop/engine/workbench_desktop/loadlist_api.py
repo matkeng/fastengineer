@@ -37,6 +37,7 @@ class Source(BaseModel):
 class LoadListView(BaseModel):
     fields: list[str]  # mapped load-list fields (keys), in the project's order
     labels: dict[str, str] = Field(default_factory=dict)  # field key -> what it is called (the project's Load List fields)
+    calculated: list[str] = Field(default_factory=list)  # the keys of the calculated fields
     rows: list[LoadListRow]
     sources: list[Source]
     plant_areas: list[Choice]
@@ -137,7 +138,19 @@ def current_rows() -> tuple[list[LoadListRow], list[Source], list[str]]:
     gone[EEL_SOURCE] = EEL_GONE
     if eel.items:
         sources.append(Source(id=EEL_SOURCE, name=EEL_NAME, target="EEL", rows=len(eel.items), has_file=True))
-    return sync_rows(live, gone), sources, warnings
+    rows = sync_rows(live, gone)
+    with_calcs(rows)
+    return rows, sources, warnings
+
+
+def with_calcs(rows: list[LoadListRow], fields=None, only: str | None = None) -> None:
+    """Work out the Load List's calculated fields for the rows, in place (keylists.load_calcs).
+    `fields`: the Load List fields to use (default: the project's)."""
+    from workbench_core.keylists.load_calcs import apply_calcs
+
+    lists = get_keylists()
+    apply_calcs(rows, fields or lists.load_fields(), {t.id: t for t in lists.load_types().items},
+                {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}, only)
 
 
 @router.get("", response_model=LoadListView)
@@ -159,7 +172,12 @@ def load_list() -> LoadListView:
         numbers = {c.diameter for c in of if c.diameter.replace(".", "", 1).isdigit()}
         return sorted(numbers, key=float)
     load_fields = get_keylists().load_fields()
-    return LoadListView(fields=[f for f in load_fields.keys() if f in used], labels=load_fields.labels(), rows=rows, sources=sources,
+    calcs = {f.key for f in load_fields.calcs()}
+    problems = sum(1 for r in rows for _ in r.calc_issues)
+    if problems:
+        warnings.append(f"{problems} calculation problem(s): see the marked cells.")
+    return LoadListView(fields=[f for f in load_fields.keys() if f in used or f in calcs], labels=load_fields.labels(),
+                        calculated=sorted(calcs), rows=rows, sources=sources,
                         plant_areas=areas, load_types=types, warnings=sorted(set(warnings)),
                         cable_insulations=sorted({c.insulation for c in cables if c.insulation}),
                         cable_sizes=sizes([c for c in cables if name_key(c.application) != "earth"]),
