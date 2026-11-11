@@ -18,6 +18,7 @@ has its own workbook, in keylists.plc.)
 from __future__ import annotations
 
 import io
+import re
 from dataclasses import dataclass, field
 
 from ..refdata.models import new_id
@@ -356,6 +357,62 @@ def import_load_types(sheets: dict[str, Rows], old: LoadTypeList, columns: dict[
     if any(before[i["id"]].pdf for i in items if i["id"] in before):
         notes.append("Attached PDFs stay with their load types (they are not in the workbook).")
     return Parsed({"items": items}, [i["code"] for i in items], notes, {i["id"]: i["code"] for i in items})
+
+
+# -- one load type's or equipment type's rows -------------------------------------------------------
+
+def _type_sheet(key: str) -> str:
+    return LISTS[key].deliverable_type.replace("/", "-")
+
+
+TAGS_SHEET = "Tags"
+
+
+def export_type_rows(rows: dict[str, list[dict[str, str]]], columns: dict[str, list[str]] | None = None,
+                     tags: list[tuple[str, str]] = (), paths: list[tuple[str, str]] = (),
+                     modifiers: list[tuple[str, str]] = ()) -> Sheets:
+    """One type's rows: a sheet per list (the project's columns, then the row settings), every
+    list even when it has no rows, and a Tags sheet listing what a cell can use (for reference:
+    an import ignores it). `tags`, `paths`, `modifiers`: [(example, what it is)]."""
+    out: Sheets = []
+    for key in TEMPLATE_LISTS:
+        heads = _rows_columns(key, columns)
+        out.append((_type_sheet(key), [heads] + [[row.get(c) or None for c in heads] for row in rows.get(key, [])]))
+    ref: Grid = [["Tag", "What it is", "Kind"]]
+    ref += [[t, m, "the row's tag"] for t, m in tags]
+    ref += [[t, m, "linked record (dot notation)"] for t, m in paths]
+    ref += [[t, m, "modifier"] for t, m in modifiers]
+    out.append((TAGS_SHEET, ref))
+    return out
+
+
+def import_type_rows(sheets: dict[str, Rows], columns: dict[str, list[str]] | None = None) -> Parsed:
+    """A workbook of one type's rows (see export_type_rows): the payload is {list key: rows}
+    with only the lists whose sheet is there; a list without a sheet stays as it is (noted).
+    Headings are matched ignoring case and spaces; one that is no column of the list is
+    refused (ValueError)."""
+    def k(h: str) -> str:
+        return re.sub(r"\s+", "", h).casefold()
+
+    payload: dict[str, list[dict[str, str]]] = {}
+    notes: list[str] = []
+    problems: list[str] = []
+    for key in TEMPLATE_LISTS:
+        title = _type_sheet(key)
+        rows = sheets.get(title.casefold())
+        if rows is None:
+            notes.append(f'No "{title}" sheet: those rows stay as they are.')
+            continue
+        heads = {k(h): h for h in _rows_columns(key, columns)}
+        unknown = sorted({h for r in rows for h in r if h and k(h) not in heads})
+        if unknown:
+            problems.append(f"{title}: not a column of the {LISTS[key].deliverable_type}: {', '.join(unknown)}")
+            continue
+        payload[key] = [{heads[k(h)]: v for h, v in r.items() if h and v.strip()} for r in rows]
+        payload[key] = [r for r in payload[key] if r]
+    if problems:
+        raise ValueError("; ".join(problems))
+    return Parsed(payload, [], notes)
 
 
 # -- Equipment Codes, Instrument Codes, Cable Types ------------------------------------------------

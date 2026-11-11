@@ -17,6 +17,7 @@ import HistoryButton from '../audit/HistoryButton.vue';
 import AppModal from '../common/AppModal.vue';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
 import TagHelp from './TagHelp.vue';
+import TypeRowsWorkbook from './TypeRowsWorkbook.vue';
 
 // Load types: a grid of every row; a row is added or edited in a form and saved from there.
 // Each load type also holds predefined rows for the deliverable lists (one tab per list): every
@@ -316,6 +317,9 @@ onBeforeUnmount(() => {
 				</button>
 			</nav>
 			<div v-if="editing && list" class="tpl-rows">
+				<div class="row tight tpl-workbook"><span class="spacer" />
+					<TypeRowsWorkbook :name="editing.form.code" kind="load" :rows="editing.form.rows"
+						@replace="(rows) => { for (const [k, v] of Object.entries(rows)) editing!.form.rows[k] = v; }" /></div>
 				<p class="hint small">
 					Every load of this type in the Load List adds these rows to the <strong>{{ list.name }}</strong>. Type <code>&lt;&lt;</code> in a cell
 					to pick a tag; it is replaced with that load's data.

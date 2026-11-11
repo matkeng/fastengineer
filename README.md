@@ -938,6 +938,22 @@ Tags (not case-sensitive; type `<<` in a cell to pick one):
 | `<<CableNo>>`, `<<Phase>>` | 1, 2, … and L1 / L2 / L3 / N / E for each cable of a "Per power cable" row |
 | any mapped load-list field, e.g. `<<starter_type>>` | that field of the load |
 
+### One type's rows as a workbook
+
+A load type's rows (in its form) and an equipment type's (in its **Lists**)
+have **Export rows .xlsx** and **Import rows…**
+(`POST /api/list-workbooks/type-rows/export` and `.../import`). The workbook,
+named after the type ("DOL rows.xlsx"), has a sheet per list (**Cable
+Schedule**, **Equipment List**, **Instrument List**, **PLC I-O List**) with
+the project's columns of that master list (and **Repeat** on the Cable
+Schedule), and a **Tags** sheet listing what a cell can use: the row's tags,
+the linked records' dotted tags and the modifiers. The export is the rows as
+they are in the editor, saved or not. An import is checked as a save is (a
+heading that is no column of the list, or a bad Repeat, is refused) and shows
+how many rows each list has; **Replace rows** puts them in the editor, in
+place of those lists' rows (a list without a sheet stays as it is, the Tags
+sheet is ignored), and **Save** keeps them.
+
 ### Tags in template rows: dot notation and modifiers
 
 A cell of a load type's or an equipment type's rows can hold

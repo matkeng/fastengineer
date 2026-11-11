@@ -9,9 +9,12 @@ import { type TemplateRows, modifierText } from '../../lib/keyListTypes';
 import { useKeyLists } from '../../stores/keylists';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
 import TagHelp from './TagHelp.vue';
+import TypeRowsWorkbook from './TypeRowsWorkbook.vue';
 
 // `tags`, `paths`: the tags and the linked records' dotted tags to offer (default: a load's, as for a load type).
-const props = defineProps<{ rows: TemplateRows; errors?: string[]; tags?: { tag: string; meaning: string }[]; paths?: { tag: string; meaning: string }[] }>();
+// `name`, `kind`: whose rows they are, for Export / Import rows (left out: no workbook buttons).
+const props = defineProps<{ rows: TemplateRows; errors?: string[]; tags?: { tag: string; meaning: string }[]; paths?: { tag: string; meaning: string }[];
+	name?: string; kind?: 'load' | 'equipment' }>();
 const kl = useKeyLists();
 onMounted(() => kl.loadTemplateLists());
 const lists = computed(() => kl.templateLists?.lists ?? []);
@@ -45,6 +48,10 @@ function setCells(edits: CellEdit[]) {
 	}
 }
 const insertRows = (at: number, count: number) => listRows.value.splice(at, 0, ...Array.from({ length: count }, () => ({})));
+/** An imported workbook's rows, in place of these lists' rows. */
+function replaceRows(rows: TemplateRows) {
+	for (const [k, v] of Object.entries(rows)) props.rows[k] = v;
+}
 function removeRows(idx: number[]) {
 	if (!list.value) return;
 	const drop = new Set(idx);
@@ -54,6 +61,8 @@ function removeRows(idx: number[]) {
 
 <template>
 	<div class="tpl-rows">
+		<div v-if="kind" class="row tight tpl-workbook"><span class="spacer" />
+			<TypeRowsWorkbook :name="name ?? ''" :kind="kind" :rows="rows" @replace="replaceRows" /></div>
 		<nav class="subtabs small">
 			<button v-for="l in lists" :key="l.key" type="button" :class="{ active: tab === l.key }" @click="tab = l.key">
 				{{ l.name }}<span class="count">{{ rows[l.key]?.length ?? 0 }}</span>

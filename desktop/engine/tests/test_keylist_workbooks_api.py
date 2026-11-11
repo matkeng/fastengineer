@@ -327,3 +327,46 @@ def test_an_equipment_packages_workbook_of_before_still_imports() -> None:
     res = _import("equipment-packages", out.getvalue())
     assert res.status_code == 200 and "1 package(s) in the file" in res.json()["summary"], res.text
     assert "Nothing" not in res.json()["summary"]  # PKG-020 and PKG-030 would go
+
+
+def test_one_types_rows_export_and_import() -> None:
+    import io as _io
+
+    from openpyxl import load_workbook as _load
+
+    assert client.post("/api/sample-data").status_code == 200
+    dol = next(t for t in client.get("/api/keylists/load-types").json()["items"] if t["code"] == "DOL")
+    res = client.post("/api/list-workbooks/type-rows/export", json={"name": "DOL", "kind": "load", "rows": dol["rows"]})
+    assert res.status_code == 200 and 'filename="DOL rows.xlsx"' in res.headers["content-disposition"]
+    wb = _load(_io.BytesIO(res.content))
+    assert wb.sheetnames == ["Cable Schedule", "Equipment List", "Instrument List", "PLC I-O List", "Tags"]
+    tags = [r[0] for r in wb["Tags"].iter_rows(values_only=True)]
+    assert "<<LoadType.Name>>" in tags and "<<Tag|lower>>" in tags
+    # edit a cell, read it back: the rows, not saved
+    ws = wb["Equipment List"]
+    head = [c.value for c in ws[1]]
+    ws.cell(row=2, column=head.index("Remarks") + 1, value="<<LoadType.Name|upper>>")
+    buf = _io.BytesIO()
+    wb.save(buf)
+    back = client.post("/api/list-workbooks/type-rows/import", params={"kind": "load", "filename": "DOL rows.xlsx"}, content=buf.getvalue())
+    assert back.status_code == 200, back.text
+    got = back.json()
+    assert got["rows"]["equipment_list"][0]["Remarks"] == "<<LoadType.Name|upper>>"
+    assert got["rows"]["cable_schedule"] == dol["rows"]["cable_schedule"] and got["counts"]["Cable Schedule"] == len(dol["rows"]["cable_schedule"])
+    # an equipment type: the Instrument Runsheet's tags
+    eq = client.post("/api/list-workbooks/type-rows/export", json={"name": "Pump", "kind": "equipment", "rows": {}})
+    assert "<<MECH>>" in [r[0] for r in _load(_io.BytesIO(eq.content))["Tags"].iter_rows(values_only=True)]
+    # problems are refused
+    ws.cell(row=1, column=len(head) + 1, value="Zone")
+    ws.cell(row=2, column=len(head) + 1, value="x")
+    ws2 = wb["Cable Schedule"]
+    ws2.cell(row=2, column=[c.value for c in ws2[1]].index("Repeat") + 1, value="Sometimes")
+    buf = _io.BytesIO()
+    wb.save(buf)
+    bad = client.post("/api/list-workbooks/type-rows/import", params={"kind": "load", "filename": "x.xlsx"}, content=buf.getvalue())
+    assert bad.status_code == 422 and "not a column of the Equipment List: zone" in bad.json()["detail"]
+    del wb["Equipment List"]
+    buf = _io.BytesIO()
+    wb.save(buf)
+    bad = client.post("/api/list-workbooks/type-rows/import", params={"kind": "load", "filename": "x.xlsx"}, content=buf.getvalue())
+    assert bad.status_code == 422 and "Repeat is blank or one of: Per power cable" in bad.json()["detail"]

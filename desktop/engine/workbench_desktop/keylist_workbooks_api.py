@@ -8,6 +8,8 @@ for a file too. (The PLC List has its own workbook, in plc_api.)"""
 from __future__ import annotations
 
 import json
+import re
+from typing import Literal
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -88,6 +90,80 @@ def _sheets(list_id: str) -> wbk.Sheets:
 
 class ExportBody(BaseModel):
     path: str | None = None  # desktop: chosen in a Save As dialog
+
+
+# -- one load type's or equipment type's rows ----------------------------------------------------
+# (before the /{list_id}/... routes, which would take "type-rows" for a list)
+
+class TypeRowsBody(BaseModel):
+    name: str  # the load type's code or the equipment type's name: the file is called after it
+    kind: Literal["load", "equipment"]
+    rows: dict[str, list[dict[str, str]]]  # as they are in the editor (saved or not)
+    path: str | None = None  # desktop: chosen in a Save As dialog
+
+
+def _write(data: bytes, path: str | None, name: str):
+    if path is None:
+        return Response(data, media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{name}.xlsx"'})
+    target = Path(path)
+    if target.suffix.lower() != ".xlsx":
+        target = target.with_suffix(".xlsx")
+    try:
+        target.write_bytes(data)
+    except OSError as exc:
+        raise HTTPException(409, f"Could not write {target}: {exc.strerror or exc}. Is it open in another program?") from exc
+    return {"path": str(target)}
+
+
+@router.post("/type-rows/export")
+def export_type_rows(body: TypeRowsBody):
+    """One type's rows as a workbook: a sheet per list, and a Tags sheet of what a cell can use."""
+    from workbench_core.keylists.instrument_runsheet import number_count
+    from workbench_core.keylists.instrument_runsheet import tags as instrument_tags
+    from workbench_core.keylists.loadgen import TAGS
+    from workbench_core.keylists.tag_paths import MODIFIERS, help_paths
+
+    lists = get_keylists()
+    if body.kind == "load":
+        tags = [(f"<<{t}>>", m) for t, m in TAGS]
+        paths = help_paths("load")
+    else:
+        tags = list(instrument_tags(number_count(lists.instrument_runsheet())))
+        paths = help_paths("runsheet")
+    sheets = wbk.export_type_rows(body.rows, lists.master_columns().all(), tags, paths,
+                                  [(e, m) for _, (_, m, e) in MODIFIERS.items()])
+    name = re.sub(r'[\\/:*?"<>|]+', "_", body.name.strip() or "type") + " rows"
+    return _write(wbk.write_sheets(sheets), body.path, name)
+
+
+class TypeRowsRead(BaseModel):
+    rows: dict[str, list[dict[str, str]]]  # list key -> rows, for the lists whose sheet is in the file
+    counts: dict[str, int]  # list name -> rows
+    notes: list[str]
+
+
+@router.post("/type-rows/import", response_model=TypeRowsRead)
+async def import_type_rows(request: Request, kind: Literal["load", "equipment"] = Query(...), filename: str = Query(...)):
+    """Read a workbook of one type's rows (as exported). Nothing is saved: the editor puts the
+    rows in its form, saved with the form."""
+    from workbench_core.keylists.loadgen import LISTS as OUTPUT_LISTS
+    from workbench_core.keylists.validate import _template_rows
+
+    data = await request.body()
+    if len(data) > MAX_UPLOAD:
+        raise HTTPException(413, "The file is larger than 50 MB.")
+    columns = get_keylists().master_columns().all()
+    try:
+        parsed = await run_in_threadpool(lambda: wbk.import_type_rows(wbk.read_sheets(data), columns))
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"detail": f"Could not read {Path(filename).name}: {exc}", "fields": {}})
+    errors: dict[str, str] = {}
+    rows = _template_rows(parsed.payload, "rows", errors, "load types" if kind == "load" else "equipment types", columns)
+    if errors:
+        return JSONResponse(status_code=422, content={"detail": _problems(errors, {}, f"{Path(filename).name} has problems:"),
+                                                      "fields": {}})
+    rows = {k: rows.get(k, []) for k in parsed.payload}  # a sheet with no rows empties that list
+    return TypeRowsRead(rows=rows, counts={OUTPUT_LISTS[k].deliverable_type: len(v) for k, v in rows.items()}, notes=parsed.notes)
 
 
 @router.post("/{list_id}/export")
