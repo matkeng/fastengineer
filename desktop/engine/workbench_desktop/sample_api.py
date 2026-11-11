@@ -208,8 +208,9 @@ def load_sample_data() -> Added:
         original, headers, rows, warnings = parse_csv(MEL)
         recipe = store.create_recipe("Sample plant MEL", "MEL")
         store.save_recipe(recipe.model_copy(update={"mapping": [FieldMap(field=f, column=c) for f, c in MAPPING.items()]}))
-        rows.sort(key=lambda r: r["Tag"])
-        store.add_revision(recipe.id, "sample-mel.csv", "csv", "Tag", original, headers, rows, warnings)
+        order = sorted(range(len(rows)), key=lambda i: rows[i]["Tag"])
+        store.add_revision(recipe.id, "sample-mel.csv", "csv", "Tag", original, headers, [rows[i] for i in order], warnings,
+                           [i + 1 for i in order])
         return len(rows)
 
     def deliverables() -> int:

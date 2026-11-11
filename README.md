@@ -481,6 +481,27 @@ in another project or on another PC.
 - Rules that name a key or column the receiving file doesn't have are listed
   under "rules not applied" on the import's overview, as for any revised file.
 
+### Edits report for the file's owner
+
+**Edits report .xlsx** (on an import's header; `POST
+/api/mel/recipes/{id}/edits-report`, `mel/edits_report.py`) lists what the
+import changes in its latest file, to give to whoever owns the file (the
+mechanical engineer, for a MEL) so the next revision includes it:
+
+- **Changed cells** (overrides): the row's key, the column (and its name in the
+  file, when the import renamed it), the value in the file, the value used, the
+  reason, and the row in the file.
+- **Removed rows** (hidden rows): the key, the reason, the row in the file and
+  its values as they are in the file.
+- **Added rows** (custom rows): the key, the reason and the values entered.
+
+An edit whose row isn't in the latest file is listed too, marked so. Each kind
+of edit has a **Reason** box: in the override dialog, next to a hidden row on
+the Rows tab, and in the custom row form. Reasons travel with the settings file.
+The report includes unsaved edits. A revision keeps each row's position in the
+file (rows are kept in key order), so the report and the import's row numbers
+say where a row was; files uploaded before this have no row numbers.
+
 ## Project lists
 
 The key lists every project has, with fixed columns and rules

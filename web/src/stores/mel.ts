@@ -166,6 +166,28 @@ export const useMel = defineStore('mel', () => {
 		});
 	}
 
+	/** The edits the import makes to its latest file (changed cells, removed rows, added rows, with
+	 * their reasons) as a workbook, to send back to whoever owns the file. Unsaved edits are in it. */
+	async function exportEditsReport() {
+		if (!draft.value || !latest.value) return;
+		const body = { recipe: draft.value };
+		const name = `${draft.value.name} - edits to ${latest.value.file_name} rev ${latest.value.rev}.xlsx`.replace(/[\\/:*?"<>|]+/g, '_');
+		message.value = null;
+		await run(async () => {
+			if (runningInTauri) {
+				const { save: saveDialog } = await import('@tauri-apps/plugin-dialog');
+				const path = await saveDialog({ defaultPath: name, filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }] });
+				if (!path) return;
+				message.value = `Saved ${(await exportToPath(`${base.value}/edits-report`, body, path)).path}`;
+			} else {
+				const url = URL.createObjectURL(await apiPostJsonForBlob(`${base.value}/edits-report`, body));
+				Object.assign(document.createElement('a'), { href: url, download: name }).click();
+				setTimeout(() => URL.revokeObjectURL(url), 10_000);
+				message.value = `Downloaded ${name}`;
+			}
+		});
+	}
+
 	// -- the settings as a JSON file, to pass between people --------------------------------
 
 	/** Save the import's saved settings (rules, hidden rows, overrides, mapping...) as a .json file. */
@@ -217,7 +239,7 @@ export const useMel = defineStore('mel', () => {
 	}
 
 	return {
-		exportSettings, readSettings, createFromSettings,
+		exportSettings, readSettings, createFromSettings, exportEditsReport,
 		tab, recipes, saved, draft, revisions, fields, labels, outputName, busy, error, message, dirty, latest,
 		refreshList, open, create, close, save, discard, remove, inspectCsv, uploadCsv, uploadExcel, uploadSymbols,
 		deleteRevision, runStage, loadList, exportTable,

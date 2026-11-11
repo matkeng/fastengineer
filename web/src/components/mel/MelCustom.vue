@@ -19,7 +19,7 @@ function open(index: number | null) {
 	const src = index === null ? { key: '', values: {} } : mel.draft!.custom_rows[index];
 	const values: Record<string, string> = {};
 	for (const h of headers.value) values[h] = src.values[h] ?? '';
-	editing.value = { index, row: { key: src.key, values } };
+	editing.value = { index, row: { key: src.key, values, note: src.note ?? '' } };
 }
 
 const keyProblem = computed(() => {
@@ -38,7 +38,8 @@ function save() {
 	// Store only filled cells; empty ones show as "-" (PRD 5.8). Editing replaces the row,
 	// so old values can't linger (PRD 11, item 2).
 	const values = Object.fromEntries(Object.entries(e.row.values).filter(([, v]) => v.trim() !== ''));
-	const row = { key: e.row.key.trim(), values };
+	const note = (e.row.note ?? '').trim();
+	const row = { key: e.row.key.trim(), values, ...(note ? { note } : {}) };
 	if (e.index === null) mel.draft!.custom_rows.push(row);
 	else mel.draft!.custom_rows.splice(e.index, 1, row);
 	editing.value = null;
@@ -54,10 +55,11 @@ function remove(i: number) {
 		<p class="hint">Add rows that aren't in the file, such as a load the mechanical list missed or a load centre. Empty cells show as "-".</p>
 		<div v-if="mel.draft!.custom_rows.length" class="grid-wrap">
 			<table class="grid simple">
-				<thead><tr><th>{{ result?.key_header }}</th><th v-for="h in headers" :key="h">{{ h }}</th><th /></tr></thead>
+				<thead><tr><th>{{ result?.key_header }}</th><th>Reason</th><th v-for="h in headers" :key="h">{{ h }}</th><th /></tr></thead>
 				<tbody>
 					<tr v-for="(r, i) in mel.draft!.custom_rows" :key="i" @click="open(i)">
 						<td><strong>{{ r.key }}</strong><span v-if="fileKeys.has(r.key)" class="warn small"> clashes with a file row</span></td>
+						<td class="hint">{{ r.note ?? '' }}</td>
 						<td v-for="h in headers" :key="h">{{ r.values[h] ?? '-' }}</td>
 						<td class="actions"><button type="button" class="secondary small" @click.stop="remove(i)">Delete</button></td>
 					</tr>
@@ -72,6 +74,8 @@ function remove(i: number) {
 					<input v-model="editing.row.key" autofocus />
 				</label>
 				<p v-if="keyProblem" class="warn small">{{ keyProblem }}</p>
+				<label class="field">Reason <span class="hint small">(for the edits report, e.g. "Missing from the MEL")</span>
+					<input v-model="editing.row.note" placeholder="Why the row is added" /></label>
 				<label v-for="h in headers" :key="h" class="field">{{ h }}
 					<input v-model="editing.row.values[h]" placeholder="-" />
 				</label>

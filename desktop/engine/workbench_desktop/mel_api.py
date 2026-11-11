@@ -276,9 +276,10 @@ def _add(recipe_id: str, file_name: str, source: str, key: str, original, header
     if changed:
         warnings = [*warnings, f"{changed} key value(s) were blank or repeated and were made unique "
                                "(blank -> 'Blank', repeats -> '_1', '_2')."]
-    rows.sort(key=lambda r: r[key])
+    order = sorted(range(len(rows)), key=lambda i: rows[i][key])  # kept in key order; where each was is kept too
     _recipe(recipe_id)
-    return get_store().add_revision(recipe_id, file_name, source, key, original, headers, rows, warnings)
+    return get_store().add_revision(recipe_id, file_name, source, key, original, headers, [rows[i] for i in order], warnings,
+                                    [i + 1 for i in order])
 
 
 @router.post("/recipes/{recipe_id}/revisions/csv", response_model=RevisionInfo)
@@ -386,6 +387,39 @@ def export(recipe_id: str, body: ExportRequest, request: Request):
     target = Path(body.path)
     if target.suffix.lower() != f".{body.format}":
         target = target.with_suffix(f".{body.format}")
+    try:
+        target.write_bytes(data)
+    except OSError as exc:
+        raise HTTPException(409, f"Could not save {target.name}: {exc.strerror or exc}. Is it open in Excel?") from exc
+    return {"path": str(target)}
+
+
+class ReportRequest(BaseModel):
+    recipe: Recipe | None = None  # the import as it is in the editor (default: as saved)
+    path: str | None = None  # desktop: chosen in a Save As dialog
+
+
+@router.post("/recipes/{recipe_id}/edits-report")
+def edits_report_file(recipe_id: str, body: ReportRequest, request: Request):
+    """The edits the import makes to its latest file (changed cells, removed rows, added rows,
+    with their reasons) as a workbook, to send back to whoever owns the file."""
+    from workbench_core.keylists.workbooks import write_sheets
+    from workbench_core.mel.edits_report import edits_report
+
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        raise HTTPException(415, "Expected application/json")
+    recipe = _draft(recipe_id, body.recipe)
+    rev = _latest(recipe_id)
+    data = write_sheets(edits_report(rev, recipe))
+    name = re.sub(r'[\\/:*?"<>|]+', "_", f"{recipe.name} - edits to {rev.file_name} rev {rev.rev}") + ".xlsx"
+    if body.path is None:
+        from urllib.parse import quote
+        plain = name.encode("ascii", "replace").decode().replace("?", "_")
+        return Response(data, media_type=MEDIA["xlsx"], headers={
+            "Content-Disposition": f"attachment; filename=\"{plain}\"; filename*=UTF-8''{quote(name)}"})
+    target = Path(body.path)
+    if target.suffix.lower() != ".xlsx":
+        target = target.with_suffix(".xlsx")
     try:
         target.write_bytes(data)
     except OSError as exc:

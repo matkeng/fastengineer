@@ -106,21 +106,21 @@ def test_settings_pass_between_people_as_a_json_file(tmp_path: Path) -> None:
     assert client.post(f"/api/mel/recipes/{rid}/settings/export", json={"path": str(out)}).json() == {"path": str(out) + ".json"}
     doc = client.post(f"/api/mel/recipes/{rid}/settings/export", json={}).json()
     assert (doc["format"], doc["version"], doc["name"], doc["target"]) == ("drawing-workbench/list-import-settings", 1, "Plant MEL", "MEL")
-    assert doc["settings"]["hidden_rows"] == [{"key": "P-101"}] and "id" not in doc and set(doc["settings"]) == {
+    assert doc["settings"]["hidden_rows"] == [{"key": "P-101", "note": ""}] and "id" not in doc and set(doc["settings"]) == {
         "columns", "hidden_rows", "text_columns", "overrides", "custom_rows", "auto_columns", "mapping"}
 
     # a colleague makes a new import from the file: same name (made unique here), settings, and no file yet
     new = client.post("/api/mel/settings/new", json=doc)
     assert new.status_code == 200, new.text
     made = new.json()
-    assert made["id"] != rid and made["name"] == "Plant MEL (2)" and made["hidden_rows"] == [{"key": "P-101"}]
+    assert made["id"] != rid and made["name"] == "Plant MEL (2)" and made["hidden_rows"] == [{"key": "P-101", "note": ""}]
     assert client.get(f"/api/mel/recipes/{made['id']}").json()["revisions"] == []
     assert made["mapping"][0]["column"] == "Equipment Tag"
 
     # or reads it into an import they have: nothing is saved until they save
     other = client.post("/api/mel/recipes", json={"name": "Mine", "target": "MEL"}).json()
     read = client.post(f"/api/mel/recipes/{other['id']}/settings/read", json=doc).json()
-    assert (read["id"], read["name"], read["hidden_rows"]) == (other["id"], "Mine", [{"key": "P-101"}])
+    assert (read["id"], read["name"], read["hidden_rows"]) == (other["id"], "Mine", [{"key": "P-101", "note": ""}])
     assert client.get(f"/api/mel/recipes/{other['id']}").json()["recipe"]["hidden_rows"] == []
 
     pil = client.post("/api/mel/recipes", json={"name": "Tags", "target": "PIL"}).json()

@@ -55,6 +55,7 @@ class ColumnRule(BaseModel):
 class RowRule(BaseModel):
     """Hide a row, keyed by its key-column value (PRD 5.5)."""
     key: str
+    note: str = ""  # why: shown in the edits report (mel.edits_report)
 
 
 class TextColumn(BaseModel):
@@ -68,12 +69,14 @@ class Override(BaseModel):
     key: str
     column: str
     value: str
+    note: str = ""  # why: shown in the edits report (mel.edits_report)
 
 
 class CustomRow(BaseModel):
     """A hand-entered row appended to the list (PRD 5.8)."""
     key: str
     values: dict[str, str] = Field(default_factory=dict)
+    note: str = ""  # why: shown in the edits report (mel.edits_report)
 
 
 class AutoBranch(BaseModel):
@@ -136,3 +139,6 @@ class Revision(RevisionInfo):
     headers: list[str]  # unique, stripped
     headers_original: list[str]
     rows: list[dict[str, str]]  # keyed by `headers`; key values made unique
+    #: Where each of `rows` was in the file: its data row (1 = the first row under the headings).
+    #: Rows are kept in key order; empty for a revision uploaded before this was kept.
+    file_rows: list[int] = Field(default_factory=list)

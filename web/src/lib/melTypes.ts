@@ -19,10 +19,10 @@ export const LOAD_FIELD_LABELS: Record<string, string> = {
 };
 
 export interface ColumnRule { header: string; visible: boolean; rename: string | null }
-export interface RowRule { key: string }
+export interface RowRule { key: string; note?: string }
 export interface TextColumn { name: string; value: string }
-export interface Override { key: string; column: string; value: string }
-export interface CustomRow { key: string; values: Record<string, string> }
+export interface Override { key: string; column: string; value: string; note?: string }
+export interface CustomRow { key: string; values: Record<string, string>; note?: string }
 /** An "else if" of a calculated column: when `statement` holds (or doesn't, with `negate`), the value is `value`. */
 export interface AutoBranch { statement: string; negate: boolean; value: string }
 /** If statement (NOT it, with negate) then true_val; else if each of else_ifs in turn; else false_val. */

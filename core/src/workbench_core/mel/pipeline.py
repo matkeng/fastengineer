@@ -192,7 +192,7 @@ def run_pipeline(rev: Revision, recipe: Recipe, upto: Stage = "auto") -> Pipelin
     stop = STAGES.index(upto)
     key = rev.key_header
     issues: list[RuleIssue] = []
-    rows = [PipelineRow(key=r[key], origin="file", file_row=i + 1, values=dict(r))
+    rows = [PipelineRow(key=r[key], origin="file", file_row=rev.file_rows[i] if i < len(rev.file_rows) else i + 1, values=dict(r))
             for i, r in enumerate(rev.rows)]
     headers = list(rev.headers)
     hidden_rows: list[PipelineRow] = []

@@ -20,12 +20,22 @@ const totalCount = ref(0);
 
 const isHidden = (key: string) => mel.draft!.hidden_rows.some((r) => r.key === key);
 
+const noteOf = (key: string) => mel.draft!.hidden_rows.find((r) => r.key === key)?.note ?? '';
+
+/** Hide or include rows; a row that stays hidden keeps its reason. */
 function setHidden(keys: string[], hide: boolean) {
 	const d = mel.draft!;
 	const set = new Set(keys);
-	d.hidden_rows = d.hidden_rows.filter((r) => !set.has(r.key));
-	if (hide) d.hidden_rows.push(...keys.map((key) => ({ key })));
+	if (hide) d.hidden_rows.push(...keys.filter((k) => !isHidden(k)).map((key) => ({ key })));
+	else d.hidden_rows = d.hidden_rows.filter((r) => !set.has(r.key));
 	hiddenCount.value = d.hidden_rows.length;
+}
+
+function setNote(key: string, note: string) {
+	const r = mel.draft!.hidden_rows.find((x) => x.key === key);
+	if (!r) return;
+	if (note.trim()) r.note = note.trim();
+	else delete r.note;
 }
 
 function shownKeys(): string[] {
@@ -61,6 +71,17 @@ function build() {
 				return on ? 'Included' : 'Hidden';
 			},
 		},
+		{
+			// why a row is hidden: shown in the edits report sent back to whoever owns the file
+			title: 'Reason (hidden rows)',
+			data: (row: PipelineRow) => noteOf(row.key),
+			className: 'reason-col',
+			render: (note: string, type: string, row: PipelineRow) => {
+				if (type !== 'display') return note;
+				if (!isHidden(row.key)) return '';
+				return `<input type="text" class="row-note" data-note="${escapeHtml(row.key)}" value="${escapeHtml(note)}" placeholder="Why it is hidden" aria-label="Why ${escapeHtml(row.key)} is hidden">`;
+			},
+		},
 		...r.headers.map((h): ColumnsConfig => ({
 			title: escapeHtml(h) + (h === r.key_header ? ' <span class="key-icon">🔑</span>' : ''),
 			data: (row: PipelineRow) => row.values[h] ?? '',
@@ -70,7 +91,7 @@ function build() {
 	table = createFilteredTable<PipelineRow>(host.value, columns.length, {
 		data: r.rows,
 		columns,
-		order: [[1, 'asc']],
+		order: [[2, 'asc']],
 		pageLength: 50,
 		lengthMenu: [25, 50, 100, 500],
 		layout: TOOLBAR_LAYOUT,
@@ -97,9 +118,15 @@ function build() {
 
 function onChange(e: Event) {
 	const el = e.target as HTMLInputElement;
+	if (el.dataset.note !== undefined) {
+		setNote(el.dataset.note, el.value);
+		return;
+	}
 	if (!el.dataset.key) return;
 	setHidden([el.dataset.key], !el.checked);
-	el.closest('tr')?.classList.toggle('row-off', !el.checked);
+	const tr = el.closest('tr');
+	tr?.classList.toggle('row-off', !el.checked);
+	if (tr && table) table.api.row(tr).invalidate().draw(false); // show or drop its Reason box
 }
 
 watch([result, host], build);
@@ -109,7 +136,7 @@ onBeforeUnmount(() => table?.api.destroy());
 <template>
 	<div class="results mel-grid">
 		<div class="row">
-			<span class="hint">Untick rows that are not loads (notes, spares, tanks…). Rows are matched by key, so the choice carries over to revised files.</span>
+			<span class="hint">Untick rows that are not loads (notes, spares, tanks…), and say why for the edits report. Rows are matched by key, so the choice carries over to revised files.</span>
 			<span class="spacer" />
 			<span class="chip"><strong>{{ hiddenCount }}</strong> hidden</span>
 			<span class="hint small">{{ filteredCount === totalCount ? `All ${totalCount} rows` : `${filteredCount} of ${totalCount} rows filtered` }}</span>

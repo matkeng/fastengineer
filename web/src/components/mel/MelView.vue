@@ -119,6 +119,9 @@ onMounted(() => mel.refreshList());
 				<span class="spacer" />
 				<span v-if="mel.dirty" class="unsaved">● Unsaved changes</span>
 				<span v-else-if="mel.message" class="saved" :title="mel.message">✓ {{ mel.message }}</span>
+				<button type="button" class="secondary" :disabled="!mel.latest || mel.busy"
+					title="The cells this import changes, the rows it removes and the rows it adds to the latest file, with their reasons, as an Excel workbook to send to whoever owns the file (unsaved edits included)"
+					@click="mel.exportEditsReport()">Edits report .xlsx</button>
 				<button type="button" class="secondary" :disabled="mel.dirty || mel.busy"
 					:title="mel.dirty ? 'Save or discard your changes first' : 'The saved settings of this import as a .json file, to give to a colleague (the uploaded files are not in it)'"
 					@click="mel.exportSettings()">Export settings</button>

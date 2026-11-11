@@ -1248,3 +1248,5 @@ button.link.tag-help { padding: 0; border: 0; background: none; color: var(--acc
 .comp-tables > button { align-self: flex-start; }
 .comp-head .field input, .comp-head .field select { height: 30px; }
 .comp-col input { height: 28px; font-size: 0.85rem; }
+/* Why a MEL row is hidden */
+td.reason-col input.row-note { width: 100%; min-width: 160px; font-size: 0.82rem; padding: 2px 4px; }

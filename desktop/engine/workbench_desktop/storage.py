@@ -343,7 +343,8 @@ class Store:
 
     def add_revision(self, recipe_id: str, file_name: str, source: str, key_header: str,
                      headers_original: list[str], headers: list[str], rows: list[dict[str, str]],
-                     warnings: list[str]) -> RevisionInfo:
+                     warnings: list[str], file_rows: list[int] | None = None) -> RevisionInfo:
+        """`file_rows`: each row's data row in the file (the rows may be in another order)."""
         self.get_recipe(recipe_id)  # 404 if missing
         with self._lock, self._db:
             (latest,) = self._db.execute("SELECT COALESCE(MAX(rev), 0) FROM revisions WHERE recipe_id = ?",
@@ -351,7 +352,8 @@ class Store:
             info = RevisionInfo(id=uuid.uuid4().hex, rev=latest + 1, file_name=file_name, source=source,
                                 key_header=key_header, num_rows=len(rows), num_cols=len(headers),
                                 uploaded_at=_now(), warnings=warnings)
-            data = json.dumps({"headers": headers, "headers_original": headers_original, "rows": rows})
+            data = json.dumps({"headers": headers, "headers_original": headers_original, "rows": rows,
+                               "file_rows": file_rows or []})
             self._db.execute("INSERT INTO revisions VALUES (?, ?, ?, ?, ?)",
                              (info.id, recipe_id, info.rev, info.model_dump_json(), data))
             self._db.execute("UPDATE recipes SET updated_at = ? WHERE id = ?", (_now().isoformat(), recipe_id))
