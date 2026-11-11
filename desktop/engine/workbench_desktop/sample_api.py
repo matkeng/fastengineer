@@ -20,7 +20,7 @@ from workbench_core.refdata import (ColumnDef, EnumItem, EnumList, RefRow, RefTa
                                     check_table_columns, check_tree, validate_row)
 
 from .loadlist_api import current_rows
-from .storage import get_deliverables, get_keylists, get_ref, get_store
+from .storage import get_deliverables, get_keylists, get_loadlist, get_ref, get_store
 
 router = APIRouter(prefix="/api/sample-data", tags=["sample data"])
 
@@ -45,6 +45,21 @@ def _cable(suffix: str, cable_type: str, cores: str, size: str, remarks: str = "
             "Voltage": "0.6/1kV", "Remarks": remarks}
 
 
+def _power(cable_type: str, cores: str, remarks: str = "") -> dict[str, str]:
+    """The load's power cable(s): one row per cable, each looked up in Cable Types from the load's cable details."""
+    return _cable("P<<CableNo>>", cable_type, cores, "<<CableSize>>", remarks) | {
+        "Repeat": "Per power cable", "Voltage": "<<CableVoltage>>", "Length (m)": "<<CableLength>>", "Route": "<<Phase>>"}
+
+
+#: The sample loads' cable details: tag -> (size, insulation, length, parallel, single core?, earth size)
+CABLES = {"P-101": ("2.5", "PVC", 45, 1, False, ""), "P-102": ("2.5", "PVC", 48, 1, False, ""),
+          "P-103": ("10", "XLPE", 60, 1, False, ""), "M-201": ("6", "XLPE", 85, 1, False, ""),
+          "F-301": ("2.5", "PVC", 110, 1, False, ""), "F-302": ("2.5", "PVC", 115, 1, False, ""),
+          "C-401": ("50", "XLPE", 140, 2, False, ""), "H-501": ("4", "PVC", 95, 1, False, ""),
+          "LP-601": ("6", "PVC", 160, 1, False, ""), "MSB-1": ("300", "XLPE", 25, 2, True, "120"),
+          "MCC-1": ("240", "XLPE", 15, 1, False, ""), "MCC-2": ("240", "XLPE", 20, 1, False, "")}
+
+
 def _equipment(kind: str) -> dict[str, str]:
     return {"Tag": "<<Tag>>", "Description": "<<Description>>", "Equipment Type": kind, "Plant Area": "<<PlantArea>>",
             "Rating": "<<Rating>>", "Units": "<<Units>>", "Voltage": "<<Voltage>>", "Phases": "<<Phases>>",
@@ -66,24 +81,24 @@ LOAD_TYPES = [
     {"id": "sdol", "code": "DOL", "name": "Direct on line motor starter", "rating_unit": "kW", "voltage": 415,
      "phases": "AC-3-phase", "from_value": "0.37", "to_value": "11", "std_drg": "E-STD-010", "bucket_type": "B1",
      "load_type": "Motor", "field_options": "LCS", "rows": {
-         "cable_schedule": [_cable("P1", "Power", "3C+E", "2.5"), _cable("C1", "Control", "5+E", "1.5", "Local control station")],
+         "cable_schedule": [_power("Power", "3C+E"), _cable("C1", "Control", "5+E", "1.5", "Local control station")],
          "equipment_list": [_equipment("Motor")],
          "instrument_list": [_instrument("HS", "local control station", "Hand switch", "24 VDC", "DI")],
          "plc_io_list": _RUN_IO}},
     {"id": "svsd", "code": "VSD", "name": "Variable speed drive", "rating_unit": "kW", "voltage": 415, "phases": "AC-3-phase",
      "from_value": "0.75", "to_value": "110", "std_drg": "E-STD-020", "bucket_type": "B3", "load_type": "Motor",
      "field_options": "LCS, Estop", "rows": {
-         "cable_schedule": [_cable("P1", "VSD", "3C+3E", "6", "Screened VSD cable"), _cable("C1", "Control", "8+E", "1.5")],
+         "cable_schedule": [_power("VSD", "3C+3E", "Screened VSD cable"), _cable("C1", "Control", "8+E", "1.5")],
          "equipment_list": [_equipment("Motor (VSD)")],
          "instrument_list": [_instrument("SIC", "speed control", "Speed controller", "4-20 mA", "AO")],
          "plc_io_list": _RUN_IO + [_io("SPD", "speed reference", "4-20 mA", "AO"), _io("SFB", "speed feedback", "4-20 mA", "AI")]}},
     {"id": "sfdr", "code": "FEEDER", "name": "Feeder (circuit breaker)", "rating_unit": "kW", "voltage": 415,
      "phases": "AC-3-phase+N", "std_drg": "E-STD-030", "bucket_type": "F1", "load_type": "Feeder", "rows": {
-         "cable_schedule": [_cable("P1", "Power", "4C+E", "16")], "equipment_list": [_equipment("Feeder")],
+         "cable_schedule": [_power("Power", "4C+E")], "equipment_list": [_equipment("Feeder")],
          "plc_io_list": [_io("TRP", "breaker tripped", "24 VDC", "DI")]}},
     {"id": "shtr", "code": "HTR", "name": "Heater (contactor)", "rating_unit": "kW", "voltage": 415, "phases": "AC-3-phase",
      "std_drg": "E-STD-040", "bucket_type": "B2", "load_type": "Heater", "rows": {
-         "cable_schedule": [_cable("P1", "Power", "3C+E", "4")], "equipment_list": [_equipment("Heater")],
+         "cable_schedule": [_power("Power", "3C+E")], "equipment_list": [_equipment("Heater")],
          "instrument_list": [_instrument("TT", "temperature", "Temperature transmitter", "4-20 mA", "AI")],
          "plc_io_list": [_io("ON", "on", "24 VDC", "DI"), _io("CMD", "on command", "24 VDC", "DO")]}},
 ]
@@ -212,5 +227,17 @@ def load_sample_data() -> Added:
     fill("List import (MEL)", not store.list_recipes(), mel)
     fill("Lists & tables", not (ref.enums() or ref.trees() or ref.tables()), user_lists)
     fill("Deliverables", not dl.list(), deliverables)
-    current_rows()  # brings the Load List up to date, so its allocations are filled in
+    rows, _, _ = current_rows()  # brings the Load List up to date, so its allocations are filled in
+    if "List import (MEL)" in added or "Electrical Equipment List" in added:
+        done = 0
+        for r in rows:
+            c = CABLES.get(r.tag())
+            mine = "Electrical Equipment List" if r.recipe_id == "eel" else "List import (MEL)"
+            if c and not r.cable_size and mine in added:
+                get_loadlist().allocate([(r.recipe_id, r.key)], {
+                    "cable_size": c[0], "cable_insulation": c[1], "cable_length": float(c[2]), "cable_parallel": c[3],
+                    "cable_construction": "Single core" if c[4] else "Multicore", "earth_size": c[5]}, {})
+                done += 1
+        if done:
+            added["Cable details (Load List)"] = done
     return Added(added={k: v for k, v in added.items() if v}, skipped=skipped)

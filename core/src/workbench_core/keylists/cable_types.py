@@ -15,7 +15,7 @@ from ..refdata.models import ColumnDef, RefValidationError, new_id
 from ..refdata.validate import coerce, name_key
 
 _INTEGER = ColumnDef(name="", type="integer")
-TEXT_FIELDS = ("code", "application", "type", "cores", "diameter", "voltage", "description")
+TEXT_FIELDS = ("code", "application", "type", "cores", "diameter", "voltage", "insulation", "description")
 
 
 class CableType(BaseModel):
@@ -26,6 +26,7 @@ class CableType(BaseModel):
     cores: str = ""  # e.g. 3C+E, 4PR
     diameter: str = ""  # conductor size (text: "2.5", but also "SM", "Indoor")
     voltage: str = ""  # voltage grade, e.g. 0.6/1kV
+    insulation: str = ""  # core insulation, e.g. PVC, XLPE (a load's cable is matched on it)
     description: str = ""
     sort: int | None = None
 
@@ -33,6 +34,29 @@ class CableType(BaseModel):
 class CableTypeList(BaseModel):
     items: list[CableType] = Field(default_factory=list)
     updated_at: datetime | None = None
+
+
+def guess_insulation(description: str) -> str:
+    """The core insulation named in a cable description like "Cu-XLPE-PVC-X90 (Power)": the
+    first material after the conductor. Blank when it names none (fibre, bare earth...)."""
+    for part in description.replace("(", "-").split("-")[1:]:
+        word = part.strip().upper()
+        if word in ("XLPE", "PVC", "EPR"):
+            return word
+        if word.startswith("V90"):  # V90RPPVC and the like: PVC
+            return "PVC"
+    return ""
+
+
+def fill_insulation(items: list[CableType]) -> bool:
+    """Give cable types saved before the Insulation column their insulation from the
+    description, where it is blank. True if anything changed."""
+    changed = False
+    for c in items:
+        if not c.insulation:
+            c.insulation = guess_insulation(c.description)
+            changed = changed or bool(c.insulation)
+    return changed
 
 
 def check_cable_types(rows: list[dict]) -> list[CableType]:
@@ -125,5 +149,5 @@ def default_cable_types() -> list[CableType]:
         for i, (cores, diameter) in enumerate(sizes):
             out.append(CableType(id=f"d{first + i}", code=f"{application} - {kind} - {cores} - {diameter}",
                                  application=application, type=kind, cores=cores, diameter=diameter, voltage=voltage,
-                                 description=description, sort=first + i))
+                                 insulation=guess_insulation(description), description=description, sort=first + i))
     return sorted(out, key=lambda c: c.sort or 0)

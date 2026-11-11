@@ -24,7 +24,8 @@ def test_sample_data_fills_an_empty_project_and_every_deliverable_can_be_issued(
     assert res.status_code == 200, res.text
     added = res.json()["added"]
     assert set(added) == {"Plant Areas", "Equipment Packages", "Equipment Codes", "Instrument Codes", "Load Types",
-                          "Electrical Equipment List", "PLC List", "List import (MEL)", "Lists & tables", "Deliverables"}
+                          "Electrical Equipment List", "PLC List", "List import (MEL)", "Lists & tables", "Deliverables",
+                          "Cable details (Load List)"}
     assert res.json()["skipped"] == []
 
     loads = client.get("/api/loadlist").json()["rows"]

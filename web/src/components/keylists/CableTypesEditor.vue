@@ -18,7 +18,7 @@ const host = ref<HTMLDivElement | null>(null);
 let table: FilteredTable<CableType> | null = null;
 const items = computed(() => kl.cableTypes?.items ?? []);
 
-type TextField = 'code' | 'application' | 'type' | 'cores' | 'diameter' | 'voltage' | 'description';
+type TextField = 'code' | 'application' | 'type' | 'cores' | 'diameter' | 'voltage' | 'insulation' | 'description';
 const COLS: { field: TextField | 'sort'; title: string; filter?: 'select'; hint?: string }[] = [
 	{ field: 'sort', title: 'Sort', hint: 'Whole number: the order in the list' },
 	{ field: 'code', title: 'Code' },
@@ -27,6 +27,7 @@ const COLS: { field: TextField | 'sort'; title: string; filter?: 'select'; hint?
 	{ field: 'cores', title: 'Cores', hint: 'e.g. 3C+E, 4PR' },
 	{ field: 'diameter', title: 'Diameter', hint: 'e.g. 2.5' },
 	{ field: 'voltage', title: 'Voltage', filter: 'select', hint: 'e.g. 0.6/1kV' },
+	{ field: 'insulation', title: 'Insulation', filter: 'select', hint: 'e.g. PVC, XLPE: a load’s cable is matched on it' },
 	{ field: 'description', title: 'Desc' },
 ];
 const distinct = (f: TextField) => [...new Set(items.value.map((r) => r[f]).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -86,7 +87,7 @@ function open(row: CableType | null) {
 	editing.value = {
 		isNew: !row,
 		form: row ? { ...row, sort: row.sort == null ? '' : String(row.sort) }
-			: { id: newId(), code: '', application: '', type: '', cores: '', diameter: '', voltage: '', description: '', sort: String(next) },
+			: { id: newId(), code: '', application: '', type: '', cores: '', diameter: '', voltage: '', insulation: '', description: '', sort: String(next) },
 	};
 }
 

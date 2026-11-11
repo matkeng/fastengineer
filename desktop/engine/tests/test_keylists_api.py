@@ -360,3 +360,14 @@ def test_load_type_template_rows() -> None:
     assert bad.status_code == 422 and "Colour" in str(bad.json()["fields"])
     bad = client.put(LOAD_URL, json={"items": [dict(LOADS[0], rows={"drawing_list": [{"Tag": "x"}]})] + LOADS[1:]})
     assert bad.status_code == 422
+
+
+def test_cable_schedule_rows_can_repeat_per_power_cable() -> None:
+    info = client.get(f"{LOAD_URL}/lists").json()["lists"]
+    assert info[0]["settings"] == [{"name": "Repeat", "values": ["Per power cable"]}] and info[1]["settings"] == []
+    rows = {"cable_schedule": [{"Repeat": "per power cable", "Cable Number": "<<Tag>>-P<<CableNo>>"}]}
+    saved = client.put(LOAD_URL, json={"items": [dict(LOADS[0], rows=rows)]})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["items"][0]["rows"]["cable_schedule"][0]["Repeat"] == "Per power cable"
+    assert client.put(LOAD_URL, json={"items": [dict(LOADS[0], rows={"cable_schedule": [{"Repeat": "x", "From": "a"}]})]}).status_code == 422
+    assert client.put(LOAD_URL, json={"items": [dict(LOADS[0], rows={"plc_io_list": [{"Repeat": "Per power cable", "Tag": "a"}]})]}).status_code == 422

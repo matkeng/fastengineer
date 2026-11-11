@@ -38,6 +38,10 @@ AllocatedBy = Literal["auto", "user", "eel"]
 KEPT = ("user", "eel")
 #: The Load List "import id" of the Electrical Equipment List's items (row key = the item's id).
 EEL_SOURCE = "eel"
+CableConstruction = Literal["Multicore", "Single core"]
+CABLE_CONSTRUCTIONS: tuple[str, ...] = ("Multicore", "Single core")
+#: The cable details a person types in on a row (not allocations: nothing fills them in).
+CABLE_FIELDS = ("cable_length", "cable_construction", "cable_parallel", "cable_insulation", "cable_size", "earth_size")
 
 
 class LoadListRow(BaseModel):
@@ -56,6 +60,14 @@ class LoadListRow(BaseModel):
     is_panel_by: AllocatedBy | None = None
     supplied_from: str | None = None  # PRIMARY_SUPPLY or a panel row's ref()
     supplied_from_by: AllocatedBy | None = None
+    # The load's power cable, typed in by a person (cable sizing is done outside the app). The
+    # cable schedule finds the matching row of the Cable Types list from these.
+    cable_length: float | None = None  # metres
+    cable_construction: CableConstruction | None = None  # None counts as multicore
+    cable_parallel: int | None = None  # cables (or single-core sets) run in parallel; None counts as 1
+    cable_insulation: str = ""  # an Insulation value of the Cable Types list
+    cable_size: str = ""  # core size, mm2 (a Diameter value of the Cable Types list)
+    earth_size: str = ""  # the separate earth cable of a single-core set, mm2
     updated_at: datetime | None = None  # when a person last changed its allocations
 
     def ref(self) -> str:

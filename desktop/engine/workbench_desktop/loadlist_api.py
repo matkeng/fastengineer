@@ -9,10 +9,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from workbench_core.keylists import EEL_SOURCE, LOAD_LIST_TARGETS, EelList, LoadListRow, match_index
+from workbench_core.keylists.loadlist import CABLE_CONSTRUCTIONS, CABLE_FIELDS
 from workbench_core.mel import run_pipeline
 from workbench_core.mel.models import ELEC_LOAD_FIELDS
 from workbench_core.mel.pipeline import output_list
-from workbench_core.refdata import RefValidationError
+from workbench_core.refdata import RefValidationError, name_key
 
 from .refdata_api import invalid
 from .storage import NotFound, get_keylists, get_loadlist, get_store
@@ -40,6 +41,9 @@ class LoadListView(BaseModel):
     sources: list[Source]
     plant_areas: list[Choice]
     load_types: list[Choice]
+    cable_insulations: list[str] = []  # the choices for a load's cable, from the Cable Types list
+    cable_sizes: list[str] = []
+    earth_sizes: list[str] = []
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -148,8 +152,16 @@ def load_list() -> LoadListView:
             tags.setdefault(tag.strip().casefold(), (tag.strip(), []))[1].append(r.source)
     for tag, sources_of in (t for t in tags.values() if len(t[1]) > 1):
         warnings.append(f"Tag {tag} is in more than one row ({', '.join(sorted(set(sources_of)))}).")
+    cables = get_keylists().cable_types().items
+
+    def sizes(of: list) -> list[str]:
+        numbers = {c.diameter for c in of if c.diameter.replace(".", "", 1).isdigit()}
+        return sorted(numbers, key=float)
     return LoadListView(fields=[f for f in ELEC_LOAD_FIELDS if f in used], rows=rows, sources=sources,
-                        plant_areas=areas, load_types=types, warnings=sorted(set(warnings)))
+                        plant_areas=areas, load_types=types, warnings=sorted(set(warnings)),
+                        cable_insulations=sorted({c.insulation for c in cables if c.insulation}),
+                        cable_sizes=sizes([c for c in cables if name_key(c.application) != "earth"]),
+                        earth_sizes=sizes([c for c in cables if name_key(c.application) == "earth"]))
 
 
 class RowRef(BaseModel):
@@ -166,11 +178,49 @@ class Allocation(BaseModel):
     load_type_id: str | None = None
     is_panel: bool = False
     supplied_from: str | None = None
+    # The power cable's details (typed in; null / blank = not set). Any row, the Electrical Equipment List's too.
+    cable_length: float | None = None
+    cable_construction: str | None = None
+    cable_parallel: int | None = None
+    cable_insulation: str = ""
+    cable_size: str = ""
+    earth_size: str = ""
+
+
+def _check_cable(change: dict[str, object]) -> None:
+    """The cable details as sent: tidied in place; raises RefValidationError for a bad one."""
+    errors: dict[str, str] = {}
+    cables = get_keylists().cable_types().items
+    for f in ("cable_insulation", "cable_size", "earth_size"):
+        if f in change:
+            change[f] = str(change[f] or "").strip()
+    length, parallel, kind = change.get("cable_length"), change.get("cable_parallel"), change.get("cable_construction")
+    if length is not None and length < 0:
+        errors["cable_length"] = "Can't be negative"
+    if parallel is not None and parallel < 1:
+        errors["cable_parallel"] = "1 or more"
+    if "cable_construction" in change:
+        change["cable_construction"] = next((c for c in CABLE_CONSTRUCTIONS if name_key(c) == name_key(str(kind or ""))), None)
+        if kind and change["cable_construction"] is None:
+            errors["cable_construction"] = "Multicore or Single core"
+    if change.get("cable_insulation"):
+        known = {name_key(c.insulation): c.insulation for c in cables if c.insulation}
+        if name_key(change["cable_insulation"]) not in known:
+            errors["cable_insulation"] = "Not an insulation in Cable Types"
+        else:
+            change["cable_insulation"] = known[name_key(change["cable_insulation"])]
+    earth = {name_key(c.diameter) for c in cables if name_key(c.application) == "earth"}
+    if change.get("cable_size") and name_key(change["cable_size"]) not in {name_key(c.diameter) for c in cables}:
+        errors["cable_size"] = "Not a size in Cable Types"
+    if change.get("earth_size") and name_key(change["earth_size"]) not in earth:
+        errors["earth_size"] = "Not an earth cable size in Cable Types"
+    if errors:
+        raise RefValidationError("The cable details are not valid: " + "; ".join(f"{k.replace('_', ' ')}: {v}" for k, v in errors.items()) + ".", errors)
 
 
 @router.put("/allocations", response_model=list[LoadListRow])
 def allocate(body: Allocation):
-    change = {f: getattr(body, f) for f in ("plant_area_id", "load_type_id", "is_panel", "supplied_from")
+    change = {f: getattr(body, f) for f in ("plant_area_id", "load_type_id", "is_panel", "supplied_from") + CABLE_FIELDS
               if f in body.model_fields_set}
     if not change or not body.rows:
         return invalid(RefValidationError("Choose rows and what to change."))
@@ -182,6 +232,7 @@ def allocate(body: Allocation):
             return invalid(RefValidationError(f"That {what} no longer exists. Open the Load List again.", {field: "Not found"}))
     labels = {c.id: c.label for c in areas + types}
     try:
+        _check_cable(change)
         return get_loadlist().allocate([(r.recipe_id, r.key) for r in body.rows], change, labels)
     except RefValidationError as exc:
         return invalid(exc)

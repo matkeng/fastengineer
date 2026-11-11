@@ -204,3 +204,35 @@ def test_distribution_panels_and_supplied_from() -> None:
     log = client.get("/api/audit", params={"entity": "load_list_row", "record_id": ref(m204)}).json()
     entries = log["entries"] if isinstance(log, dict) else log
     assert [{c["path"]: c["new"] for c in e["changes"]} for e in entries] == [{"supplied from": "DB-1"}, {"supplied from": "MCC-2"}]
+
+
+def test_cable_details_of_a_load() -> None:
+    client.post("/api/sample-data")
+    view = client.get("/api/loadlist").json()
+    assert view["cable_insulations"] == ["PVC", "XLPE"] and view["cable_sizes"][:3] == ["1.5", "2.5", "4"]
+    assert "120" in view["earth_sizes"] and "1.5" not in view["earth_sizes"]
+    rows = {r["values"]["tag"]: r for r in view["rows"]}
+    assert (rows["C-401"]["cable_size"], rows["C-401"]["cable_parallel"], rows["MSB-1"]["cable_construction"]) == ("50", 2, "Single core")
+
+    pump, fan, mcc = rows["P-101"], rows["F-301"], rows["MCC-1"]
+    saved = _alloc([pump], cable_size="16", cable_insulation="xlpe", cable_length=72.5, cable_parallel=3,
+                   cable_construction="single core", earth_size="16").json()[0]
+    assert (saved["cable_size"], saved["cable_insulation"], saved["cable_length"], saved["cable_parallel"],
+            saved["cable_construction"], saved["earth_size"]) == ("16", "XLPE", 72.5, 3, "Single core", "16")
+    assert saved["load_type_id"] == pump["load_type_id"] and saved["load_type_by"] == pump["load_type_by"]  # nothing else touched
+    # several rows at once, only the fields sent; an Electrical Equipment List row can have cable details too
+    out = _alloc([fan, mcc], cable_length=10).json()
+    assert [(r["cable_length"], r["cable_size"]) for r in out] == [(10, "2.5"), (10, "240")]
+    assert _alloc([mcc], load_type_id=None).status_code == 422  # but its allocations are still the EEL's
+
+    bad = _alloc([pump], cable_size="17", cable_insulation="Paper", cable_parallel=0, cable_length=-1, cable_construction="Flat", earth_size="1.5")
+    assert bad.status_code == 422 and set(bad.json()["fields"]) == {
+        "cable_size", "cable_insulation", "cable_parallel", "cable_length", "cable_construction", "earth_size"}
+    cleared = _alloc([pump], cable_size="", cable_parallel=None, cable_construction=None).json()[0]
+    assert (cleared["cable_size"], cleared["cable_parallel"], cleared["cable_construction"], cleared["cable_length"]) == ("", None, None, 72.5)
+
+    log = client.get("/api/audit", params={"entity": "load_list_row"}).json()
+    entries = log["entries"] if isinstance(log, dict) else log
+    assert any("cable size" in str(e) and "P-101" in str(e) for e in entries)
+    # the details stay with the load when its import is read again
+    assert {r["values"]["tag"]: r for r in client.get("/api/loadlist").json()["rows"]}["P-101"]["cable_length"] == 72.5

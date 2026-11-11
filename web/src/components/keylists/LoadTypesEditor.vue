@@ -119,12 +119,19 @@ const tagNames = computed(() => (kl.templateLists?.tags ?? []).map((t) => t.tag)
 const rowCount = (rows: LoadType['rows'] | undefined) => Object.values(rows ?? {}).reduce((n, r) => n + r.length, 0);
 const list = computed(() => lists.value.find((l) => l.key === tab.value) ?? null);
 const listRows = computed(() => (list.value && editing.value ? (editing.value.form.rows[list.value.key] ??= []) : []));
-const gridCols = computed((): GridColumn[] => (list.value?.columns ?? []).map((c) => ({ label: c, width: /Description|Remarks/.test(c) ? 200 : 130 })));
-const gridCells = computed(() => listRows.value.map((r) => (list.value?.columns ?? []).map((c) => r[c] ?? '')));
+// A list's row settings (the cable schedule's "Repeat") come first, then its columns.
+const settings = computed(() => list.value?.settings ?? []);
+const fields = computed(() => [...settings.value.map((s) => s.name), ...(list.value?.columns ?? [])]);
+const gridCols = computed((): GridColumn[] => [
+	...settings.value.map((s): GridColumn => ({ label: s.name, options: s.values, width: 130, badge: 'setting',
+		title: `Blank: one row. ${s.values.join(' / ')}: one row for each of the load's power cables (parallel cables; single cores and their earth).` })),
+	...(list.value?.columns ?? []).map((c): GridColumn => ({ label: c, width: /Description|Remarks|Code/.test(c) ? 200 : 130 })),
+]);
+const gridCells = computed(() => listRows.value.map((r) => fields.value.map((c) => r[c] ?? '')));
 const tagClass = (r: number, c: number) => (/<<[^<>]+>>/.test(gridCells.value[r]?.[c] ?? '') ? 'has-tag' : '');
 
 function setCells(edits: CellEdit[]) {
-	const cols = list.value?.columns ?? [];
+	const cols = fields.value;
 	for (const e of edits) {
 		const row = listRows.value[e.r];
 		if (!row || !cols[e.c]) continue;
@@ -308,6 +315,7 @@ onBeforeUnmount(() => {
 				<p class="hint small">
 					Every load of this type in the Load List adds these rows to the <strong>{{ list.name }}</strong>. Type <code>&lt;&lt;</code> in a cell
 					to pick a tag; it is replaced with that load's data.
+					<template v-if="settings.length">A row with <strong>Repeat</strong> = <em>{{ settings[0].values[0] }}</em> is written once for each of the load's power cables, looked up in Cable Types from its Cable Type and Cores cells.</template>
 					<span class="tag-help" :title="(kl.templateLists?.tags ?? []).map((t) => `${t.tag}  ${t.meaning}`).join('\n')">All tags ⓘ</span>
 				</p>
 				<EditGrid :columns="gridCols" :cells="gridCells" :tag-suggestions="tagNames" :cell-class="tagClass"

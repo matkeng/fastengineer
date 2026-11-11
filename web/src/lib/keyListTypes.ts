@@ -34,7 +34,7 @@ export interface LoadType {
 /** A load type's predefined rows: list key -> rows; a row is column name -> text. */
 export type TemplateRows = Record<string, Record<string, string>[]>;
 /** The deliverable lists a load type has rows for, and the tags a row can use. */
-export interface TemplateLists { lists: { key: string; name: string; columns: string[] }[]; tags: { tag: string; meaning: string }[] }
+export interface TemplateLists { lists: { key: string; name: string; columns: string[]; settings: { name: string; values: string[] }[] }[]; tags: { tag: string; meaning: string }[] }
 export interface LoadTypeList { items: LoadType[]; updated_at: string | null }
 /** A load type as it is typed into the form: numbers are text until the engine converts them. */
 export interface LoadTypeForm {
@@ -49,6 +49,8 @@ export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'l
 /** A cable type; every project starts with a default set. `sort` orders the list. */
 export interface CableType {
 	id: string; code: string; application: string; type: string; cores: string; diameter: string; voltage: string;
+	/** Core insulation (PVC, XLPE…): a load's cable is matched on it. */
+	insulation: string;
 	description: string; sort: number | null;
 }
 export interface CableTypeList { items: CableType[]; updated_at: string | null }
@@ -144,10 +146,21 @@ export interface LoadListRow {
 	is_panel: boolean; is_panel_by: 'auto' | 'user' | null;
 	/** PRIMARY_SUPPLY, a panel row's rowRef(), or null (not set). */
 	supplied_from: string | null; supplied_from_by: 'auto' | 'user' | null;
+	/** The load's power cable, typed in (sizing is done elsewhere); the cable schedule finds the cable type from these. */
+	cable_length: number | null; cable_construction: CableConstruction | null; cable_parallel: number | null;
+	cable_insulation: string; cable_size: string; earth_size: string;
 	updated_at: string | null;
 }
 export const PRIMARY_SUPPLY = 'primary';
 /** How rows refer to each other (import ids have no "/"). */
+export type CableConstruction = 'Multicore' | 'Single core';
+export type CableDetails = Pick<LoadListRow, 'cable_length' | 'cable_construction' | 'cable_parallel' | 'cable_insulation' | 'cable_size' | 'earth_size'>;
+/** A load's cable in a few words, e.g. "2 × 50 XLPE, 120 m" (blank when nothing is set). */
+export function cableSummary(r: CableDetails): string {
+	const parts = [r.cable_size ? `${(r.cable_parallel ?? 1) > 1 ? `${r.cable_parallel} × ` : ''}${r.cable_size} mm²` : (r.cable_parallel ?? 1) > 1 ? `${r.cable_parallel} ×` : '',
+		r.cable_insulation, r.cable_construction === 'Single core' ? `single core${r.earth_size ? ` + ${r.earth_size} E` : ''}` : ''].filter(Boolean).join(' ');
+	return [parts, r.cable_length != null ? `${r.cable_length} m` : ''].filter(Boolean).join(', ');
+}
 export const rowRef = (r: Pick<LoadListRow, 'recipe_id' | 'key'>) => `${r.recipe_id}/${r.key}`;
 export const rowTag = (r: LoadListRow) => (r.values.tag != null && r.values.tag !== '' ? String(r.values.tag) : r.key);
 export interface LoadListChoice { id: string; label: string; depth: number }
@@ -155,8 +168,10 @@ export interface LoadListView {
 	fields: string[]; rows: LoadListRow[];
 	sources: { id: string; name: string; target: string; rows: number; has_file: boolean }[];
 	plant_areas: LoadListChoice[]; load_types: LoadListChoice[]; warnings: string[];
+	/** The choices for a load's cable, from the Cable Types list. */
+	cable_insulations: string[]; cable_sizes: string[]; earth_sizes: string[];
 }
-export type Allocation = { plant_area_id?: string | null; load_type_id?: string | null; is_panel?: boolean; supplied_from?: string | null };
+export type Allocation = { plant_area_id?: string | null; load_type_id?: string | null; is_panel?: boolean; supplied_from?: string | null } & Partial<CableDetails>;
 export interface KeyListOverview {
 	plant_areas: { items: number; depth: number };
 	area_types: string[];

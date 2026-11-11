@@ -633,7 +633,7 @@ runsheet and the **Load Types** are the templates
 
 | List | Columns |
 |---|---|
-| Cable Schedule | Cable Number, From, From Description, To, To Description, Cable Type, Cores, Size, Voltage, Length (m), Route, Remarks |
+| Cable Schedule | Cable Number, From, From Description, To, To Description, Cable Type, Cable Code, Cores, Size, Voltage, Length (m), Route, Remarks |
 | Equipment List | Tag, Description, Equipment Type, Plant Area, Rating, Units, Voltage, Phases, Supplied From, Manufacturer, Model, Remarks |
 | Instrument List | Tag, Description, Instrument Type, Plant Area, Service, Signal, IO Type, Range, Units, Remarks |
 | PLC I/O List | Tag, Description, Signal, IO Type, PLC System, Rack, Slot, Channel, Plant Area, Remarks |
@@ -649,7 +649,40 @@ Tags (not case-sensitive; type `<<` in a cell to pick one):
 | `<<LoadType>>`, `<<LoadTypeName>>`, `<<StdDrg>>`, `<<BucketType>>` | the allocated load type |
 | `<<SuppliedFrom>>`, `<<SuppliedFromDesc>>` | the panel it is supplied from, or Primary Supply |
 | `<<Row>>` | 1, 2, … within the load's rows of that list |
+| `<<CableCode>>`, `<<CableDesc>>`, `<<CableCores>>`, `<<CableVoltage>>` | the cable found in Cable Types for the load |
+| `<<CableSize>>`, `<<CableInsulation>>`, `<<CableLength>>`, `<<CableParallel>>`, `<<CableConstruction>>` | the load's cable details from the Load List |
+| `<<CableNo>>`, `<<Phase>>` | 1, 2, … and L1 / L2 / L3 / N / E for each cable of a "Per power cable" row |
 | any mapped load-list field, e.g. `<<starter_type>>` | that field of the load |
+
+### Cables: the load's details pick the cable from Cable Types
+
+Cable sizing is done outside the app. Each load in the **Load List** has a
+**Cable** cell (click it, or **Set cable details…** for every row the filters
+show) with: power cable **Multicore / Single core**, **parallel cables**, **core
+size**, **insulation**, **earth cable size** (single core only) and **cable
+length**. Sizes and insulations are the ones in the Cable Types list, which has
+an **Insulation** column for this (filled from the descriptions of the default
+cables, and of lists saved before the column existed).
+
+In a load type's Cable Schedule rows, the **Repeat** setting makes a row
+**Per power cable**. Such a row is written once for each cable:
+
+- multicore: one row per parallel cable (1 × 70 mm² is one row, 2 × 50 mm² two);
+- single core: per parallel set, one row per conductor (L1 L2 L3, plus N for
+  3-phase+N; L N, L1 L2 or + − otherwise) with cores `1C`, then one earth cable
+  row (Earth, 1C, the earth size).
+
+The cable is the Cable Types row whose **type** is the row's Cable Type cell
+(Power, VSD, Power Flex…), whose **cores** are the row's Cores cell (`1C` for
+single core), and whose **size** and **insulation** are the load's. If several
+match, the one whose application names the load's voltage (`AC_415V`) is used.
+The row's Cable Type, Cable Code and Cores cells show what was found. A load
+type can have several repeating rows (for example supply and motor cables of a
+VSD). A row without Repeat can still use the cable tags: it gets one cable.
+
+When the details are missing or nothing in the table matches, the row is still
+written with the cable cells blank and the deliverable shows a warning naming
+the loads; it can still be issued.
 
 ### Sample data
 

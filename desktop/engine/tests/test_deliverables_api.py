@@ -188,6 +188,9 @@ def test_deliverables_from_the_project_load_list() -> None:
     cables = _cells(made["Cable Schedule"]["id"])
     first = next(c for c in cables if c[0] == "P-101-P1")
     assert first[1:5] == ["MCC-1", "Motor control centre 1", "P-101", "Feed pump A"]
+    assert first[5:9] == ["Power", "AC_415V - Power - 3C+E - 2.5", "3C+E", 2.5]  # looked up in Cable Types
+    assert [c[0] for c in cables if c[3] == "C-401"] == ["C-401-P1", "C-401-P2"]  # two in parallel
+    assert [c[11] for c in cables if c[3] == "MSB-1"] == ["L1", "L2", "L3", "N"] * 2 + ["E"]  # single cores and their earth
     assert len(_cells(made["Load List"]["id"])) == 12
 
     # a filter on one of the list's columns; a column it doesn't have is refused
@@ -214,7 +217,7 @@ def test_deliverables_from_the_project_load_list() -> None:
     # change a template row: the current content differs from Rev A, and Rev B records it
     types = client.get("/api/keylists/load-types").json()["items"]
     dol = next(t for t in types if t["code"] == "DOL")
-    dol["rows"]["cable_schedule"][0]["Size"] = "4"
+    dol["rows"]["cable_schedule"][0]["Remarks"] = "Run on ladder"
     dol["rows"]["cable_schedule"].append({"Cable Number": "<<Tag>>-E1", "From": "<<Tag>>", "To": "Earth bar", "Cable Type": "Earth"})
     assert client.put("/api/keylists/load-types", json={"items": types}).status_code == 200
     cur = client.get(f"{API}/{cable['id']}").json()["current"]
@@ -223,6 +226,18 @@ def test_deliverables_from_the_project_load_list() -> None:
     assert (rev_b["letter"], rev_b["added"], rev_b["changed"], rev_b["build_seq"]) == ("B", 4, 4, 0)
     a = client.get(f"{API}/revisions/{rev_a['id']}").json()
     assert not any(r["cells"][0] == "P-101-E1" for r in a["result"]["rows"])  # Rev A is frozen
+
+    # the load's cable details drive the schedule: a bigger cable in parallel, then one the table doesn't have
+    assert client.put("/api/loadlist/allocations", json={"rows": [key], "cable_size": "70", "cable_insulation": "xlpe",
+                                                         "cable_parallel": 2}).status_code == 200
+    p101 = [c for c in _cells(cable["id"]) if c[0].startswith("P-101-P")]
+    assert [(c[0], c[6], c[8]) for c in p101] == [("P-101-P1", "AC_415V - Power - 3C+E - 70", 70), ("P-101-P2", "AC_415V - Power - 3C+E - 70", 70)]
+    cur = client.get(f"{API}/{cable['id']}").json()["current"]
+    assert (cur["changes"]["added"], cur["warnings"]) == (1, [])
+    assert client.put("/api/loadlist/allocations", json={"rows": [key], "cable_insulation": "PVC"}).status_code == 200
+    cur = client.get(f"{API}/{cable['id']}").json()["current"]
+    assert cur["problem"] is None and cur["warnings"] == ["No cable for 1 load(s) (no cable type is Power 3C+E 70 mm² PVC): P-101"]
+    assert client.post(f"{API}/{cable['id']}/revisions", json={}).json()["letter"] == "C"  # a warning does not block
     wb = load_workbook(io.BytesIO(client.post(f"{API}/revisions/{rev_b['id']}/export", json={}).content))
     assert any(row[0] == "P-101-E1" for row in wb.active.iter_rows(values_only=True))
 

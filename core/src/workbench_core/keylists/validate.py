@@ -148,7 +148,7 @@ def check_equipment_packages(packages: EquipmentPackageList) -> EquipmentPackage
 def _template_rows(raw: object, rid: str, errors: dict[str, str]) -> dict[str, list[dict[str, str]]]:
     """A load type's rows per deliverable list: known lists and columns only, text trimmed,
     blank cells and wholly blank rows dropped."""
-    from .loadgen import LISTS, TEMPLATE_LISTS
+    from .loadgen import LISTS, ROW_SETTINGS, TEMPLATE_LISTS
 
     out: dict[str, list[dict[str, str]]] = {}
     if not isinstance(raw, dict):
@@ -161,11 +161,20 @@ def _template_rows(raw: object, rid: str, errors: dict[str, str]) -> dict[str, l
         for row in rows if isinstance(rows, list) else []:
             if not isinstance(row, dict):
                 continue
-            unknown = [c for c in row if c not in LISTS[key].columns]
+            settings = ROW_SETTINGS.get(key, {})
+            unknown = [c for c in row if c not in LISTS[key].columns and c not in settings]
             if unknown:
                 errors[f"{rid}.rows.{key}"] = f"Not a column of the {LISTS[key].deliverable_type}: {', '.join(unknown)}"
-            cells = {c: str(v).strip() for c, v in row.items() if c in LISTS[key].columns and v is not None and str(v).strip()}
-            if cells:
+            cells = {c: str(v).strip() for c, v in row.items()
+                     if (c in LISTS[key].columns or c in settings) and v is not None and str(v).strip()}
+            for name, allowed in settings.items():
+                if name in cells:
+                    match = next((a for a in allowed if a.casefold() == cells[name].casefold()), None)
+                    if match is None:
+                        errors[f"{rid}.rows.{key}"] = f"{name} is blank or one of: {', '.join(allowed)}"
+                    else:
+                        cells[name] = match
+            if any(c in LISTS[key].columns for c in cells):
                 kept.append(cells)
         if kept:
             out[key] = kept

@@ -9,6 +9,12 @@ List itself is a fifth list, one row per load, with no templates.
 
 The result is a generators BuildResult, so deliverables filter, compare, freeze and export
 it exactly as they do a generator build.
+
+Cables: a load carries its power cable's details (size, insulation, multicore or single
+core, how many in parallel, length), typed in on the Load List. A cable schedule row can
+be marked "Per power cable": it is then produced once per cable (one per parallel
+multicore cable; for single core, one per phase conductor per parallel set, and one earth
+cable), and each cable is looked up in the Cable Types list.
 """
 
 from __future__ import annotations
@@ -18,6 +24,8 @@ from dataclasses import dataclass
 
 from ..generators.models import BuildResult, BuildStats, OutputRow, Scalar
 from ..mel.models import ELEC_LOAD_FIELDS
+from ..refdata.validate import name_key
+from .cable_types import CableType
 from .loadlist import PRIMARY_SUPPLY, LoadListRow
 from .models import LoadType
 
@@ -33,7 +41,7 @@ class OutputList:
 
 LISTS: dict[str, OutputList] = {x.key: x for x in (
     OutputList("cable_schedule", "Cable Schedule", (
-        "Cable Number", "From", "From Description", "To", "To Description", "Cable Type", "Cores", "Size", "Voltage",
+        "Cable Number", "From", "From Description", "To", "To Description", "Cable Type", "Cable Code", "Cores", "Size", "Voltage",
         "Length (m)", "Route", "Remarks"), "Cable Number"),
     OutputList("equipment_list", "Equipment List", (
         "Tag", "Description", "Equipment Type", "Plant Area", "Rating", "Units", "Voltage", "Phases", "Supplied From",
@@ -51,6 +59,12 @@ LISTS: dict[str, OutputList] = {x.key: x for x in (
 TEMPLATE_LISTS = [k for k, x in LISTS.items() if x.templated]
 BY_TYPE = {x.deliverable_type: x for x in LISTS.values()}
 
+#: A cable schedule row's extra setting (kept with the row's cells; not an output column).
+REPEAT = "Repeat"
+PER_CABLE = "Per power cable"
+#: Settings a list's template rows can have besides its columns: list key -> {name: allowed values}.
+ROW_SETTINGS: dict[str, dict[str, tuple[str, ...]]] = {"cable_schedule": {REPEAT: (PER_CABLE,)}}
+
 #: The tags a template row can use, with what each stands for (shown in the editor).
 TAGS: list[tuple[str, str]] = [
     ("Tag", "the load's tag number"), ("Description", "the load's description"), ("Area", "the area text from the import"),
@@ -62,7 +76,16 @@ TAGS: list[tuple[str, str]] = [
     ("SuppliedFrom", "tag of the panel it is supplied from, or Primary Supply"), ("SuppliedFromDesc", "that panel's description"),
     ("StdDrg", "the load type's STD Drg"), ("BucketType", "the load type's bucket type"),
     ("Source", "the import or list the load comes from"), ("Row", "1, 2, ... within the load's rows of this list"),
+    ("CableNo", "1, 2, ... for each cable a 'Per power cable' row produces"),
+    ("Phase", "L1, L2, L3, N or E for a single-core cable (blank for multicore)"),
+    ("CableCode", "code of the matching cable in Cable Types"), ("CableDesc", "its description"),
+    ("CableCores", "its cores (1C for single core)"), ("CableSize", "the load's core size (the earth size on an earth cable)"),
+    ("CableInsulation", "the load's cable insulation"), ("CableVoltage", "the matching cable's voltage grade"),
+    ("CableLength", "the load's cable length (m)"), ("CableParallel", "how many cables run in parallel"),
+    ("CableConstruction", "Multicore or Single core"),
 ]
+_CABLE_TAGS = ("cableno", "phase", "cablecode", "cabledesc", "cablecores", "cablesize", "cableinsulation", "cablevoltage",
+               "cablelength", "cableparallel", "cableconstruction")
 
 _TAG = re.compile(r"<<\s*([^<>]+?)\s*>>")
 _NUMBER = re.compile(r"^-?\d+(\.\d+)?$")
@@ -132,12 +155,92 @@ def expand(text: str, tags: dict[str, str], unresolved: dict[str, int]) -> str:
     return _TAG.sub(sub, text)
 
 
+# -- cables ------------------------------------------------------------------------------------
+
+def _size(text: str) -> str:
+    """Sizes compare as numbers where they are numbers ("2.50" = "2.5"), else as text."""
+    t = text.strip().replace("mm2", "").replace("mm²", "").strip()
+    try:
+        return f"{float(t):g}"
+    except ValueError:
+        return name_key(t)
+
+
+def match_cable(cables: list[CableType], kind: str, cores: str, size: str, insulation: str = "", voltage: str = "",
+                application: str = "") -> tuple[CableType | None, str]:
+    """The one cable type with this type (family), cores, size and insulation; blank
+    criteria are not compared. Several left: the one whose application names the voltage
+    ("AC_415V" for 415). Returns (cable, why not)."""
+    def same(have: str, want: str) -> bool:
+        return not want.strip() or name_key(have) == name_key(want)
+    found = [c for c in cables if same(c.type, kind) and same(c.cores, cores) and same(c.insulation, insulation)
+             and same(c.application, application) and _size(c.diameter) == _size(size)]
+    if len(found) > 1 and voltage.strip():
+        by_voltage = [c for c in found if voltage.strip() in c.application]
+        found = by_voltage or found
+    if len(found) == 1:
+        return found[0], ""
+    what = " ".join(x for x in (kind, cores, f"{size} mm²", insulation) if x.strip())
+    return None, (f"no cable type is {what}" if not found else f"{len(found)} cable types are {what}")
+
+
+def _phases(phases: str) -> list[str]:
+    """The conductors of a single-core set, from the load's phases."""
+    p = phases.casefold()
+    if "dc" in p:
+        return ["+", "-"]
+    if "1-phase-ln" in p:
+        return ["L", "N"]
+    if "1-phase-ll" in p:
+        return ["L1", "L2"]
+    return ["L1", "L2", "L3"] + (["N"] if "+n" in p else [])
+
+
+def cables_for(load: LoadListRow, kind: str, cores: str, tags: dict[str, str], cables: list[CableType],
+               every: bool) -> tuple[list[dict[str, str]], list[str]]:
+    """The cables one template row stands for: (cable tags per cable, problems).
+
+    `kind` / `cores`: the row's Cable Type and Cores cells (the cable family, and the cores
+    of a multicore cable). `every`: a "Per power cable" row, so one entry per cable; else
+    just the first cable (as if multicore)."""
+    parallel = load.cable_parallel or 1
+    single = load.cable_construction == "Single core" and every
+    common = {"cableinsulation": load.cable_insulation, "cablelength": _text(load.cable_length),
+              "cableparallel": str(parallel), "cableconstruction": "Single core" if single else "Multicore"}
+    problems: list[str] = []
+
+    def one(phase: str, k: str, c: str, size: str, insulation: str, application: str = "") -> dict[str, str]:
+        found, why = (None, "its cable size is not set") if not size.strip() else match_cable(
+            cables, k, c, size, insulation, tags.get("voltage", ""), application)
+        if found is None and why not in problems:
+            problems.append(why)
+        return common | {"phase": phase, "cablesize": size, "cablecores": found.cores if found else c,
+                         "cabletype": found.type if found else k, "cablecode": found.code if found else "",
+                         "cabledesc": found.description if found else "", "cablevoltage": found.voltage if found else ""}
+
+    if not single:
+        out = [one("", kind, cores, load.cable_size, load.cable_insulation) for _ in range(parallel if every else 1)]
+    else:
+        out = [one(p, kind, "1C", load.cable_size, load.cable_insulation) for _ in range(parallel) for p in _phases(tags.get("phases", ""))]
+        earth = one("E", "", "1C", load.earth_size, "", "Earth")
+        if not load.earth_size.strip():
+            problems[:] = [p for p in problems if p != "its cable size is not set"] + ["its earth cable size is not set"]
+        out.append(earth | {"cabletype": earth["cabletype"] or "Earth", "cableinsulation": ""})
+    for n, c in enumerate(out, start=1):
+        c["cableno"] = str(n)
+    return out, problems
+
+
 def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, LoadType],
-             areas: dict[str, tuple[str, str]]) -> BuildResult:
+             areas: dict[str, tuple[str, str]], cables: list[CableType] | None = None,
+             notes: list[str] | None = None) -> BuildResult:
     """The rows of one list for the active loads. `load_types` by id; `areas`: plant area id ->
     (tag, description). Loads without a load type produce nothing in a templated list (the
-    caller reports them: see missing_load_types)."""
+    caller reports them: see missing_load_types). `cables`: the Cable Types list, for rows
+    that use the cable tags; `notes` collects the loads whose cable could not be found."""
     spec = LISTS[list_key]
+    cables = cables or []
+    unmatched: dict[str, list[str]] = {}  # problem -> load tags
     by_ref = {r.ref(): r for r in loads}
     unresolved: dict[str, int] = {}
     rows: list[OutputRow] = []
@@ -151,8 +254,31 @@ def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, Load
             continue
         for i, template in enumerate((lt.rows.get(list_key, []) if lt else []), start=1):
             tags["row"] = str(i)
-            rows.append(OutputRow(cells=[_cell(expand(template.get(c, ""), tags, unresolved)) for c in spec.columns],
-                                  run_row_id=load.ref(), template_id=lt.code, template_seq=i))
+            every = template.get(REPEAT) == PER_CABLE
+            uses = every or any(m.casefold() in _CABLE_TAGS for cell in template.values() for m in _TAG.findall(cell))
+            if not uses:
+                for t in _CABLE_TAGS:
+                    tags.pop(t, None)
+                found = [{}]
+            else:
+                # the row's own Cable Type and Cores cells say which family of cable is wanted
+                kind, cores = (expand(template.get(c, ""), tags | dict.fromkeys(_CABLE_TAGS, ""), {}) for c in ("Cable Type", "Cores"))
+                found, problems = cables_for(load, kind, cores, tags, cables, every)
+                for p in problems:
+                    unmatched.setdefault(p, []).append(load.tag())
+            for cable in found:
+                row_tags = tags | cable
+                cells = {c: expand(template.get(c, ""), row_tags, unresolved) for c in spec.columns}
+                if every:  # what was matched, whatever the template's cells say
+                    cells |= {"Cable Type": cable["cabletype"], "Cores": cable["cablecores"]}
+                    cells["Cable Code"] = cells["Cable Code"] or cable["cablecode"]
+                rows.append(OutputRow(cells=[_cell(cells[c]) for c in spec.columns], run_row_id=load.ref(),
+                                      template_id=lt.code, template_seq=i))
+    if notes is not None:
+        for problem, tags_ in unmatched.items():
+            names = list(dict.fromkeys(tags_))
+            notes.append(f"No cable for {len(names)} load(s) ({problem}): " + ", ".join(names[:12])
+                         + (f" and {len(names) - 12} more" if len(names) > 12 else ""))
     return BuildResult(header=list(spec.columns), rows=rows, stats=BuildStats(rows_written=len(rows), output_rows=len(rows)),
                        unresolved_tokens=sorted(unresolved), unresolved_count=sum(unresolved.values()),
                        engine_version="load types")

@@ -97,8 +97,8 @@ def _project(d: Deliverable) -> tuple[BuildResult, str, list[str], str | None]:
     rows, _, _ = current_rows()
     types = {t.id: t for t in lists.load_types().items}
     areas = {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}
-    result = generate(spec.key, rows, types, areas)
-    warnings = []
+    warnings: list[str] = []
+    result = generate(spec.key, rows, types, areas, lists.cable_types().items, warnings)
     if result.unresolved_count:
         warnings.append(f"{result.unresolved_count} tag(s) in the load types' rows match nothing and were left as they are: "
                         + ", ".join(result.unresolved_tokens[:10]))

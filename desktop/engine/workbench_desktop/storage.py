@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from workbench_core.keylists.cable_types import CableType, CableTypeList, default_cable_types
+from workbench_core.keylists.cable_types import CableType, CableTypeList, default_cable_types, fill_insulation
 from workbench_core.deliverables import Deliverable, next_letter
 from workbench_core.deliverables import Revision as IssuedRevision
 from workbench_core.deliverables import RevisionInfo as IssueInfo
@@ -583,7 +583,12 @@ class KeyListStore:
         """The cable types; a project that never saved them has the default set."""
         with self._lock:
             row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.CABLE_TYPES,)).fetchone()
-        return CableTypeList.model_validate_json(row[0]) if row else CableTypeList(items=default_cable_types())
+        if not row:
+            return CableTypeList(items=default_cable_types())
+        cables = CableTypeList.model_validate_json(row[0])
+        if '"insulation"' not in row[0]:  # saved before the Insulation column: read it from the descriptions
+            fill_insulation(cables.items)
+        return cables
 
     def save_cable_types(self, items: list[CableType], note: str | None = None) -> CableTypeList:
         cables = CableTypeList(items=items, updated_at=_now())
@@ -824,7 +829,7 @@ class LoadListStore:
             for k in keys:
                 if k not in stored:
                     raise NotFound(f"{k[0]}/{k[1]}")
-                if k[0] == EEL_SOURCE:
+                if k[0] == EEL_SOURCE and any(f in self.EDITABLE for f in change):
                     raise RefValidationError(f"{stored[k].tag()} is from the Electrical Equipment List: change it there.",
                                              {"rows": "From the Electrical Equipment List"})
                 rows.append(stored[k])
@@ -838,7 +843,10 @@ class LoadListStore:
             def shown(r: LoadListRow) -> dict:
                 return {"plant area": labels.get(r.plant_area_id or "", r.plant_area_id),
                         "load type": labels.get(r.load_type_id or "", r.load_type_id),
-                        "distribution panel": "yes" if r.is_panel else "no", "supplied from": supply_label(r.supplied_from)}
+                        "distribution panel": "yes" if r.is_panel else "no", "supplied from": supply_label(r.supplied_from),
+                        "cable length (m)": r.cable_length, "power cable": r.cable_construction,
+                        "parallel cables": r.cable_parallel, "cable insulation": r.cable_insulation or None,
+                        "cable size": r.cable_size or None, "earth size": r.earth_size or None}
 
             supply = change.get("supplied_from")
             if supply is not None and supply != PRIMARY_SUPPLY:
@@ -867,7 +875,8 @@ class LoadListStore:
                 update: dict[str, object] = {"updated_at": _now()}
                 for field, value in change.items():
                     update[field] = value
-                    update[self.EDITABLE[field]] = "user"
+                    if field in self.EDITABLE:
+                        update[self.EDITABLE[field]] = "user"
                 new_rows[row.ref()] = row.model_copy(update=update)
             graph = {**by_ref, **new_rows}
             if change.get("is_panel") is False:  # automatic links to a panel that isn't one any more go

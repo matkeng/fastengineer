@@ -164,8 +164,10 @@ class LoadTypesUpdate(BaseModel):
 @router.get("/load-types/lists")
 def load_type_lists() -> dict:
     """The deliverable lists a load type has rows for (with their columns), and the tags a row can use."""
-    from workbench_core.keylists.loadgen import LISTS, TAGS, TEMPLATE_LISTS
-    return {"lists": [{"key": k, "name": LISTS[k].deliverable_type, "columns": list(LISTS[k].columns)} for k in TEMPLATE_LISTS],
+    from workbench_core.keylists.loadgen import LISTS, ROW_SETTINGS, TAGS, TEMPLATE_LISTS
+    return {"lists": [{"key": k, "name": LISTS[k].deliverable_type, "columns": list(LISTS[k].columns),
+                       "settings": [{"name": n, "values": list(v)} for n, v in ROW_SETTINGS.get(k, {}).items()]}
+                      for k in TEMPLATE_LISTS],
             "tags": [{"tag": f"<<{t}>>", "meaning": m} for t, m in TAGS]}
 
 

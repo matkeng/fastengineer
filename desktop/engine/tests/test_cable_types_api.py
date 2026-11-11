@@ -2,6 +2,8 @@
 # Copyright (C) 2026 Matthew Kelly
 from __future__ import annotations
 
+import json
+
 from pathlib import Path
 
 import pytest
@@ -29,7 +31,9 @@ def test_a_project_starts_with_the_default_cable_types() -> None:
     assert [i["sort"] for i in items] == sorted(i["sort"] for i in items) and (items[0]["sort"], items[-1]["sort"]) == (1, 238)
     by = {i["sort"]: i for i in items}
     assert by[1] == {"id": "d1", "code": "AC_240V - Power - 2C+E - 1.5", "application": "AC_240V", "type": "Power",
-                     "cores": "2C+E", "diameter": "1.5", "voltage": "0.6/1kV", "description": "Cu-PVC-PVC-V90 (Power)", "sort": 1}
+                     "cores": "2C+E", "diameter": "1.5", "voltage": "0.6/1kV", "insulation": "PVC",
+                     "description": "Cu-PVC-PVC-V90 (Power)", "sort": 1}
+    assert (by[7]["insulation"], by[229]["insulation"], by[231]["insulation"]) == ("XLPE", "", "")
     assert by[14]["code"] == "Vendor - Vendor - VENDOR - VENDOR" and by[14]["voltage"] == "VENDOR"
     assert by[7]["description"] == "Cu-XLPE-PVC-X90 (Power)" and by[37]["code"] == "AC_415V - Power - 6C+E - 4"
     assert (by[76]["description"], by[77]["description"]) == (
@@ -37,7 +41,7 @@ def test_a_project_starts_with_the_default_cable_types() -> None:
     assert by[96]["code"] == "AC_240V - Power Flex - 2C+E - 25" and by[164]["description"] == "Flex-Cu-XLPE-TPE-X110 (Flex Power)"
     assert by[229]["code"] == "Earth - BARE - Bare - 120" and by[234]["description"] == "Loose Tube - SM, LSZH Jacket"
     assert by[238] | {"id": ""} == {"id": "", "code": "Network - Ethernet - CAT6A - Outdoor", "application": "Network",
-                                    "type": "Ethernet", "cores": "CAT6A", "diameter": "Outdoor", "voltage": "N/A",
+                                    "type": "Ethernet", "cores": "CAT6A", "diameter": "Outdoor", "voltage": "N/A", "insulation": "",
                                     "description": "Cu-HDPE-SF/UTP CAT6 Outdoor", "sort": 238}
     assert not {31, 36, 38, 51, 62, 133, 235, 236} & set(by)  # the original list's blank rows
 
@@ -50,7 +54,7 @@ def test_edit_rules_defaults_conflicts_and_log(data_dir: Path) -> None:
     saved = client.put(URL, json={"items": mine}, headers={**ANN, "If-Match": ann})
     assert saved.status_code == 200, saved.text
     assert saved.json()["items"][3] == {"id": "n1", "code": "SPECIAL - 1", "application": "AC_415V", "type": "", "cores": "",
-                                        "diameter": "", "voltage": "", "description": "", "sort": 500}
+                                        "diameter": "", "voltage": "", "insulation": "", "description": "", "sort": 500}
     bad = client.put(URL, json={"items": mine + [{"id": "x1", "code": "special  - 1", "sort": "abc"}, {"id": "x2", "code": " "}]})
     assert bad.status_code == 422 and set(bad.json()["fields"]) == {"x1.code", "x1.sort", "x2.code"}
     stale = client.put(URL, json={"items": []}, headers={**BOB, "If-Match": bob})
@@ -65,3 +69,15 @@ def test_edit_rules_defaults_conflicts_and_log(data_dir: Path) -> None:
     entries = log["entries"] if isinstance(log, dict) else log
     assert entries[0]["label"] == "Cable Types"
     assert any(c["new"] == "215 default cable type(s) added" for c in entries[0]["changes"])
+
+
+def test_insulation_is_saved_and_read_from_descriptions_of_older_lists(data_dir: Path) -> None:
+    items = client.get(URL).json()["items"][:2]
+    items[0]["insulation"] = " EPR "
+    assert client.put(URL, json={"items": items}).json()["items"][0]["insulation"] == "EPR"
+    # a list saved before the column existed: the insulation comes from the descriptions
+    old = {"items": [{"id": "o1", "code": "A", "description": "Cu-XLPE-PVC-X90 (Power)"}, {"id": "o2", "code": "B", "description": "Bare"}]}
+    db = storage.get_store()._db
+    with db:
+        db.execute("UPDATE key_lists SET data = ? WHERE id = 'cable-types'", (json.dumps(old),))
+    assert [i["insulation"] for i in client.get(URL).json()["items"]] == ["XLPE", ""]

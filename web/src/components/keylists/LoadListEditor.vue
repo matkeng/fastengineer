@@ -5,7 +5,9 @@ import type { ColumnsConfig } from 'datatables.net';
 import { computed, onBeforeUnmount, ref, toRaw, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, type SelectFilter, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
-import { type Allocation, EEL_SOURCE, type LoadListChoice, type LoadListRow, PRIMARY_SUPPLY, rowRef, rowTag } from '../../lib/keyListTypes';
+import {
+	type Allocation, type CableConstruction, type CableDetails, EEL_SOURCE, type LoadListChoice, type LoadListRow, PRIMARY_SUPPLY, cableSummary, rowRef, rowTag,
+} from '../../lib/keyListTypes';
 import { LOAD_FIELD_LABELS } from '../../lib/melTypes';
 import { useKeyLists } from '../../stores/keylists';
 import { useUi } from '../../stores/ui';
@@ -146,6 +148,12 @@ function build() {
 				return `<select class="${cls}" data-kind="supplied_from" data-row="${rows.indexOf(row)}" aria-label="Supplied from" title="${row.supplied_from_by === 'auto' ? autoTip : ''}">${html}</select>`;
 			},
 		},
+		{
+			// The power cable's details, typed in here for any row; click to edit (see onClick).
+			title: 'Cable', data: (row: LoadListRow) => cableSummary(row), className: 'alloc-col cable-col',
+			render: (t: string, type: string, row: LoadListRow) => (type !== 'display' ? t
+				: `<button type="button" class="link cable-edit${t ? '' : ' none'}" data-cable="${rows.indexOf(row)}" title="Cable length, size, insulation, parallel cables">${escapeHtml(t) || 'Set…'}</button>`),
+		},
 		...v.fields.filter((f) => f !== 'tag' && f !== 'desc').map((f): ColumnsConfig => ({
 			// The import's own text for what is edited here is marked, so the two can't be mixed up.
 			title: escapeHtml(LOAD_FIELD_LABELS[f] ?? f) + (FROM_IMPORT.has(f) ? ' (import)' : ''),
@@ -234,6 +242,64 @@ async function onChange(e: Event) {
 	}
 }
 
+// -- the power cable's details: one row (click its Cable cell) or every row the filters show --
+type CableField = keyof CableDetails;
+const CABLE_FIELDS: CableField[] = ['cable_construction', 'cable_parallel', 'cable_size', 'cable_insulation', 'earth_size', 'cable_length'];
+const cable = ref<{ rows: LoadListRow[]; bulk: boolean; set: Record<CableField, boolean>;
+	form: { cable_length: string; cable_construction: CableConstruction; cable_parallel: string; cable_insulation: string; cable_size: string; earth_size: string } } | null>(null);
+const cableErrors = computed(() => kl.fieldErrors as Partial<Record<CableField, string>>);
+
+function openCable(rows: LoadListRow[], bulk: boolean) {
+	const r = bulk ? null : rows[0];
+	kl.error = null;
+	kl.fieldErrors = {};
+	cable.value = {
+		rows, bulk, set: Object.fromEntries(CABLE_FIELDS.map((f) => [f, !bulk])) as Record<CableField, boolean>,
+		form: {
+			cable_length: r?.cable_length == null ? '' : String(r.cable_length), cable_construction: r?.cable_construction ?? 'Multicore',
+			cable_parallel: String(r?.cable_parallel ?? 1), cable_insulation: r?.cable_insulation ?? '', cable_size: r?.cable_size ?? '',
+			earth_size: r?.earth_size ?? '',
+		},
+	};
+}
+
+function onClick(e: MouseEvent) {
+	const el = (e.target as HTMLElement).closest<HTMLElement>('[data-cable]');
+	const row = el ? toRaw(view.value!.rows)[Number(el.dataset.cable)] : null;
+	if (row) openCable([row], false);
+}
+
+async function applyCable() {
+	const c = cable.value;
+	if (!c || !c.rows.length) return;
+	const f = c.form;
+	// a number input's model is a number once typed in
+	const number = (t: string | number) => (String(t).trim() === '' ? null : Number(String(t).replace(/,/g, '')));
+	const all: CableDetails = {
+		cable_length: number(f.cable_length), cable_construction: f.cable_construction, cable_parallel: number(f.cable_parallel),
+		cable_insulation: f.cable_insulation, cable_size: f.cable_size, earth_size: f.cable_construction === 'Single core' ? f.earth_size : '',
+	};
+	if (Number.isNaN(all.cable_length) || Number.isNaN(all.cable_parallel) || (all.cable_parallel != null && !Number.isInteger(all.cable_parallel))) {
+		kl.error = 'Length is a number and parallel cables a whole number.';
+		return;
+	}
+	const change = Object.fromEntries(CABLE_FIELDS.filter((k) => c.set[k]).map((k) => [k, all[k]])) as Allocation;
+	if (!Object.keys(change).length) {
+		kl.error = 'Tick what to change.';
+		return;
+	}
+	const saved = await kl.allocate(c.rows, change);
+	if (saved) {
+		merge(saved);
+		kl.message = c.bulk ? `Saved ${saved.length} row(s)` : `Saved ${rowTag(c.rows[0])}`;
+		cable.value = null;
+	}
+}
+
+function openBulkCable() {
+	if (table) openCable(table.api.rows({ search: 'applied' }).data().toArray() as LoadListRow[], true);
+}
+
 // -- set an allocation for every row the filters show ---------------------------------------
 const bulk = ref<{ kind: SelectKind; value: string; rows: LoadListRow[]; skipped: number } | null>(null);
 const BULK_TITLE: Record<SelectKind, string> = { plant_area: 'plant area', load_type: 'load type', supplied_from: 'supplied from' };
@@ -301,8 +367,9 @@ onBeforeUnmount(() => table?.api.destroy());
 				<button type="button" class="secondary small" :disabled="kl.busy" @click="openBulk('plant_area')">Set plant area…</button>
 				<button type="button" class="secondary small" :disabled="kl.busy" @click="openBulk('load_type')">Set load type…</button>
 				<button type="button" class="secondary small" :disabled="kl.busy" @click="openBulk('supplied_from')">Set supplied from…</button>
+				<button type="button" class="secondary small" :disabled="kl.busy" @click="openBulkCable">Set cable details…</button>
 			</div>
-			<div ref="host" class="result-table" @change="onChange" />
+			<div ref="host" class="result-table" @change="onChange" @click="onClick" />
 		</div>
 
 		<AppModal :open="!!bulk" :title="`Set ${bulk ? BULK_TITLE[bulk.kind] : ''}`" @close="bulk = null">
@@ -327,6 +394,57 @@ onBeforeUnmount(() => table?.api.destroy());
 				<span class="spacer" />
 				<button type="button" class="secondary" @click="bulk = null">Cancel</button>
 				<button type="button" :disabled="kl.busy || !bulk?.rows.length" @click="applyBulk">Set {{ bulk?.rows.length }} row(s)</button>
+			</template>
+		</AppModal>
+
+		<AppModal class="cable-form" :open="!!cable" :title="cable?.bulk ? 'Set cable details' : `Power cable of ${cable ? rowTag(cable.rows[0]) : ''}`" @close="cable = null">
+			<template v-if="cable">
+				<p v-if="cable.bulk">
+					This sets the ticked details for the <strong>{{ cable.rows.length }}</strong> row(s) the filters show, replacing what they have now.
+				</p>
+				<p v-else class="hint small">
+					Typed in here (cable sizing is done outside this app). The cable schedule uses these to find the cable in Cable Types.
+				</p>
+				<form class="form-grid cable-grid" @submit.prevent="applyCable">
+					<label class="field"><span><input v-if="cable.bulk" v-model="cable.set.cable_construction" type="checkbox" /> Power cable</span>
+						<select v-model="cable.form.cable_construction" :disabled="!cable.set.cable_construction">
+							<option>Multicore</option><option>Single core</option>
+						</select>
+						<span v-if="cableErrors.cable_construction" class="warn small">{{ cableErrors.cable_construction }}</span></label>
+					<label class="field"><span><input v-if="cable.bulk" v-model="cable.set.cable_parallel" type="checkbox" /> Parallel cables</span>
+						<input v-model="cable.form.cable_parallel" type="number" min="1" step="1" :disabled="!cable.set.cable_parallel" :class="{ invalid: cableErrors.cable_parallel }" />
+						<span class="hint small">{{ cable.form.cable_construction === 'Single core' ? 'Sets of single cores per phase' : 'Multicore cables run in parallel' }}</span>
+						<span v-if="cableErrors.cable_parallel" class="warn small">{{ cableErrors.cable_parallel }}</span></label>
+					<label class="field"><span><input v-if="cable.bulk" v-model="cable.set.cable_size" type="checkbox" /> Core size (mm²)</span>
+						<select v-model="cable.form.cable_size" :disabled="!cable.set.cable_size" :class="{ invalid: cableErrors.cable_size }">
+							<option value="">— not set —</option>
+							<option v-for="s in view?.cable_sizes" :key="s" :value="s">{{ s }}</option>
+						</select>
+						<span v-if="cableErrors.cable_size" class="warn small">{{ cableErrors.cable_size }}</span></label>
+					<label class="field"><span><input v-if="cable.bulk" v-model="cable.set.cable_insulation" type="checkbox" /> Insulation</span>
+						<select v-model="cable.form.cable_insulation" :disabled="!cable.set.cable_insulation" :class="{ invalid: cableErrors.cable_insulation }">
+							<option value="">— not set —</option>
+							<option v-for="s in view?.cable_insulations" :key="s" :value="s">{{ s }}</option>
+						</select>
+						<span v-if="cableErrors.cable_insulation" class="warn small">{{ cableErrors.cable_insulation }}</span></label>
+					<label v-if="cable.form.cable_construction === 'Single core'" class="field"><span><input v-if="cable.bulk" v-model="cable.set.earth_size" type="checkbox" /> Earth cable size (mm²)</span>
+						<select v-model="cable.form.earth_size" :disabled="!cable.set.earth_size" :class="{ invalid: cableErrors.earth_size }">
+							<option value="">— not set —</option>
+							<option v-for="s in view?.earth_sizes" :key="s" :value="s">{{ s }}</option>
+						</select>
+						<span class="hint small">The separate earth cable of a single-core set</span>
+						<span v-if="cableErrors.earth_size" class="warn small">{{ cableErrors.earth_size }}</span></label>
+					<label class="field"><span><input v-if="cable.bulk" v-model="cable.set.cable_length" type="checkbox" /> Cable length (m)</span>
+						<input v-model="cable.form.cable_length" type="text" inputmode="decimal" :disabled="!cable.set.cable_length" :class="{ invalid: cableErrors.cable_length }" />
+						<span v-if="cableErrors.cable_length" class="warn small">{{ cableErrors.cable_length }}</span></label>
+					<button type="submit" hidden />
+				</form>
+				<p v-if="kl.error" class="error">{{ kl.error }}</p>
+			</template>
+			<template #footer>
+				<span class="spacer" />
+				<button type="button" class="secondary" @click="cable = null">Cancel</button>
+				<button type="button" :disabled="kl.busy || !cable?.rows.length" @click="applyCable">{{ cable?.bulk ? `Set ${cable.rows.length} row(s)` : 'Save' }}</button>
 			</template>
 		</AppModal>
 	</section>
