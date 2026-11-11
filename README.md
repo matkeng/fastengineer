@@ -505,9 +505,15 @@ You don't create or name them: each project has one of each.
     of the **Instrument Runsheet** (`<<STD>>`, `<<Area>>`, `<<MECH>>`, `<<SUF>>`,
     `<<PID>>`, `<<VIA_MB>>`, `<<CONF>>`, `<<Rack>>`, and `<<#1>>`, `<<#2>>`, … for
     as many numbers as the runsheet has).
-  - In the list's workbook each list's rows are a sheet ("Cable Schedule rows",
-    ...) with an **Equipment type** column; a rows sheet left out of a file
-    leaves those rows as they are.
+  - **Export .xlsx / Import .xlsx** cover the packages and their equipment
+    types together: the **Equipment Packages** sheet has one row per equipment
+    type with its package's columns (Package number, Package description,
+    Vendor, Package type, Equipment type, Equipment type description), and a
+    package with no types has a row of its own. Each list's rows of the types
+    are a further sheet ("Cable Schedule rows", ...) with an **Equipment type**
+    column; a rows sheet left out of a file leaves those rows as they are. A
+    workbook from before (a Packages sheet and an Equipment types sheet) still
+    imports.
 - **Load Types**: a flat list shown as a sortable, filterable grid; click a row
   (or **Add load type**) to edit it in a form, which saves straight away.
   **Code** and **Name** are required and unique; **kW or Amps**, **Voltage**

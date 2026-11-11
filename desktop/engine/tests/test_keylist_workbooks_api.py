@@ -261,8 +261,15 @@ def test_reset_parts_of_the_load_list() -> None:
 
 def test_equipment_type_rows_are_in_the_workbook() -> None:
     wb = load_workbook(io.BytesIO(_export("equipment-packages")))
-    assert wb.sheetnames == ["Packages", "Equipment types", "Cable Schedule rows", "Equipment List rows", "Instrument List rows",
+    assert wb.sheetnames == ["Equipment Packages", "Cable Schedule rows", "Equipment List rows", "Instrument List rows",
                              "PLC I-O List rows"]
+    # packages and their equipment types on one sheet: a row per type, a package with none on a row of its own
+    assert [list(r) for r in wb["Equipment Packages"].iter_rows(values_only=True)] == [
+        ["Package number", "Package description", "Vendor", "Package type", "Equipment type", "Equipment type description"],
+        ["PKG-010", "LV switchgear and MCCs", "Acme Switchgear", "Vendor", "Motor control centre", None],
+        ["PKG-010", "LV switchgear and MCCs", "Acme Switchgear", "Vendor", "Distribution board", None],
+        ["PKG-020", "Process pumps", "Globex Pumps", "Large Mech", "Centrifugal pump", "API 610"],
+        ["PKG-030", "Electrical installation", "Initech Electrical", "Installer", None, None]]
     ws = wb["Instrument List rows"]
     assert [c.value for c in ws[1]][:3] == ["Equipment type", "Tag", "Description"] and ws["A2"].value == "Centrifugal pump"
 
@@ -277,3 +284,46 @@ def test_equipment_type_rows_are_in_the_workbook() -> None:
     bad = client.put(LISTS["equipment-packages"], json={"items": client.get(LISTS["equipment-packages"]).json()["items"], "types": [
         dict(pump, rows={"instrument_list": [{"Nope": "x"}]})]})
     assert bad.status_code == 422 and f"{pump['id']}.rows.instrument_list" in bad.json()["fields"]
+
+
+def test_equipment_packages_and_types_import_from_one_sheet() -> None:
+    before = {t["name"]: t["id"] for t in client.get(LISTS["equipment-packages"]).json()["types"]}
+
+    def change(wb) -> None:
+        ws = wb["Equipment Packages"]
+        ws.append(["PKG-030", "Electrical installation", None, "Installer", "Cable tray", "Ladder and tray"])
+        ws.append(["PKG-040", "Instruments", "Acme Instruments", "Instrumentation", "Flow meter", None])
+        ws.append(["PKG-040", "Something else", None, None, "Level switch", None])  # its details differ: the first row's are used
+        for row in ws.iter_rows(min_row=2):
+            if row[4].value == "Distribution board":
+                ws.delete_rows(row[0].row)  # a type left out goes
+                break
+    res = _import("equipment-packages", _edit(_export("equipment-packages"), change), apply=True)
+    assert res.status_code == 200, res.text
+    assert any("PKG-040" in n and "first row" in n for n in res.json()["notes"])
+    after = client.get(LISTS["equipment-packages"]).json()
+    numbers = {i["id"]: i["number"] for i in after["items"]}
+    assert [i["number"] for i in after["items"]] == ["PKG-010", "PKG-020", "PKG-030", "PKG-040"]
+    assert next(i for i in after["items"] if i["number"] == "PKG-040")["description"] == "Instruments"
+    assert [(numbers[t["package_id"]], t["name"]) for t in after["types"]] == [
+        ("PKG-010", "Motor control centre"), ("PKG-020", "Centrifugal pump"), ("PKG-030", "Cable tray"),
+        ("PKG-040", "Flow meter"), ("PKG-040", "Level switch")]
+    kept = {t["name"]: t for t in after["types"]}
+    assert kept["Centrifugal pump"]["id"] == before["Centrifugal pump"] and kept["Centrifugal pump"]["rows"]  # identity and rows kept
+    assert kept["Cable tray"]["description"] == "Ladder and tray"
+
+
+def test_an_equipment_packages_workbook_of_before_still_imports() -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Packages"
+    ws.append(["Number", "Description", "Vendor", "Type"])
+    ws.append(["PKG-010", "LV switchgear and MCCs", "Acme Switchgear", "Vendor"])
+    t = wb.create_sheet("Equipment types")
+    t.append(["Package number", "Name", "Description"])
+    t.append(["PKG-010", "Motor control centre", "MCC"])
+    out = io.BytesIO()
+    wb.save(out)
+    res = _import("equipment-packages", out.getvalue())
+    assert res.status_code == 200 and "1 package(s) in the file" in res.json()["summary"], res.text
+    assert "Nothing" not in res.json()["summary"]  # PKG-020 and PKG-030 would go
