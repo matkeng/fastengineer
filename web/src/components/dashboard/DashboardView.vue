@@ -4,7 +4,8 @@
 import { computed, onMounted, ref } from 'vue';
 import pidSample from '../../../../samples/pid-sample.pdf?url';
 import type { Dashboard, DashEvent } from '../../lib/dashboardTypes';
-import { apiGet, apiPostJson } from '../../lib/engine';
+import { apiGet } from '../../lib/engine';
+import { loadSampleData } from '../../lib/sampleData';
 import type { IconName } from '../../lib/icons';
 import { useGenerators } from '../../stores/generators';
 import { useMel } from '../../stores/mel';
@@ -97,7 +98,7 @@ const starters = computed<Starter[]>(() => [
 async function loadSample() {
 	if (!confirm('Load sample data?\n\nEvery list that is still empty is filled with a small invented plant: plant areas, packages, codes, load types with their rows, an equipment list, a PLC, a MEL import and one deliverable of each type. Lists that already have data are left as they are.')) return;
 	try {
-		const res = await apiPostJson<{ added: Record<string, number>; skipped: string[] }>('/api/sample-data', {});
+		const res = await loadSampleData();
 		const added = Object.entries(res.added).map(([k, n]) => `${k}: ${n}`);
 		alert((added.length ? `Sample data added.\n\n${added.join('\n')}` : 'Nothing was added: every list already has data.')
 			+ (res.skipped.length && added.length ? `\n\nLeft as they were: ${res.skipped.join(', ')}.` : ''));

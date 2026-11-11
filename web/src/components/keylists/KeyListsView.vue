@@ -1,7 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { loadSampleData, sampleSummary } from '../../lib/sampleData';
 import { useKeyLists } from '../../stores/keylists';
 import { useUi } from '../../stores/ui';
 import EquipmentPackagesEditor from './EquipmentPackagesEditor.vue';
@@ -24,6 +25,22 @@ const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packa
 	'cable-types': kl.cableTypes }[kl.selected]);
 
 onMounted(() => kl.load());
+
+// Sample data: fills the lists that are still empty (a small invented plant), nothing else.
+const sampleBusy = ref(false);
+const sampleNote = ref('');
+async function addSample() {
+	sampleBusy.value = true;
+	try {
+		const res = await loadSampleData();
+		await kl.load();
+		sampleNote.value = sampleSummary(res) || 'Nothing was added: every list already has data.';
+	} catch (err) {
+		sampleNote.value = `The sample data could not be added: ${err instanceof Error ? err.message : String(err)}`;
+	} finally {
+		sampleBusy.value = false;
+	}
+}
 // Coming back to the section shows what is saved now (a draft with unsaved changes is kept).
 watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 </script>
@@ -80,6 +97,12 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 								:title="`${kl.overview?.load_list.rows ?? 0} row(s), ${kl.overview?.load_list.unallocated ?? 0} without a plant area or load type`">{{ kl.overview?.load_list.rows ?? 0 }}</span>
 						</li>
 					</ul>
+				</section>
+				<section>
+					<h3>Sample data</h3>
+					<p class="hint">Fills every list that is still empty with a small invented plant. Lists that already have data are left as they are.</p>
+					<button type="button" class="secondary small" :disabled="sampleBusy" @click="addSample">{{ sampleBusy ? 'Adding…' : 'Add sample data' }}</button>
+					<p v-if="sampleNote" class="hint small">{{ sampleNote }}</p>
 				</section>
 			</aside>
 			<!-- v-show keeps each list's filter and expanded rows when switching between them -->

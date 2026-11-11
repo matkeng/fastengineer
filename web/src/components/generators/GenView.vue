@@ -4,6 +4,7 @@
 import HistoryButton from '../audit/HistoryButton.vue';
 import { computed, onMounted, ref } from 'vue';
 import sampleUrl from '../../../../samples/generator-sample.xlsx?url';
+import { loadSampleData, sampleSummary } from '../../lib/sampleData';
 import { type ImportReport, KIND_LABELS } from '../../lib/genTypes';
 import { type GenTab, useGenerators } from '../../stores/generators';
 import AppModal from '../common/AppModal.vue';
@@ -19,6 +20,7 @@ const g = useGenerators();
 const fileInput = ref<HTMLInputElement | null>(null);
 const over = ref(false);
 const reportOpen = ref(false);
+const sampleNote = ref('');
 const bulkInput = ref<HTMLInputElement | null>(null);
 const bulkFile = ref<File | null>(null);
 
@@ -50,6 +52,7 @@ async function pick(files: FileList | null | undefined) {
 		g.error = 'Choose an Excel workbook (.xlsx or .xlsm).';
 		return;
 	}
+	sampleNote.value = '';
 	await g.importWorkbook(f);
 	if (g.draft) reportOpen.value = true;
 	if (fileInput.value) fileInput.value.value = '';
@@ -59,6 +62,12 @@ async function useSample() {
 	const blob = await (await fetch(sampleUrl)).blob();
 	await g.importWorkbook(new File([blob], 'generator-sample.xlsx'));
 	if (g.draft) reportOpen.value = true;
+	// The sample comes with sample project lists too (only lists that are still empty are filled).
+	try {
+		sampleNote.value = sampleSummary(await loadSampleData());
+	} catch (err) {
+		sampleNote.value = `The sample project lists could not be added: ${err instanceof Error ? err.message : String(err)}`;
+	}
 }
 
 function onDrop(e: DragEvent) {
@@ -119,10 +128,11 @@ onMounted(() => g.refreshList());
 			<div class="row create">
 				<input ref="fileInput" type="file" accept=".xlsx,.xlsm" hidden @change="pick(($event.target as HTMLInputElement).files)" />
 				<button type="button" :disabled="g.busy" @click="fileInput?.click()">Import workbook…</button>
-				<button type="button" class="secondary" :disabled="g.busy" @click="useSample">Use the sample generator</button>
+				<button type="button" class="secondary" :disabled="g.busy" title="Imports the sample generator and fills the project lists that are still empty with sample data" @click="useSample">Use the sample generator</button>
 				<span class="hint">or drop an .xlsx / .xlsm here</span>
 				<span v-if="g.busy" class="hint">Importing…</span>
 			</div>
+			<p v-if="sampleNote" class="hint">{{ sampleNote }}</p>
 			<p v-if="g.error" class="error">{{ g.error }}</p>
 		</section>
 
@@ -157,6 +167,7 @@ onMounted(() => g.refreshList());
 		<GenBulkImport :file="bulkFile" @close="bulkFile = null" />
 		<AppModal :open="reportOpen && !!report" :title="`Import report: ${report?.workbook ?? ''}`" @close="reportOpen = false">
 			<template v-if="report">
+				<p v-if="sampleNote" class="hint">{{ sampleNote }}</p>
 				<p>
 					<strong>{{ report.runsheet_rows }}</strong> runsheet rows · <strong>{{ report.tags }}</strong> tags ·
 					<strong>{{ report.templates }}</strong> templates ({{ report.template_rows }} rows) ·
