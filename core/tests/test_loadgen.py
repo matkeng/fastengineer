@@ -50,8 +50,12 @@ def test_rows_and_tags() -> None:
     # A list the load type has no rows for is empty; the Load List has one row per load.
     assert generate("plc_io_list", loads, {"t1": lt}, AREAS).rows == []
     ll = generate("load_list", loads, {"t1": lt}, AREAS)
-    assert [row.cells for row in ll.rows][1] == ["P-2", "P-2 pump", 100, "DOL", 7.5, "kW", 415, "AC-3-phase", "MCC-1", ""]
-    assert ll.rows[0].cells[-1] == "Yes"
+    assert [row.cells for row in ll.rows][1][:10] == ["P-2", "P-2 pump", 100, "DOL", 7.5, "kW", 415, "AC-3-phase", "MCC-1", ""]
+    assert ll.rows[0].cells[9] == "Yes"
+    # then the cable columns and the Load List's fields, by their names (one used already gets " (import)")
+    assert ll.header[10:12] == ["Cable Length (m)", "Power Cable"] and {"Area", "Load rating", "Voltage (import)"} <= set(ll.header)
+    p2 = dict(zip(ll.header, ll.rows[1].cells))
+    assert p2["Load rating"] == 7.5 and p2["Cable Length (m)"] == ""
 
 
 def test_missing_load_types() -> None:

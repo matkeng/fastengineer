@@ -241,6 +241,23 @@ class Store:
         self._db.execute("PRAGMA busy_timeout = 5000")
         self._db.executescript(SCHEMA)
         self._db.executescript(audit.SCHEMA)
+        self._keep_load_list_columns()
+
+    def _keep_load_list_columns(self) -> None:
+        """Once per project: the Load List deliverable's content became the whole Project Master
+        Load List (its cable columns and every field besides its 10 columns). A Load List
+        deliverable that showed every column is given those 10 explicitly, so it shows what it
+        did and its next revision is not changed by the update."""
+        key = "load_list_columns_v2"
+        with self._db:
+            if self._db.execute("SELECT 1 FROM settings WHERE key = ?", (key,)).fetchone():
+                return
+            for did, data in self._db.execute("SELECT id, data FROM deliverables").fetchall():
+                d = Deliverable.model_validate_json(data)
+                if d.type == "Load List" and d.source == "project" and not d.columns:
+                    d = d.model_copy(update={"columns": list(LISTS["load_list"].columns)})
+                    self._db.execute("UPDATE deliverables SET data = ? WHERE id = ?", (d.model_dump_json(), did))
+            self._db.execute("INSERT INTO settings VALUES (?, ?)", (key, "1"))
 
     # -- change log ------------------------------------------------------------
 
@@ -607,6 +624,25 @@ class KeyListStore:
                              (self.LOAD_FIELDS, change.fields.model_dump_json()))
             audit.log(self._db, "load_fields", self.LOAD_FIELDS, before or default_load_fields().model_dump_json(),
                       change.fields.model_dump_json(), label="Load List fields")
+            # Load List deliverables choose and filter columns by name: follow renamed and deleted fields
+            from workbench_core.keylists.loadgen import load_list_columns
+
+            old = LoadFields.model_validate_json(before) if before else default_load_fields()
+            was = {src: name for name, src in load_list_columns(old)}
+            now = {src: name for name, src in load_list_columns(change.fields)}
+            cols = ColumnChange(columns=list(now.values()), renames={was[s_]: now[s_] for s_ in was if s_ in now and was[s_] != now[s_]},
+                                deletes=[was[s_] for s_ in was if s_ not in now])
+            if cols.renames or cols.deletes:
+                for (data,) in self._db.execute("SELECT data FROM deliverables").fetchall():
+                    d = Deliverable.model_validate_json(data)
+                    if d.type != "Load List" or d.source != "project":
+                        continue
+                    f = rename_in([d.filter_column], cols) if d.filter_column else []
+                    nd = d.model_copy(update={"columns": rename_in(d.columns, cols), "filter_column": f[0] if f else "",
+                                              "filter_values": d.filter_values if f else []})
+                    if nd != d:
+                        self._db.execute("UPDATE deliverables SET data = ? WHERE id = ?", (nd.model_dump_json(), d.id))
+                        audit.log(self._db, "deliverable", d.id, data, nd.model_dump_json(), note="Load List fields changed")
             if change.deletes:
                 gone = set(change.deletes)
                 for rid, data in self._db.execute("SELECT id, data FROM recipes").fetchall():

@@ -1057,6 +1057,17 @@ rows and columns; revisions, comparison, withdrawal and export work as before.
 A **Load List** deliverable is still made from the Project Master Load List, and a
 **Distribution Panel** from its panel; both can choose and order columns too.
 
+A **Load List** deliverable's content is the whole Project Master Load List:
+its own ten columns (Tag … Distribution Panel), the load's power cable
+(Cable Length (m), Power Cable, Parallel Cables, Cable Insulation, Cable Size,
+Earth Size), then each of the project's Load List fields besides Tag and
+Description, by its name (a name the list already has gets " (import)", e.g.
+Voltage (import)). **Choose and order…** picks from all of them; Tag has to
+stay. Renaming or deleting a Load List field renames it in, or takes it out of,
+the column choices and filters of Load List deliverables. A Load List
+deliverable made before this, showing every column, was given the ten columns
+it had, so its next revision is unchanged until its columns are chosen again.
+
 A project that has generators from **imported workbooks** (made in an earlier
 version) keeps them, listed under the two types: they can still be opened,
 edited in spreadsheet-style grids, checked, built, compared with the previous

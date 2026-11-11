@@ -55,6 +55,32 @@ LISTS: dict[str, OutputList] = {x.key: x for x in (
         "Tag", "Description", "Plant Area", "Load Type", "Rating", "Units", "Voltage", "Phases", "Supplied From",
         "Distribution Panel"), "Tag", templated=False),
 )}
+#: The Load List's cable columns, after its own (the load's power cable, typed in on the Load List).
+LOAD_LIST_CABLE: tuple[str, ...] = ("Cable Length (m)", "Power Cable", "Parallel Cables", "Cable Insulation", "Cable Size",
+                                    "Earth Size")
+
+
+def load_list_columns(load_fields=None) -> list[tuple[str, str]]:
+    """The columns of the Load List deliverable's content, the Project Master Load List:
+    (name, what fills it). Its own columns, the cable columns, then each of the project's
+    Load List fields but the tag and description (`load_fields`: mel.load_fields.LoadFields;
+    default the built-in ones), by their names; a name already used gets " (import)"."""
+    from ..mel.load_fields import default_load_fields
+
+    out = [(c, f"col:{c}") for c in LISTS["load_list"].columns] + [(c, f"col:{c}") for c in LOAD_LIST_CABLE]
+    seen = {name_key(c) for c, _ in out}
+    for f in (load_fields or default_load_fields()).fields:
+        if f.key in ("tag", "desc"):
+            continue
+        name = f.label if name_key(f.label) not in seen else f"{f.label} (import)"
+        n = 2
+        while name_key(name) in seen:
+            name, n = f"{f.label} ({n})", n + 1
+        seen.add(name_key(name))
+        out.append((name, f"field:{f.key}"))
+    return out
+
+
 #: The lists a load type has rows for.
 TEMPLATE_LISTS = [k for k, x in LISTS.items() if x.templated]
 BY_TYPE = {x.deliverable_type: x for x in LISTS.values()}
@@ -231,16 +257,31 @@ def cables_for(load: LoadListRow, kind: str, cores: str, tags: dict[str, str], c
     return out, problems
 
 
+def _value(x: object) -> Scalar:
+    """A Load List value as a cell: numbers stay numbers, yes/no is Yes or blank, nothing is blank."""
+    if x is None:
+        return ""
+    if isinstance(x, bool):
+        return "Yes" if x else ""
+    if isinstance(x, (int, float)):
+        return x
+    return _cell(str(x))
+
+
 def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, LoadType],
              areas: dict[str, tuple[str, str]], cables: list[CableType] | None = None,
-             notes: list[str] | None = None, columns: list[str] | None = None) -> BuildResult:
+             notes: list[str] | None = None, columns: list[str] | None = None, load_fields=None) -> BuildResult:
     """The rows of one list for the active loads. `load_types` by id; `areas`: plant area id ->
     (tag, description). Loads without a load type produce nothing in a templated list (the
     caller reports them: see missing_load_types). `cables`: the Cable Types list, for rows
     that use the cable tags; `notes` collects the loads whose cable could not be found.
-    `columns`: the project's columns for a templated list (default: the built-in ones)."""
+    `columns`: the project's columns for a templated list (default: the built-in ones).
+    `load_fields`: the project's Load List fields, for the Load List's own (see load_list_columns)."""
     spec = LISTS[list_key]
     cols = tuple(columns) if columns is not None and spec.templated else spec.columns
+    if not spec.templated:
+        whole = load_list_columns(load_fields)
+        cols = tuple(c for c, _ in whole)
     cables = cables or []
     unmatched: dict[str, list[str]] = {}  # problem -> load tags
     by_ref = {r.ref(): r for r in loads}
@@ -250,9 +291,13 @@ def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, Load
         tags = tags_for(load, load_types, areas, by_ref)
         lt = load_types.get(load.load_type_id or "")
         if not spec.templated:
-            cells = [tags["tag"], tags["description"], tags["plantarea"], tags["loadtype"], tags["rating"], tags["units"],
-                     tags["voltage"], tags["phases"], tags["suppliedfrom"], "Yes" if load.is_panel else ""]
-            rows.append(OutputRow(cells=[_cell(c) for c in cells], run_row_id=load.ref(), template_id=lt.code if lt else None))
+            own = [tags["tag"], tags["description"], tags["plantarea"], tags["loadtype"], tags["rating"], tags["units"],
+                   tags["voltage"], tags["phases"], tags["suppliedfrom"], "Yes" if load.is_panel else ""]
+            cable = [load.cable_length, load.cable_construction, load.cable_parallel, load.cable_insulation, load.cable_size,
+                     load.earth_size]
+            fixed = dict(zip(spec.columns + LOAD_LIST_CABLE, [_cell(c) for c in own] + [_value(c) for c in cable]))
+            cells = [fixed[src[4:]] if src.startswith("col:") else _value(load.values.get(src[6:])) for _, src in whole]
+            rows.append(OutputRow(cells=cells, run_row_id=load.ref(), template_id=lt.code if lt else None))
             continue
         for i, template in enumerate((lt.rows.get(list_key, []) if lt else []), start=1):
             tags["row"] = str(i)

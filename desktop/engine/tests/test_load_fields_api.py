@@ -118,3 +118,39 @@ def test_fields_flow_into_the_mapping_sheet_the_load_list_and_its_workbook() -> 
     wb = load_workbook(io.BytesIO(client.post("/api/list-workbooks/load-list/export", json={}).content))
     head = [c.value for c in wb.active[1]]
     assert "Motor HP" in head and "Standby quantity" in head and "motor_hp" not in head
+
+
+def test_a_load_list_deliverable_has_every_column_and_follows_the_fields() -> None:
+    assert client.post("/api/sample-data").status_code == 200
+    cols = client.get("/api/deliverables").json()["project_columns"]["Load List"]
+    assert cols[:2] == ["Tag", "Description"] and "Cable Size" in cols and "Load rating" in cols and "Starter type" in cols
+    made = client.post("/api/deliverables", json={"type": "Load List", "name": "Loads with starters", "source": "project",
+                                                  "columns": ["Tag", "Load rating", "Starter type", "Cable Size"],
+                                                  "filter_column": "Starter type", "filter_values": ["DOL"]})
+    assert made.status_code == 200, made.text
+    cur = client.get(f"/api/deliverables/{made.json()['id']}", params={"rows": True}).json()["current"]
+    assert cur["result"]["header"] == ["Tag", "Load rating", "Starter type", "Cable Size"]
+
+    fields = _fields()
+    edited = [f | {"label": "Motor rating"} if f["key"] == "load_rating" else f for f in fields if f["key"] != "starter_type"]
+    assert _put(edited).status_code == 200
+    d = client.get(f"/api/deliverables/{made.json()['id']}", params={"rows": True}).json()
+    assert d["deliverable"]["columns"] == ["Tag", "Motor rating", "Cable Size"] and d["deliverable"]["filter_column"] == ""
+    assert d["current"]["result"]["header"] == ["Tag", "Motor rating", "Cable Size"]
+
+
+def test_an_existing_load_list_deliverable_keeps_its_ten_columns(data_dir: Path) -> None:
+    import sqlite3
+
+    assert client.post("/api/sample-data").status_code == 200
+    ll = next(s["deliverable"] for s in client.get("/api/deliverables").json()["deliverables"] if s["deliverable"]["type"] == "Load List")
+    assert ll["columns"] == []  # a new one shows every column
+    # as it was before the update: the flag not yet set
+    db = sqlite3.connect(next(data_dir.rglob("workbench.db")))
+    db.execute("DELETE FROM settings WHERE key = 'load_list_columns_v2'")
+    db.commit()
+    db.close()
+    storage.configure(data_dir)
+    ll = client.get(f"/api/deliverables/{ll['id']}").json()["deliverable"]
+    assert ll["columns"] == ["Tag", "Description", "Plant Area", "Load Type", "Rating", "Units", "Voltage", "Phases",
+                             "Supplied From", "Distribution Panel"]
