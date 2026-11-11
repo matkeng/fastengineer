@@ -7,7 +7,7 @@ import type { ColumnsResult, ExtractResult, PreviewResult, WorkbookSummary } fro
 
 export const STEPS = ['Workbook', 'Sheet or table', 'Header row', 'Key column', 'Results'] as const;
 
-// One wizard store per use: the Excel query tab, and the old/new tables of a comparison.
+// One wizard store per use: a list import's file, and the old/new tables of a comparison.
 function setup() {
 	const step = ref(0);
 	const busy = ref(false);
@@ -178,4 +178,3 @@ export function tableWizardStore(id: string) {
 
 export type TableWizard = ReturnType<ReturnType<typeof tableWizardStore>>;
 
-export const useExcelWizard = tableWizardStore('query');

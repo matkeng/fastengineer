@@ -63,10 +63,11 @@ def test_dashboard_counts_recent_and_runs(data_dir: Path) -> None:
     assert c["latest_tags"] == 11 and c["runs"] == 1
     assert d["runs"] == [{"id": run["id"], "at": d["runs"][0]["at"], "template": 10, "text_scan": 1, "status": "done"}]
     kinds = [e["kind"] for e in d["recent"]]
-    assert kinds[0] == "run" and {"drawing", "revision", "recipe", "table", "tree"} <= set(kinds)
-    assert c["trees"] == 1 and next(e for e in d["recent"] if e["kind"] == "tree")["id"] == tree["id"]
+    assert kinds[0] == "run" and {"drawing", "revision", "recipe"} <= set(kinds)
+    # lists, trees and tables are counted but have no section in the app, so they are not in the activity
+    assert (c["trees"], tree["id"] != "") == (1, True) and not {"table", "tree", "enum"} & set(kinds)
+    assert all(e["section"] != "ref" for e in d["recent"])
     times = [e["at"] for e in d["recent"]]
     assert times == sorted(times, reverse=True)
-    table_ev = next(e for e in d["recent"] if e["kind"] == "table")
-    assert table_ev["id"] == t["id"] and table_ev["section"] == "ref"
+    assert t["id"]
     assert d["storage"]["page_images"] == 2 and d["storage"]["drawings_bytes"] > 0 and d["storage"]["database_bytes"] > 0

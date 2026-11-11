@@ -3,7 +3,7 @@
 // Mirrors desktop/engine/workbench_desktop/dashboard_api.py.
 export interface DashEvent {
 	kind: 'run' | 'drawing' | 'revision' | 'recipe' | 'enum' | 'tree' | 'table' | 'generator' | 'build' | 'revision_issued';
-	section: 'symbols' | 'mel' | 'ref' | 'generators' | 'deliverables';
+	section: 'symbols' | 'mel' | 'generators' | 'deliverables';
 	id: string;
 	title: string;
 	detail: string;

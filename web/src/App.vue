@@ -2,7 +2,6 @@
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import sampleC from '../../samples/cable-schedule-sample.xlsx?url';
 import EnginePanel from './components/EnginePanel.vue';
 import AuditView from './components/audit/AuditView.vue';
 import ProjectsView from './components/projects/ProjectsView.vue';
@@ -11,56 +10,46 @@ import Icon from './components/common/Icon.vue';
 import CompareView from './components/compare/CompareView.vue';
 import DashboardView from './components/dashboard/DashboardView.vue';
 import DeliverablesView from './components/deliverables/DeliverablesView.vue';
-import ExcelWizard from './components/excel/ExcelWizard.vue';
 import GenView from './components/generators/GenView.vue';
 import KeyListsView from './components/keylists/KeyListsView.vue';
 import MelView from './components/mel/MelView.vue';
-import RefView from './components/ref/RefView.vue';
 import SymView from './components/symbols/SymView.vue';
 import { apiGet, lastConflict } from './lib/engine';
 import { useCompare } from './stores/compare';
 import { useDeliverables } from './stores/deliverables';
-import { useExcelWizard } from './stores/excelWizard';
 import { useGenerators } from './stores/generators';
 import { useKeyLists } from './stores/keylists';
 import { useMel } from './stores/mel';
 import { useProjects } from './stores/projects';
-import { useRefData } from './stores/refdata';
 import { useSymbols } from './stores/symbols';
 import { SECTIONS, useUi } from './stores/ui';
 import { useWorkbench } from './stores/workbench';
 
 const wb = useWorkbench();
 const ui = useUi();
-const wiz = useExcelWizard();
 const cmp = useCompare();
 const mel = useMel();
-const rd = useRefData();
 const kl = useKeyLists();
 const dl = useDeliverables();
 const sym = useSymbols();
 const projects = useProjects();
 const gens = useGenerators();
-const SAMPLES = [{ label: 'Use the sample cable schedule', url: sampleC, filename: 'cable-schedule-sample.xlsx' }];
 
 // Results views fill the window; the table takes the free space.
 const fill = computed(
 	() =>
 		wb.status === 'ready' &&
-		((ui.tab === 'excel' && wiz.step === 4) ||
-			(ui.tab === 'compare' && cmp.stage === 'result') ||
+		((ui.tab === 'compare' && cmp.stage === 'result') ||
 			ui.tab === 'mel' ||
 			ui.tab === 'symbols' ||
 			(ui.tab === 'generators' && !!gens.draft) ||
 			ui.tab === 'keylists' ||
-			ui.tab === 'deliverables' ||
-			ui.tab === 'ref'),
+			ui.tab === 'deliverables'),
 );
 const dirty: Partial<Record<string, () => boolean>> = {
 	symbols: () => sym.dirty,
 	mel: () => mel.dirty,
 	keylists: () => kl.dirty,
-	ref: () => rd.dirty,
 	generators: () => gens.anyDirty,
 	deliverables: () => dl.dirty,
 };
@@ -147,12 +136,10 @@ onMounted(() => wb.connect());
 			<ProjectsView v-if="wb.status === 'ready' && ui.tab === 'projects' && projects.isAdmin" />
 			<template v-if="wb.status === 'ready' && projects.current">
 				<DashboardView v-if="ui.tab === 'dashboard'" />
-				<ExcelWizard v-show="ui.tab === 'excel'" :wiz="wiz" :samples="SAMPLES" />
 				<CompareView v-show="ui.tab === 'compare'" />
 				<SymView v-show="ui.tab === 'symbols'" @open-import="openImport" />
 				<MelView v-show="ui.tab === 'mel'" />
 				<KeyListsView v-show="ui.tab === 'keylists'" />
-				<RefView v-show="ui.tab === 'ref'" />
 				<GenView v-show="ui.tab === 'generators'" />
 				<DeliverablesView v-show="ui.tab === 'deliverables'" />
 				<AuditView v-if="ui.tab === 'history'" />

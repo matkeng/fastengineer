@@ -193,22 +193,6 @@ def load_sample_data() -> Added:
         store.add_revision(recipe.id, "sample-mel.csv", "csv", "Tag", original, headers, rows, warnings)
         return len(rows)
 
-    def user_lists() -> int:
-        e = ref.save_enum(check_enum(EnumList(name="Voltage levels", items=[
-            EnumItem(code="LV", value="415 V", description="Low voltage"), EnumItem(code="ELV", value="24 V DC")])), create=True)
-        ref.save_tree(check_tree(RefTree(name="Systems", nodes=[
-            TreeNode(id="ss1", code="10", value="Process"), TreeNode(id="ss2", parent_id="ss1", code="11", value="Feed"),
-            TreeNode(id="ss3", parent_id="ss1", code="12", value="Mixing")])), create=True)
-        table = check_table_columns(RefTable(name="Spare parts", columns=[
-            ColumnDef(name="Part", required=True, unique=True), ColumnDef(name="Qty", type="integer"),
-            ColumnDef(name="Voltage", type="enum", enum_id=e.id)]), ref.enums())
-        ref.save_table(table, create=True)
-        for part, qty in (("Contactor 18 A", 4), ("Overload relay", 4)):
-            values = validate_row(table, {table.columns[0].id: part, table.columns[1].id: qty, table.columns[2].id: "LV"},
-                                  ref.enums(), ref.rows(table.id))
-            ref.add_row(table.id, RefRow(values=values))
-        return 3
-
     def deliverables() -> int:
         panels = {p.id for p in lists.distribution_panels().panels}
         done = 0
@@ -266,7 +250,6 @@ def load_sample_data() -> Added:
     fill("Electrical Equipment List", not lists.eel().items, eel)
     fill("PLC List", not lists.plc().systems, plc)
     fill("List import (MEL)", not store.list_recipes(), mel)
-    fill("Lists & tables", not (ref.enums() or ref.trees() or ref.tables()), user_lists)
     rows, _, _ = current_rows()  # brings the Load List up to date, so its allocations are filled in
     fill("Distribution Panels", not lists.distribution_panels().panels, panels)
     fill("Deliverables", not dl.list(), deliverables)

@@ -10,7 +10,6 @@ import type { IconName } from '../../lib/icons';
 import { useGenerators } from '../../stores/generators';
 import { useMel } from '../../stores/mel';
 import { useDeliverables } from '../../stores/deliverables';
-import { useRefData } from '../../stores/refdata';
 import { useSymbols } from '../../stores/symbols';
 import { type Section, useUi } from '../../stores/ui';
 import { useWorkbench } from '../../stores/workbench';
@@ -21,7 +20,6 @@ const ui = useUi();
 const wb = useWorkbench();
 const sym = useSymbols();
 const mel = useMel();
-const rd = useRefData();
 const dl = useDeliverables();
 const gens = useGenerators();
 const data = ref<Dashboard | null>(null);
@@ -72,8 +70,6 @@ const kpis = computed<Kpi[]>(() => {
 			sub: `${k.revisions} file revision(s)${k.latest_revision_at ? `, last ${ago(k.latest_revision_at)}` : ''}` },
 		{ label: 'Project lists', icon: 'tree', value: k.plant_areas + k.equipment_packages + k.load_types, go: 'keylists',
 			sub: `${k.plant_areas} plant areas · ${k.equipment_packages} packages · ${k.equipment_types} equipment types · ${k.load_types} load types · ${k.eel_items} EEL items · ${k.load_list_rows} load list rows · ${k.equipment_codes} equipment codes · ${k.instrument_codes} instrument codes` },
-		{ label: 'Lists, trees & tables', icon: 'database', value: k.enums + k.trees + k.tables, go: 'ref',
-			sub: `${k.enums} lists · ${k.trees} trees · ${k.tables} tables · ${k.rows} rows` },
 		{ label: 'Deliverables', icon: 'file', value: k.deliverables, go: 'deliverables', sub: `${k.deliverable_revisions} revision(s) issued` },
 		{ label: 'Generators', icon: 'generator', value: k.generators, go: 'generators',
 			sub: `${k.gen_builds} build(s)${k.latest_build_at ? `, last ${ago(k.latest_build_at)}` : ''}${k.plc_cards ? ` · ${k.plc_panels} PLC panel(s), ${k.plc_cards} cards` : ''}` },
@@ -87,11 +83,9 @@ interface Starter { title: string; desc: string; icon: IconName; run: () => unkn
 const starters = computed<Starter[]>(() => [
 	{ title: 'Try the P&ID example', desc: 'Sample drawing + ready-made library', icon: 'play', run: tryExample, featured: empty.value },
 	{ title: 'Load sample data', desc: 'A small invented plant in every empty list', icon: 'database', run: loadSample, featured: empty.value },
-	{ title: 'Query an Excel sheet', desc: 'Header row, key column, strikethrough', icon: 'table', run: () => ui.go('excel') },
 	{ title: 'Compare two tables', desc: 'Added, deleted, struck and changed', icon: 'compare', run: () => ui.go('compare') },
 	{ title: 'Analyse drawings', desc: 'Find symbols and read their tags', icon: 'symbol', run: () => ui.go('symbols') },
 	{ title: 'New list import', desc: 'MEL → load list, tags → instruments', icon: 'recipe', run: newImport },
-	{ title: 'Lists, trees & tables', desc: 'Your own lists, hierarchies and typed tables', icon: 'tree', run: () => ui.go('ref') },
 ]);
 
 /** Fill every list that is still empty with an invented small plant (nothing existing is changed). */
@@ -161,10 +155,6 @@ async function openEvent(e: DashEvent) {
 		}
 		if (e.kind === 'build') gens.tab = 'build';
 		ui.go('generators');
-	} else {
-		await rd.refresh();
-		await rd.select(e.kind === 'enum' || e.kind === 'tree' ? e.kind : 'table', e.id);
-		ui.go('ref');
 	}
 }
 

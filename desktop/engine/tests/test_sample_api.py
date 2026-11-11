@@ -24,7 +24,7 @@ def test_sample_data_fills_an_empty_project_and_every_deliverable_can_be_issued(
     assert res.status_code == 200, res.text
     added = res.json()["added"]
     assert set(added) == {"Plant Areas", "Equipment Packages", "Equipment Codes", "Instrument Codes", "Load Types",
-                          "Electrical Equipment List", "PLC List", "List import (MEL)", "Lists & tables", "Deliverables",
+                          "Electrical Equipment List", "PLC List", "List import (MEL)", "Deliverables",
                           "Distribution Panels", "Cable details (Load List)"}
     assert res.json()["skipped"] == []
 
@@ -57,7 +57,7 @@ def test_sample_data_fills_an_empty_project_and_every_deliverable_can_be_issued(
 def test_sample_data_runs_once_and_leaves_existing_lists_alone():
     client.post("/api/sample-data")
     again = client.post("/api/sample-data").json()
-    assert again["added"] == {} and len(again["skipped"]) == 11
+    assert again["added"] == {} and len(again["skipped"]) == 10
 
 
 def test_sample_data_does_not_touch_a_list_that_has_data(data_dir):

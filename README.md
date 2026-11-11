@@ -25,9 +25,7 @@ What it demonstrates:
 
 The app's tabs:
 
-- **Excel query**: a step-by-step wizard that turns a worksheet or Excel table
-  into a reviewable, keyed table (see below).
-- **Compare tables**: pick an old and a new table with the same wizard and see
+- **Compare tables**: pick an old and a new table with the Excel wizard and see
   what changed between them (see below).
 - **Symbol detection**: find any symbol on PDF drawings (templates matched with
   OpenCV, tags read from the PDF text or with Windows OCR) and produce a tags
@@ -37,12 +35,15 @@ The app's tabs:
 - **Project lists**: the key lists every project has: Plant Areas, Equipment
   Packages, Load Types, Equipment Codes, Instrument Codes and the Load List
   (see below).
-- **Lists & tables**: your own enumerated lists and typed tables (see below).
 - **Engine**: engine status (port, Python version, whether it's
   Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
   model objects.
 
 ## Excel query wizard
+
+> The **Excel query** tab has been removed. The wizard itself is still how a
+> sheet or table is chosen in **Compare tables** and in **List import** ("From
+> Excel…"), so the steps below describe it there.
 
 | Step | What happens |
 |---|---|
@@ -456,7 +457,7 @@ in another project or on another PC.
 The key lists every project has, with fixed columns and rules
 (`core/src/workbench_core/keylists/`, API
 `desktop/engine/workbench_desktop/keylists_api.py`, UI `web/src/components/keylists/`).
-Unlike **Lists & tables**, you don't create or name them: each project has one of each.
+You don't create or name them: each project has one of each.
 
 - **Plant Areas**: a tree of the plant's breakdown. Each item has a
   **Tag number** (required, unique in the whole list), a **Description**
@@ -618,6 +619,11 @@ Unlike **Lists & tables**, you don't create or name them: each project has one o
   [Distribution panel schedules](#distribution-panel-schedules).
 
 ## Lists, trees & tables
+
+> The **Lists & tables** tab has been removed from the app. The engine still has
+> this reference data and its API (and copying a project's standards still
+> copies it), but there is no screen to edit it, the dashboard doesn't show it,
+> and the sample data no longer adds any. What follows describes the engine.
 
 Reference data you define and keep (`core/src/workbench_core/refdata/`, API
 `desktop/engine/workbench_desktop/refdata_api.py`, UI `web/src/components/ref/`).
@@ -813,7 +819,7 @@ issues can't be deleted.
 that is still empty with a small invented plant: plant areas, equipment packages
 and types, equipment and instrument codes, four load types with rows for every
 list, three switchboards in the Electrical Equipment List, a PLC, a MEL import
-of nine loads, a list, tree and table under Lists & tables, the schedule of
+of nine loads, the schedule of
 MCC-2 in Distribution Panels, and one deliverable of each type. Lists that already have data are left
 alone, so it is safe to run on a project in use.
 

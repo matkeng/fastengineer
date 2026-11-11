@@ -129,25 +129,14 @@ def dashboard() -> Dashboard:
             if c.latest_revision_at is None or v.uploaded_at > c.latest_revision_at:
                 c.latest_revision_at = v.uploaded_at
 
-    # Lists & tables
+    # Lists, trees and tables: they have no section in the app any more, so they are counted
+    # (the engine still keeps them) but are not in the recent activity.
     ref = get_ref()
     counts = ref.row_counts()
-    for e in ref.enums().values():
-        c.enums += 1
-        if e.updated_at:
-            events.append(Event(kind="enum", section="ref", id=e.id, title=e.name, detail=f"list · {len(e.items)} items",
-                                at=e.updated_at))
-    for tr in ref.trees():
-        c.trees += 1
-        if tr.updated_at:
-            events.append(Event(kind="tree", section="ref", id=tr.id, title=tr.name, detail=f"tree · {len(tr.nodes)} items",
-                                at=tr.updated_at))
+    c.enums, c.trees = len(ref.enums()), len(ref.trees())
     for t in ref.tables():
         c.tables += 1
         c.rows += counts.get(t.id, 0)
-        if t.updated_at:
-            events.append(Event(kind="table", section="ref", id=t.id, title=t.name,
-                                detail=f"table · {counts.get(t.id, 0)} rows", at=t.updated_at))
 
     c.plant_areas = len(get_keylists().plant_areas().nodes)
     packages = get_keylists().equipment_packages()
