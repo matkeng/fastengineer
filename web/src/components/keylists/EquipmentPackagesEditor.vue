@@ -211,10 +211,11 @@ const label = (p: EquipmentPackage) => [p.number, p.description].filter(Boolean)
 		</div>
 
 		<AppModal class="type-lists" :open="!!listsOf" :title="`Lists of ${listsOf?.name || 'the equipment type'}`" @close="closeLists">
-			<TemplateRows v-if="listsOf" :key="listsOf.id" :rows="listsOf.rows" :errors="rowErrors">
+			<TemplateRows v-if="listsOf" :key="listsOf.id" :rows="listsOf.rows" :errors="rowErrors" :tags="kl.templateLists?.instrument_tags">
 				<template #default="{ list }">
 					The rows this equipment type has for the <strong>{{ list.name }}</strong>, set out as a load type's are.
-					They are for the <strong>Instrument generator</strong>, which is not available yet, so nothing is produced from them today.
+					The tags are the columns of the <strong>Instrument Runsheet</strong>: each of its rows that names this equipment type will
+					fill them in. That is for the <strong>Instrument generator</strong>, which is not available yet, so nothing is produced today.
 				</template>
 			</TemplateRows>
 			<template #footer>

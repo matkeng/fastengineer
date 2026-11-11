@@ -38,7 +38,9 @@ export interface LoadType {
 /** A load type's predefined rows: list key -> rows; a row is column name -> text. */
 export type TemplateRows = Record<string, Record<string, string>[]>;
 /** The deliverable lists a load type has rows for, and the tags a row can use. */
-export interface TemplateLists { lists: { key: string; name: string; columns: string[]; settings: { name: string; values: string[] }[] }[]; tags: { tag: string; meaning: string }[] }
+export interface TemplateLists { lists: { key: string; name: string; columns: string[]; settings: { name: string; values: string[] }[] }[]; tags: { tag: string; meaning: string }[];
+	/** The tags an equipment type's rows can use: the columns of the Instrument Runsheet. */
+	instrument_tags: { tag: string; meaning: string }[] }
 export interface LoadTypeList { items: LoadType[]; updated_at: string | null }
 /** A load type as it is typed into the form: numbers are text until the engine converts them. */
 export interface LoadTypeForm {
@@ -48,7 +50,7 @@ export interface LoadTypeForm {
 }
 export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id' | 'rows'>;
 
-export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | 'cable-types' | 'distribution-panels' | CodeListId;
+export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | 'cable-types' | 'distribution-panels' | 'instrument-runsheet' | 'mel' | CodeListId;
 
 /** A cable type; every project starts with a default set. `sort` orders the list. */
 export interface CableType {
@@ -187,6 +189,8 @@ export interface KeyListOverview {
 	eel: { items: number };
 	cable_types: { items: number };
 	distribution_panels: { items: number };
+	instrument_runsheet: { items: number };
+	mel: { items: number };
 	plc: { systems: number; racks: number; cards: number };
 	instrument_codes: { items: number };
 	rating_units: string[];

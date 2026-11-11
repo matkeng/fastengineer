@@ -12,6 +12,8 @@ import CodeListEditor from './CodeListEditor.vue';
 import EelEditor from './EelEditor.vue';
 import PlcEditor from './PlcEditor.vue';
 import DistributionPanelsEditor from './DistributionPanelsEditor.vue';
+import InstrumentRunsheetEditor from './InstrumentRunsheetEditor.vue';
+import MelListView from './MelListView.vue';
 import LoadTypesEditor from './LoadTypesEditor.vue';
 import PlantAreasEditor from './PlantAreasEditor.vue';
 
@@ -20,10 +22,10 @@ const kl = useKeyLists();
 const ui = useUi();
 const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Load List',
 	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes', eel: 'Electrical Equipment List', plc: 'PLC List',
-	'cable-types': 'Cable Types', 'distribution-panels': 'Distribution Panels' };
+	'cable-types': 'Cable Types', 'distribution-panels': 'Distribution Panels', 'instrument-runsheet': 'Instrument Runsheet', mel: 'MEL' };
 const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true,
 	'equipment-codes': kl.codeLists['equipment-codes'], 'instrument-codes': kl.codeLists['instrument-codes'], eel: kl.eel, plc: kl.plcDraft,
-	'cable-types': kl.cableTypes, 'distribution-panels': kl.panelsDraft }[kl.selected]);
+	'cable-types': kl.cableTypes, 'distribution-panels': kl.panelsDraft, 'instrument-runsheet': kl.runsheetView, mel: kl.melList }[kl.selected]);
 
 onMounted(() => kl.load());
 
@@ -86,8 +88,12 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 				</section>
 				<section>
 					<h3>Load List</h3>
-					<p class="hint">The Electrical Equipment List, the Load List (its items and the MEL and EEL imports' rows), and the schedule of each distribution panel.</p>
+					<p class="hint">The MEL (every row of the MEL imports, to read), the Electrical Equipment List, the Load List (its items and the imports' rows), and the schedule of each distribution panel.</p>
 					<ul class="ref-nav">
+						<li :class="{ current: kl.selected === 'mel' }" @click="kl.select('mel')">
+							<span class="name">MEL</span>
+							<span class="count" title="row(s) in the MEL imports' latest files (read only)">{{ kl.overview?.mel?.items ?? 0 }}</span>
+						</li>
 						<li :class="{ current: kl.selected === 'eel' }" @click="kl.select('eel')">
 							<span class="name">Electrical Equipment List</span>
 							<span class="count" title="equipment item(s)">{{ kl.overview?.eel.items ?? 0 }}</span>
@@ -100,6 +106,16 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 						<li :class="{ current: kl.selected === 'distribution-panels' }" @click="kl.select('distribution-panels')">
 							<span class="name">Distribution Panels</span><span v-if="kl.panelsDirty" class="dirty-dot" title="Unsaved changes">●</span>
 							<span class="count" title="panel schedule(s)">{{ kl.overview?.distribution_panels?.items ?? 0 }}</span>
+						</li>
+					</ul>
+				</section>
+				<section>
+					<h3>Instruments</h3>
+					<p class="hint">What the Instrument generator will run from. Its rows refer to the equipment types, the plant areas, and the equipment of the MEL and the Electrical Equipment List.</p>
+					<ul class="ref-nav">
+						<li :class="{ current: kl.selected === 'instrument-runsheet' }" @click="kl.select('instrument-runsheet')">
+							<span class="name">Instrument Runsheet</span><span v-if="kl.runsheetDirty" class="dirty-dot" title="Unsaved changes">●</span>
+							<span class="count" title="row(s)">{{ kl.overview?.instrument_runsheet?.items ?? 0 }}</span>
 						</li>
 					</ul>
 				</section>
@@ -121,6 +137,8 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 			<PlcEditor v-if="kl.plcDraft" v-show="kl.selected === 'plc'" />
 			<LoadListEditor v-if="kl.selected === 'load-list'" />
 			<DistributionPanelsEditor v-if="kl.panelsDraft" v-show="kl.selected === 'distribution-panels'" />
+			<InstrumentRunsheetEditor v-if="kl.runsheetView" v-show="kl.selected === 'instrument-runsheet'" />
+			<MelListView v-if="kl.melList" v-show="kl.selected === 'mel'" />
 			<section v-if="!loaded" class="card wizard ref-empty">
 				<h2>{{ TITLES[kl.selected] }}</h2>
 				<p v-if="kl.error" class="error">{{ kl.error }}</p>

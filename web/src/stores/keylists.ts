@@ -11,6 +11,7 @@ import type {
 	Allocation, CableTypeForm, CableTypeList, CodeList, EelForm, EelView, PlcImportPreview, PlcList, PlcView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList, TemplateLists,
 } from '../lib/keyListTypes';
 import type { DistributionPanelList, PanelsView } from '../lib/panelTypes';
+import type { MelList, RunsheetView, TypedRow } from '../lib/runsheetTypes';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const PLANT_AREAS = '/api/keylists/plant-areas';
@@ -58,7 +59,12 @@ export const useKeyLists = defineStore('keylists', () => {
 	const panelsView = ref<PanelsView | null>(null);
 	const panelSelected = ref<string | null>(null);
 	const panelsDirty = computed(() => differ(panelsDraft.value, panelsSaved.value));
-	const dirty = computed(() => areasDirty.value || packagesDirty.value || plcDirty.value || catDirty.value || panelsDirty.value);
+	// The Instrument Runsheet: saved rows and a draft, Save / Discard. The MEL is read only.
+	const runsheetView = ref<RunsheetView | null>(null);
+	const runsheetDraft = ref<TypedRow[] | null>(null);
+	const runsheetDirty = computed(() => !!runsheetView.value && differ(runsheetDraft.value, runsheetView.value.rows));
+	const melList = ref<MelList | null>(null);
+	const dirty = computed(() => areasDirty.value || packagesDirty.value || plcDirty.value || catDirty.value || panelsDirty.value || runsheetDirty.value);
 
 	async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
 		busy.value = true;
@@ -93,6 +99,8 @@ export const useKeyLists = defineStore('keylists', () => {
 		if (id === 'load-list') void loadLoadList();
 		// its circuits come from the Load List, which may have changed since
 		if (id === 'distribution-panels') void (panelsDirty.value ? checkPanels() : loadPanels());
+		if (id === 'instrument-runsheet') void loadRunsheet(); // what its rows can refer to may have changed
+		if (id === 'mel') void loadMel();
 	}
 
 	async function loadLoadList() {
@@ -125,6 +133,8 @@ export const useKeyLists = defineStore('keylists', () => {
 		if (l) loadTypes.value = l;
 		if (!plcDirty.value) await loadPlc();
 		if (!panelsDirty.value) await loadPanels();
+		await loadRunsheet();
+		if (selected.value === 'mel') await loadMel();
 		const ct = await run(() => apiGet<CableTypeList>('/api/keylists/cable-types'));
 		if (ct) cableTypes.value = ct;
 		const e = await run(() => apiGet<EelView>('/api/eel'));
@@ -356,6 +366,33 @@ export const useKeyLists = defineStore('keylists', () => {
 		}
 	}
 
+	// -- Instrument Runsheet and MEL ------------------------------------------------------
+
+	/** Read the runsheet and what its rows can refer to. Unsaved rows are kept. */
+	async function loadRunsheet() {
+		const keep = runsheetDirty.value ? runsheetDraft.value : null;
+		const v = await run(() => apiGet<RunsheetView>('/api/instrument-runsheet'));
+		if (!v) return;
+		runsheetView.value = v;
+		runsheetDraft.value = keep ?? clone(v.rows);
+	}
+
+	async function saveRunsheet() {
+		if (!runsheetDraft.value) return;
+		const v = await run(() => apiPut<RunsheetView>('/api/instrument-runsheet', { rows: runsheetDraft.value }));
+		if (v) {
+			runsheetView.value = v;
+			runsheetDraft.value = clone(v.rows);
+			await refresh();
+			message.value = 'Saved';
+		}
+	}
+
+	async function loadMel() {
+		const m = await run(() => apiGet<MelList>('/api/mel-list'));
+		if (m) melList.value = m;
+	}
+
 	/** Add the cable type, or replace the saved one with the same id. False (errors set) if refused. */
 	function saveCableType(row: CableTypeForm): Promise<boolean> {
 		const items: unknown[] = [...(cableTypes.value?.items ?? [])];
@@ -415,6 +452,7 @@ export const useKeyLists = defineStore('keylists', () => {
 	function discard() {
 		if (selected.value === 'plc' && plcSaved.value) plcDraft.value = clone(plcSaved.value);
 		if (selected.value === 'distribution-panels' && panelsSaved.value) panelsDraft.value = clone(panelsSaved.value);
+		if (selected.value === 'instrument-runsheet' && runsheetView.value) runsheetDraft.value = clone(runsheetView.value.rows);
 		if (selected.value === 'plant-areas' && areasSaved.value) areasDraft.value = clone(areasSaved.value);
 		if (selected.value === 'equipment-packages' && packagesSaved.value) packagesDraft.value = clone(packagesSaved.value);
 		fieldErrors.value = {};
@@ -427,6 +465,7 @@ export const useKeyLists = defineStore('keylists', () => {
 		saveLoadType, deleteLoadType, templateLists, loadTemplateLists, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem, cableTypes, saveCableType, deleteCableType, addDefaultCableTypes,
 		plcSaved, plcDraft, plcView, catSaved, catDraft, plcDirty, catDirty, loadPlc, savePlc, checkPlc, saveCatalogue,
 		addDefaultTypes, exportPlc, importPlc,
+		runsheetView, runsheetDraft, runsheetDirty, loadRunsheet, saveRunsheet, melList, loadMel,
 		panelsSaved, panelsDraft, panelsView, panelSelected, panelsDirty, loadPanels, savePanels, checkPanels, placePanelLoads,
 		discardCatalogue: () => { if (catSaved.value) catDraft.value = clone(catSaved.value); },
 	};

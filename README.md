@@ -485,8 +485,9 @@ You don't create or name them: each project has one of each.
     rows (one tab per list; the button shows how many rows it has). They are
     kept with the type and saved with the packages.
   - These rows are for the **Instrument generator**, which is not available
-    yet: nothing is produced from them today, and the tags offered are the load
-    list's until that generator defines its own.
+    yet: nothing is produced from them today. The tags offered are the columns
+    of the **Instrument Runsheet** (`<<STD>>`, `<<Area>>`, `<<MECH>>`, `<<SUF>>`,
+    `<<PID>>`, `<<VIA_MB>>`, `<<CONF>>`, `<<Rack>>`, `<<#1>>` to `<<#35>>`).
   - In the list's workbook each list's rows are a sheet ("Cable Schedule rows",
     ...) with an **Equipment type** column; a rows sheet left out of a file
     leaves those rows as they are.
@@ -625,6 +626,42 @@ You don't create or name them: each project has one of each.
     what that list sets (only their cable details can be cleared).
   - It can't be undone; the change log records the reset and how many rows it
     changed.
+- **Instrument Runsheet** (`keylists/instrument_runsheet.py`, API
+  `/api/instrument-runsheet`): what the **Instrument generator** will run from
+  (that generator is not available yet, so nothing is produced from it today).
+  One row is one instrument assembly, edited in a spreadsheet grid that takes
+  rows pasted from Excel.
+
+  | Column | Tag | Rule |
+  |---|---|---|
+  | Equipment Type Ref | `<<STD>>` | required; the name of an Equipment Type |
+  | Area Ref | `<<Area>>` | required; a Plant Area's tag number |
+  | Parent Equipment Ref | `<<MECH>>` | required; a tag in the Electrical Equipment List or the MEL |
+  | Name Suffix | `<<SUF>>` | text |
+  | PID | `<<PID>>` | text |
+  | IO via MARSHALLING BOX | `<<VIA_MB>>` | text |
+  | Confirmed | `<<CONF>>` | TRUE or FALSE (blank is FALSE) |
+  | PLC Rack Num | `<<Rack>>` | text |
+  | #1 to #35 | `<<#1>>` to `<<#35>>` | text, kept exactly as typed |
+
+  - The three references **must match for the list to be saved** (ignoring
+    case and extra spaces). A cell that matches nothing is marked as you type,
+    with the reason, and Save stays off until it is fixed.
+  - The equipment type and the area are kept by identity: renaming one changes
+    nothing here, and one that a row uses can't be deleted. The parent is kept
+    as its tag.
+  - Rows may repeat and keep their order. A row with nothing in it is dropped.
+  - The tags are what an **equipment type's rows** (its **Lists**) are filled in
+    with, so that is the set its tag picker offers.
+  - Export .xlsx / Import .xlsx: one sheet with these 43 headings. An import
+    replaces the rows and goes through the same must-match rule.
+- **MEL** (`GET /api/mel-list`): every row of the latest file of every **MEL
+  import**, with its columns as the import's column rules leave them. It is
+  **read only**: it changes when a file is uploaded or an import's rules change,
+  in List import. Rows unticked there as not loads are in it too, marked *not a
+  load*: they are not in the Load List, but the Instrument Runsheet's Parent
+  Equipment Ref can name that equipment (a chute, a bin, a conveyor). It can be
+  exported to Excel, not imported.
 - **Distribution Panels**: the schedule of each distribution board, three-phase
   or single-phase, shown as the switchboard or as a single line diagram. Its
   circuits are the Load List rows supplied from the panel. See
@@ -832,7 +869,8 @@ that is still empty with a small invented plant: plant areas, equipment packages
 and types, equipment and instrument codes, four load types with rows for every
 list, three switchboards in the Electrical Equipment List, a PLC, a MEL import
 of nine loads, the schedule of
-MCC-2 in Distribution Panels, and one deliverable of each type. Lists that already have data are left
+MCC-2 in Distribution Panels, three rows in the Instrument Runsheet, and one
+deliverable of each type. Lists that already have data are left
 alone, so it is safe to run on a project in use.
 
 ## Deliverable generators

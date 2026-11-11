@@ -9,11 +9,13 @@ import type { TemplateRows } from '../../lib/keyListTypes';
 import { useKeyLists } from '../../stores/keylists';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
 
-const props = defineProps<{ rows: TemplateRows; errors?: string[] }>();
+// `tags`: the tags to offer (default: the Load List's, as for a load type).
+const props = defineProps<{ rows: TemplateRows; errors?: string[]; tags?: { tag: string; meaning: string }[] }>();
 const kl = useKeyLists();
 onMounted(() => kl.loadTemplateLists());
 const lists = computed(() => kl.templateLists?.lists ?? []);
-const tagNames = computed(() => (kl.templateLists?.tags ?? []).map((t) => t.tag));
+const tagList = computed(() => props.tags ?? kl.templateLists?.tags ?? []);
+const tagNames = computed(() => tagList.value.map((t) => t.tag));
 const tab = ref('');
 watch(lists, (l) => { if (!tab.value && l.length) tab.value = l[0].key; }, { immediate: true });
 const list = computed(() => lists.value.find((l) => l.key === tab.value) ?? null);
@@ -57,7 +59,7 @@ function removeRows(idx: number[]) {
 			<p class="hint small">
 				<slot :list="list" />
 				Type <code>&lt;&lt;</code> in a cell to pick a tag.
-				<span class="tag-help" :title="(kl.templateLists?.tags ?? []).map((t) => `${t.tag}  ${t.meaning}`).join('\n')">All tags ⓘ</span>
+				<span class="tag-help" :title="tagList.map((t) => `${t.tag}  ${t.meaning}`).join('\n')">All tags ⓘ</span>
 			</p>
 			<EditGrid :columns="gridCols" :cells="gridCells" :tag-suggestions="tagNames" :cell-class="tagClass"
 				:height="Math.min(360, 96 + 26 * Math.max(4, listRows.length))" @set="setCells" @insert="insertRows" @remove="removeRows" />

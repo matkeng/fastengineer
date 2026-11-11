@@ -1116,3 +1116,9 @@ dialog.modal.type-lists { width: min(1080px, calc(100vw - 32px)); }
 .back-bar { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-bottom: 8px; }
 .back-bar .hint { margin: 0; }
 main:not(.fill) > .back-bar { max-width: 1280px; }
+/* Instrument Runsheet and MEL */
+main.fill .key-runsheet, main.fill .key-mel { overflow: hidden; }
+.key-runsheet .key-title, .key-mel .key-title { margin: 0; font-size: 1rem; }
+.key-runsheet .egrid td.bad-cell { background: color-mix(in srgb, var(--danger) 16%, transparent); box-shadow: inset 0 -2px 0 var(--danger); }
+.key-runsheet .runsheet-here, .key-runsheet .warn-list { flex-shrink: 0; margin: 4px 0 0; }
+.key-mel .result-table td { white-space: nowrap; }

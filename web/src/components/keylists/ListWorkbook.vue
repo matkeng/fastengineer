@@ -11,7 +11,7 @@ import { useKeyLists } from '../../stores/keylists';
 import AppModal from '../common/AppModal.vue';
 
 interface Preview { summary: string; notes: string[]; applied: boolean }
-const props = defineProps<{ listId: KeyListId; name: string; unsaved?: boolean }>();
+const props = defineProps<{ listId: KeyListId; name: string; unsaved?: boolean; exportOnly?: boolean }>();
 const kl = useKeyLists();
 const busy = ref(false);
 const error = ref('');
@@ -85,7 +85,7 @@ async function apply() {
 		<span v-if="done" class="saved" :title="done">✓ {{ done }}</span>
 		<span v-else-if="error && !importing" class="warn small" :title="error">{{ error }}</span>
 		<button type="button" class="secondary" :disabled="busy || unsaved" :title="unsaved ? 'Save or discard your changes first' : `The saved ${name}, as an Excel workbook`" @click="exportList">Export .xlsx</button>
-		<button type="button" class="secondary" :disabled="busy || unsaved" :title="unsaved ? 'Save or discard your changes first' : `Read ${name} from an Excel workbook (you see what it holds before anything changes)`" @click="input?.click()">Import .xlsx…</button>
+		<button v-if="!exportOnly" type="button" class="secondary" :disabled="busy || unsaved" :title="unsaved ? 'Save or discard your changes first' : `Read ${name} from an Excel workbook (you see what it holds before anything changes)`" @click="input?.click()">Import .xlsx…</button>
 		<input ref="input" type="file" accept=".xlsx" hidden @change="pick" />
 		<AppModal :open="!!importing" :title="`Import ${name}`" @close="importing = null">
 			<template v-if="importing">
