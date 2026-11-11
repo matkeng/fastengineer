@@ -17,6 +17,7 @@ from workbench_core.keylists import (EelList, EquipmentCode, EquipmentPackage, E
                                      check_equipment_packages, check_load_types, check_plant_areas)
 from workbench_core.keylists.plc import IoPoint, PlcCard, PlcList, PlcRack, PlcSystem, normalise_points
 from workbench_core.mel import parse_csv
+from workbench_core.refdata import RefValidationError
 from workbench_core.mel.models import FieldMap
 from workbench_core.refdata import (ColumnDef, EnumItem, EnumList, RefRow, RefTable, RefTree, TreeNode, check_enum,
                                     check_table_columns, check_tree, validate_row)
@@ -209,6 +210,24 @@ def load_sample_data() -> Added:
             done += 1
         return done
 
+    def runsheet() -> int:
+        """A few rows for the Instrument generator (to come): a pressure transmitter set on each pump."""
+        from workbench_core.keylists.instrument_runsheet import TypedRow
+
+        from .instrument_runsheet_api import checked, known
+        k = known()
+        if not ({"Centrifugal pump"} <= {n for _, n in k.types} and {"100"} <= {t for _, t in k.areas}):
+            return 0
+        want = [("P-101", "A", "100-P-PID-001", "TRUE", "1001", "10101"), ("P-102", "B", "100-P-PID-001", "TRUE", "1001", "10102"),
+                ("P-103", "", "100-P-PID-002", "FALSE", "1001", "10103")]
+        rows = [TypedRow(cells=["Centrifugal pump", "100", tag, suffix, pid, "", conf, rack, number])
+                for tag, suffix, pid, conf, rack, number in want if tag in k.parents]
+        try:
+            lists.save_instrument_runsheet(checked(rows, k))
+        except RefValidationError:
+            return 0
+        return len(rows)
+
     def panels() -> int:
         """MCC-2's schedule: its loads on the first ways, then a spare breaker, an RCD and the
         lighting control circuit, and two spare breakers behind the lighting contactor."""
@@ -255,6 +274,7 @@ def load_sample_data() -> Added:
     fill("List import (MEL)", not store.list_recipes(), mel)
     rows, _, _ = current_rows()  # brings the Load List up to date, so its allocations are filled in
     fill("Distribution Panels", not lists.distribution_panels().panels, panels)
+    fill("Instrument Runsheet", not lists.instrument_runsheet().rows, runsheet)
     fill("Deliverables", not dl.list(), deliverables)
     if "List import (MEL)" in added or "Electrical Equipment List" in added:
         done = 0

@@ -61,7 +61,29 @@ def overview() -> dict:
             "eel": {"items": len(lists.eel().items)},
             "plc": _plc_counts(lists.plc()),
             "cable_types": {"items": len(lists.cable_types().items)},
-            "distribution_panels": {"items": len(lists.distribution_panels().panels)}}
+            "distribution_panels": {"items": len(lists.distribution_panels().panels)},
+            "instrument_runsheet": {"items": len(lists.instrument_runsheet().rows)},
+            "mel": {"items": _mel_count()}}
+
+
+def _mel_count() -> int:
+    """Rows in the latest file of every MEL import (from what is stored: no file is read again)."""
+    from .storage import get_store
+    st = get_store()
+    return sum((st.list_revisions(r["id"]) or [None])[0].num_rows for r in st.list_recipes()
+               if r["target"] == "MEL" and r["revisions"])
+
+
+def _refuse_runsheet(field: str, removed: dict[str, str], what: str) -> None:
+    """Refuse to delete equipment types or plant areas that Instrument Runsheet rows refer to.
+    `field`: equipment_type_id or plant_area_id; `removed`: id -> label."""
+    counts: dict[str, int] = {}
+    for r in get_keylists().instrument_runsheet().rows:
+        if getattr(r, field) in removed:
+            counts[getattr(r, field)] = counts.get(getattr(r, field), 0) + 1
+    if counts:
+        raise RefValidationError(f"These {what} are used in the Instrument Runsheet and can't be deleted: " + ", ".join(
+            f"{removed[i]} ({n} row{'s' if n > 1 else ''})" for i, n in counts.items()) + ". Change those rows first.")
 
 
 def _plc_counts(plc) -> dict[str, int]:
@@ -124,6 +146,8 @@ def update_plant_areas(body: PlantAreasUpdate):
         _refuse_in_use("plant_area", {n.id: n.tag for n in get_keylists().plant_areas().nodes if n.id not in kept},
                        "plant areas")
         _refuse_plc({n.id: n.tag for n in get_keylists().plant_areas().nodes if n.id not in kept})
+        _refuse_runsheet("plant_area_id", {n.id: n.tag for n in get_keylists().plant_areas().nodes if n.id not in kept},
+                         "plant areas")
         return get_keylists().save_plant_areas(areas)
     except RefValidationError as exc:
         return invalid(exc)
@@ -148,6 +172,9 @@ def update_equipment_packages(body: EquipmentPackagesUpdate):
         kept = {p.id for p in packages.items}
         _refuse_eel(("vendor_package_id", "supplied_by_id", "installed_by_id", "terminated_by_id"),
                     {p.id: p.number for p in lists.equipment_packages().items if p.id not in kept}, "packages")
+        kept_types = {t.id for t in packages.types}
+        _refuse_runsheet("equipment_type_id", {t.id: t.name for t in lists.equipment_packages().types if t.id not in kept_types},
+                         "equipment types")
         return lists.save_equipment_packages(packages)
     except RefValidationError as exc:
         return invalid(exc)
@@ -165,11 +192,14 @@ class LoadTypesUpdate(BaseModel):
 @router.get("/load-types/lists")
 def load_type_lists() -> dict:
     """The deliverable lists a load type has rows for (with their columns), and the tags a row can use."""
+    from workbench_core.keylists.instrument_runsheet import TAGS as INSTRUMENT_TAGS
     from workbench_core.keylists.loadgen import LISTS, ROW_SETTINGS, TAGS, TEMPLATE_LISTS
     return {"lists": [{"key": k, "name": LISTS[k].deliverable_type, "columns": list(LISTS[k].columns),
                        "settings": [{"name": n, "values": list(v)} for n, v in ROW_SETTINGS.get(k, {}).items()]}
                       for k in TEMPLATE_LISTS],
-            "tags": [{"tag": f"<<{t}>>", "meaning": m} for t, m in TAGS]}
+            "tags": [{"tag": f"<<{t}>>", "meaning": m} for t, m in TAGS],
+            # what an equipment type's rows can use: the columns of the Instrument Runsheet
+            "instrument_tags": [{"tag": t, "meaning": m} for t, m in INSTRUMENT_TAGS]}
 
 
 @router.put("/load-types", response_model=LoadTypeList)

@@ -23,7 +23,7 @@ from workbench_core.keylists.distribution_panels import check_panels
 from workbench_core.mel.models import ELEC_LOAD_FIELDS
 from workbench_core.refdata import RefValidationError, name_key
 
-from . import distribution_panels_api, eel_api, keylists_api, loadlist_api
+from . import distribution_panels_api, eel_api, instrument_runsheet_api, keylists_api, loadlist_api
 from .storage import NotFound, get_keylists, get_loadlist
 
 router = APIRouter(prefix="/api/list-workbooks", tags=["project list workbooks"])
@@ -34,7 +34,10 @@ LISTS = {"plant-areas": ("Plant Areas", "plant area"), "equipment-packages": ("E
          "load-types": ("Load Types", "load type"), "equipment-codes": ("Equipment Codes", "equipment code"),
          "instrument-codes": ("Instrument Codes", "instrument code"), "cable-types": ("Cable Types", "cable type"),
          "eel": ("Electrical Equipment List", "item"), "load-list": ("Load List", "row"),
-         "distribution-panels": ("Distribution Panels", "panel")}
+         "distribution-panels": ("Distribution Panels", "panel"), "instrument-runsheet": ("Instrument Runsheet", "row"),
+         "mel": ("MEL", "row")}
+#: Lists that are only read here: they can be exported, not imported or reset.
+READ_ONLY = ("mel",)
 
 
 def _known(list_id: str) -> str:
@@ -67,6 +70,11 @@ def _sheets(list_id: str) -> wbk.Sheets:
         return wbk.export_cable_types(lists.cable_types().items)
     if list_id == "eel":
         return wbk.export_eel(lists.eel(), _eel_names())
+    if list_id == "instrument-runsheet":
+        return wbk.export_instrument_runsheet(instrument_runsheet_api.get_runsheet().rows)
+    if list_id == "mel":
+        mel = loadlist_api.mel_list()
+        return wbk.export_mel(mel.headers, mel.rows)
     rows = loadlist_api.current_rows()[0]
     if list_id == "load-list":
         used = {k for r in rows for k, v in r.values.items() if v not in (None, "")}
@@ -123,6 +131,8 @@ def _parse(list_id: str, data: bytes) -> tuple[wbk.Parsed, list[str]]:
     if list_id == "eel":
         old = lists.eel()
         return wbk.import_eel(sheets, old, _eel_names()), [i.tag for i in old.items]
+    if list_id == "instrument-runsheet":
+        return wbk.import_instrument_runsheet(sheets), []
     rows = loadlist_api.current_rows()[0]
     if list_id == "load-list":
         return wbk.import_load_list(sheets, rows, [(n.id, n.tag) for n in lists.plant_areas().nodes],
@@ -157,6 +167,8 @@ def _check(list_id: str, parsed: wbk.Parsed) -> None:
         check_code_list(p["items"], EquipmentCode if list_id == "equipment-codes" else InstrumentCode, LISTS[list_id][0])  # type: ignore[index]
     elif list_id == "cable-types":
         check_cable_types(p["items"])  # type: ignore[index]
+    elif list_id == "instrument-runsheet":
+        instrument_runsheet_api.checked(p)  # type: ignore[arg-type]
     elif list_id == "distribution-panels":
         _, errors = check_panels(p, {r.ref(): r for r in get_loadlist().rows()})  # type: ignore[arg-type]
         if errors:
@@ -184,6 +196,8 @@ def _save(list_id: str, parsed: wbk.Parsed):
         return lists.save_cable_types(check_cable_types(p["items"]), note="Imported from a workbook")  # type: ignore[index]
     if list_id == "eel":
         return eel_api.save_eel(eel_api.EelUpdate.model_validate(p))
+    if list_id == "instrument-runsheet":
+        return instrument_runsheet_api.save_runsheet(instrument_runsheet_api.RunsheetBody(rows=p))  # type: ignore[arg-type]
     return distribution_panels_api.save_panels(p)  # type: ignore[arg-type]
 
 
@@ -223,6 +237,8 @@ async def import_list(list_id: str, request: Request, filename: str = Query(...)
     """Read a workbook for a list. Without `apply` nothing is saved (a preview); with it the
     file replaces the list (for the Load List: changes the rows it names)."""
     name, item = _known(list_id), LISTS[list_id][1]
+    if list_id in READ_ONLY:
+        raise HTTPException(400, f"The {name} list is read-only here: it changes in List import.")
     data = await request.body()
     if len(data) > MAX_UPLOAD:
         raise HTTPException(413, "The file is larger than 50 MB.")
@@ -235,7 +251,10 @@ async def import_list(list_id: str, request: Request, filename: str = Query(...)
     except RefValidationError as exc:
         return JSONResponse(status_code=422, content={
             "detail": _problems(exc.fields, parsed.labels, "The file has problems:" if exc.fields else exc.message), "fields": {}})
-    if list_id == "load-list":
+    if list_id == "instrument-runsheet":
+        summary = (f"{len(parsed.payload)} row(s) in the file. "  # type: ignore[arg-type]
+                   f"They replace the {len(get_keylists().instrument_runsheet().rows)} row(s) of the list.")
+    elif list_id == "load-list":
         summary = f"{len(parsed.keys)} row(s) of the Load List would change."
     else:
         have = {name_key(k) for k in old}
@@ -282,6 +301,8 @@ def reset_list(list_id: str):
         lists.save_plc(PlcList(), note="Reset to empty")
         return ResetResult(message="The PLC List is empty. The card and rack types are kept.")
     name = _known(list_id)
+    if list_id in READ_ONLY:
+        raise HTTPException(400, f"The {name} list is read-only here: it changes in List import.")
     if list_id == "load-list":
         gone = get_loadlist().reset().get("all", 0)
         rows = [r for r in loadlist_api.current_rows()[0] if r.status == "active"]
@@ -291,7 +312,7 @@ def reset_list(list_id: str):
         items = lists.save_cable_types(default_cable_types(), note="Reset to the default cable types").items
         return ResetResult(message=f"Cable Types is back to the {len(items)} default cable types.")
     empty = {"plant-areas": {"nodes": []}, "equipment-packages": {"items": [], "types": []},
-             "distribution-panels": wbk.DistributionPanelList()}.get(list_id, {"items": []})
+             "distribution-panels": wbk.DistributionPanelList(), "instrument-runsheet": []}.get(list_id, {"items": []})
     try:
         result = _save(list_id, wbk.Parsed(empty, []))
     except RefValidationError as exc:

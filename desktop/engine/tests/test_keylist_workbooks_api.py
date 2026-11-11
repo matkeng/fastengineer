@@ -17,7 +17,8 @@ API = "/api/list-workbooks"
 LISTS = {"plant-areas": "/api/keylists/plant-areas", "equipment-packages": "/api/keylists/equipment-packages",
          "load-types": "/api/keylists/load-types", "equipment-codes": "/api/keylists/equipment-codes",
          "instrument-codes": "/api/keylists/instrument-codes", "cable-types": "/api/keylists/cable-types", "eel": "/api/eel",
-         "load-list": "/api/loadlist", "distribution-panels": "/api/distribution-panels"}
+         "load-list": "/api/loadlist", "distribution-panels": "/api/distribution-panels",
+         "instrument-runsheet": "/api/instrument-runsheet"}
 
 
 @pytest.fixture(autouse=True)
@@ -62,13 +63,19 @@ def test_every_list_exports_and_imports_back_unchanged(list_id: str) -> None:
     assert preview.status_code == 200, preview.text
     assert preview.json()["applied"] is False and "removed." in preview.json()["summary"] + "removed."
     assert _state(list_id) == before  # a preview saves nothing
-    if list_id != "load-list":
+    if list_id == "instrument-runsheet":
+        assert preview.json()["summary"] == "3 row(s) in the file. They replace the 3 row(s) of the list."
+    elif list_id != "load-list":
         assert " 0 new" in preview.json()["summary"] and "Nothing would be removed" in preview.json()["summary"]
     else:
         assert preview.json()["summary"].startswith("0 row(s)")
     done = _import(list_id, data, apply=True)
     assert done.status_code == 200 and done.json()["applied"] is True, done.text
     after = _state(list_id)
+    if list_id == "instrument-runsheet":  # rows get new ids
+        for view in (before, after):
+            for r in view["rows"]:
+                r["id"] = ""
     if list_id == "distribution-panels":  # circuits and headings get new ids; everything else is the same
         for view in (before, after):
             for p in view["doc"]["panels"]:

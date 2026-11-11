@@ -24,10 +24,12 @@ from .symbols_api import router as symbols_router
 from .refdata_api import router as refdata_router
 from .generators_api import router as generators_router
 from .keylists_api import router as keylists_router
+from .loadlist_api import mel_router as mel_list_router
 from .loadlist_api import router as loadlist_router
 from .eel_api import router as eel_router
 from .plc_api import router as plc_router
 from .distribution_panels_api import router as distribution_panels_router
+from .instrument_runsheet_api import router as instrument_runsheet_router
 from .keylist_workbooks_api import router as keylist_workbooks_router
 from .deliverables_api import router as deliverables_router
 from .projects_api import router as projects_router
@@ -57,6 +59,7 @@ _RECORD_URLS = [(re.compile(p), entity) for p, entity in (
     (r"^/api/plc/(catalogue)$", "gen_catalogue"),
     (r"^/api/(plc)$", "plc"),
     (r"^/api/(distribution-panels)$", "distribution_panels"),
+    (r"^/api/(instrument-runsheet)$", "instrument_runsheet"),
     (r"^/api/deliverables/([^/]+)$", "deliverable"),
     (r"^/api/generators/([^/]+)$", "generator"),
 )]
@@ -103,9 +106,11 @@ app.include_router(mel_router)
 app.include_router(refdata_router)
 app.include_router(keylists_router)
 app.include_router(loadlist_router)
+app.include_router(mel_list_router)
 app.include_router(eel_router)
 app.include_router(plc_router)
 app.include_router(distribution_panels_router)
+app.include_router(instrument_runsheet_router)
 app.include_router(keylist_workbooks_router)
 app.include_router(deliverables_router)
 app.include_router(symbols_router)

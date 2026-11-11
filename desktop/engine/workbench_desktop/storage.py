@@ -23,6 +23,7 @@ from workbench_core.deliverables import Revision as IssuedRevision
 from workbench_core.deliverables import RevisionInfo as IssueInfo
 from workbench_core.keylists.plc import PlcList, from_registers
 from workbench_core.keylists.distribution_panels import DistributionPanelList
+from workbench_core.keylists.instrument_runsheet import InstrumentRunsheet
 from workbench_core.keylists import (
     EEL_SOURCE,
     KEPT,
@@ -646,6 +647,25 @@ class KeyListStore:
             audit.log(self._db, "plc", "plc", before or PlcList().model_dump_json(), plc.model_dump_json(),
                       label="PLC List", note=note)
         return plc
+
+    INSTRUMENT_RUNSHEET = "instrument-runsheet"
+
+    def instrument_runsheet(self) -> InstrumentRunsheet:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.INSTRUMENT_RUNSHEET,)).fetchone()
+        return InstrumentRunsheet.model_validate_json(row[0]) if row else InstrumentRunsheet()
+
+    def save_instrument_runsheet(self, sheet: InstrumentRunsheet, note: str | None = None) -> InstrumentRunsheet:
+        sheet = sheet.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.INSTRUMENT_RUNSHEET,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.INSTRUMENT_RUNSHEET, sheet.model_dump_json()))
+            # the record id is the one in the URL (/api/instrument-runsheet), for the version check
+            audit.log(self._db, "instrument_runsheet", self.INSTRUMENT_RUNSHEET,
+                      before or InstrumentRunsheet().model_dump_json(), sheet.model_dump_json(),
+                      label="Instrument Runsheet", note=note)
+        return sheet
 
     DISTRIBUTION_PANELS = "distribution-panels"
 

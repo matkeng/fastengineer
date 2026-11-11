@@ -240,6 +240,73 @@ def allocate(body: Allocation):
         raise HTTPException(404, "A row is no longer in the Load List. Open it again.") from exc
 
 
+# -- the MEL: every row of the MEL imports, to read ---------------------------------------------
+
+class MelRow(BaseModel):
+    source: str  # the import's name
+    recipe_id: str
+    key: str  # the import's key column value
+    tag: str  # the mapped tag when the import maps one, else the key
+    in_load_list: bool  # False: unticked in the import's Rows step (not a load)
+    values: dict[str, str]
+
+
+class MelList(BaseModel):
+    headers: list[str]  # the files' columns, every import's, in the order first seen
+    rows: list[MelRow]
+    sources: list[Source]
+    warnings: list[str] = Field(default_factory=list)
+
+
+def mel_list() -> MelList:
+    """The whole MEL: every row of the latest file of every MEL import, after the import's
+    column rules and before any row is unticked. So equipment that is not a load (a chute, a
+    bin, a conveyor) is in it, marked as not in the Load List. It is read-only: it changes
+    when an import's file or rules do."""
+    st = get_store()
+    headers: list[str] = []
+    rows: list[MelRow] = []
+    sources: list[Source] = []
+    warnings: list[str] = []
+    for info in st.list_recipes():
+        if info["target"] != "MEL":
+            continue
+        recipe = st.get_recipe(info["id"])
+        rev = st.latest_revision(info["id"])
+        if rev is None:
+            sources.append(Source(id=recipe.id, name=recipe.name, target=recipe.target, rows=0, has_file=False))
+            continue
+        result = run_pipeline(rev, recipe, upto="columns")
+        warnings += [f"{recipe.name}: {i.rule}: {i.message}" for i in result.issues]
+        headers += [h for h in result.headers if h not in headers]
+        hidden = {h.key for h in recipe.hidden_rows}
+        tag_column = next((m.column for m in recipe.mapping if m.field == "tag" and m.column), None)
+        for r in result.rows:
+            tag = (r.values.get(tag_column or "") or "").strip() or r.key
+            rows.append(MelRow(source=recipe.name, recipe_id=recipe.id, key=r.key, tag=tag, in_load_list=r.key not in hidden,
+                               values=r.values))
+        sources.append(Source(id=recipe.id, name=recipe.name, target=recipe.target, rows=len(result.rows), has_file=True))
+    return MelList(headers=headers, rows=rows, sources=sources, warnings=sorted(set(warnings)))
+
+
+def mel_tags() -> list[str]:
+    """Every tag of the MEL (a row's mapped tag, and its key), for lists that refer to equipment."""
+    out: dict[str, str] = {}
+    for r in mel_list().rows:
+        for t in (r.tag, r.key):
+            if name_key(t):
+                out.setdefault(name_key(t), t.strip())
+    return list(out.values())
+
+
+mel_router = APIRouter(prefix="/api/mel-list", tags=["MEL"])
+
+
+@mel_router.get("", response_model=MelList)
+def get_mel_list() -> MelList:
+    return mel_list()
+
+
 # -- reset -----------------------------------------------------------------------------------------
 
 class ResetBody(BaseModel):

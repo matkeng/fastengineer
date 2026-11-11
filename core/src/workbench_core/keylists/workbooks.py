@@ -611,3 +611,29 @@ def import_distribution_panels(sheets: dict[str, Rows], old: DistributionPanelLi
     labels = {p.id: p.tag for p in doc.panels} | {e.id: f"{p.tag} {circuit_name(e.way, e.pole or '')}" for p in doc.panels for e in p.entries}
     labels |= {d.id: f"{p.tag} heading above way {d.before_way}" for p in doc.panels for d in p.dividers}
     return Parsed(doc, [p.tag for p in doc.panels], notes, labels)
+
+
+# -- the Instrument Runsheet and the MEL -----------------------------------------------------------
+
+def export_instrument_runsheet(rows: list) -> Sheets:
+    """`rows`: the runsheet as typed (instrument_runsheet.TypedRow). Numbers are written as text,
+    exactly as they were typed (a leading zero stays)."""
+    from .instrument_runsheet import HEADINGS
+
+    return [("Instrument Runsheet", [list(HEADINGS)] + [[c if c != "" else None for c in r.cells] for r in rows])]
+
+
+def import_instrument_runsheet(sheets: dict[str, Rows]) -> Parsed:
+    """The payload is the rows as typed; the engine resolves and checks their references."""
+    from .instrument_runsheet import HEADINGS, TypedRow
+
+    file = _sheet(sheets, "Instrument Runsheet", tuple(HEADINGS[:3]))
+    rows = [TypedRow(cells=[_get(r, h) for h in HEADINGS]) for r in file]
+    return Parsed(rows, [], labels={r.id: f"Row {n}" for n, r in enumerate(rows, start=1)})
+
+
+def export_mel(headers: list[str], rows: list) -> Sheets:
+    """`rows`: the MEL's rows (source, tag, in_load_list, values). For reading: it is not imported."""
+    grid: Grid = [["Source", "Tag", "In the Load List"] + headers]
+    grid += [[r.source, r.tag, "Yes" if r.in_load_list else "No"] + [r.values.get(h) or None for h in headers] for r in rows]
+    return [("MEL", grid)]
