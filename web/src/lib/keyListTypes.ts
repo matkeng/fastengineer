@@ -40,7 +40,14 @@ export type TemplateRows = Record<string, Record<string, string>[]>;
 /** The deliverable lists a load type has rows for, and the tags a row can use. */
 export interface TemplateLists { lists: { key: string; name: string; columns: string[]; settings: { name: string; values: string[] }[] }[]; tags: { tag: string; meaning: string }[];
 	/** The tags an equipment type's rows can use: the columns of the Instrument Runsheet. */
-	instrument_tags: { tag: string; meaning: string }[] }
+	instrument_tags: { tag: string; meaning: string }[];
+	/** Dot notation: the linked records' fields a load type's / an equipment type's rows can reach. */
+	paths?: { tag: string; meaning: string }[]; instrument_paths?: { tag: string; meaning: string }[];
+	/** What can follow a tag's | (<<Tag|upper>>). */
+	modifiers?: TagModifier[] }
+export interface TagModifier { name: string; meaning: string; example: string; args: number }
+/** A modifier as it is offered after "|": with its example's arguments (left:3). */
+export const modifierText = (m: TagModifier) => (m.args ? (/\|([^|>]+)>>$/.exec(m.example)?.[1] ?? m.name) : m.name);
 export interface LoadTypeList { items: LoadType[]; updated_at: string | null }
 /** A load type as it is typed into the form: numbers are text until the engine converts them. */
 export interface LoadTypeForm {

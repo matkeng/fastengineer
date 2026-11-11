@@ -5,17 +5,21 @@
 // Schedule, Equipment List, Instrument List, PLC I/O List), each a grid whose cells can hold
 // <<tags>>. The same lists, columns and tags as a load type's rows. Edits go straight into `rows`.
 import { computed, onMounted, ref, watch } from 'vue';
-import type { TemplateRows } from '../../lib/keyListTypes';
+import { type TemplateRows, modifierText } from '../../lib/keyListTypes';
 import { useKeyLists } from '../../stores/keylists';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
+import TagHelp from './TagHelp.vue';
 
-// `tags`: the tags to offer (default: the Load List's, as for a load type).
-const props = defineProps<{ rows: TemplateRows; errors?: string[]; tags?: { tag: string; meaning: string }[] }>();
+// `tags`, `paths`: the tags and the linked records' dotted tags to offer (default: a load's, as for a load type).
+const props = defineProps<{ rows: TemplateRows; errors?: string[]; tags?: { tag: string; meaning: string }[]; paths?: { tag: string; meaning: string }[] }>();
 const kl = useKeyLists();
 onMounted(() => kl.loadTemplateLists());
 const lists = computed(() => kl.templateLists?.lists ?? []);
 const tagList = computed(() => props.tags ?? kl.templateLists?.tags ?? []);
-const tagNames = computed(() => tagList.value.map((t) => t.tag));
+const pathList = computed(() => props.paths ?? kl.templateLists?.paths ?? []);
+const modifiers = computed(() => kl.templateLists?.modifiers ?? []);
+const tagNames = computed(() => [...tagList.value, ...pathList.value].map((t) => t.tag));
+const modifierNames = computed(() => modifiers.value.map(modifierText));
 const tab = ref('');
 watch(lists, (l) => { if (!tab.value && l.length) tab.value = l[0].key; }, { immediate: true });
 const list = computed(() => lists.value.find((l) => l.key === tab.value) ?? null);
@@ -58,10 +62,11 @@ function removeRows(idx: number[]) {
 		<template v-if="list">
 			<p class="hint small">
 				<slot :list="list" />
-				Type <code>&lt;&lt;</code> in a cell to pick a tag.
-				<span class="tag-help" :title="tagList.map((t) => `${t.tag}  ${t.meaning}`).join('\n')">All tags ⓘ</span>
+				Type <code>&lt;&lt;</code> in a cell to pick a tag, a <code>.</code> to follow a link (<code>&lt;&lt;LoadType.Name&gt;&gt;</code>)
+				and <code>|</code> for a modifier (<code>&lt;&lt;Tag|upper&gt;&gt;</code>).
+				<TagHelp :tags="tagList" :paths="pathList" :modifiers="modifiers" />
 			</p>
-			<EditGrid :columns="gridCols" :cells="gridCells" :tag-suggestions="tagNames" :cell-class="tagClass"
+			<EditGrid :columns="gridCols" :cells="gridCells" :tag-suggestions="tagNames" :modifier-suggestions="modifierNames" :cell-class="tagClass"
 				:height="Math.min(360, 96 + 26 * Math.max(4, listRows.length))" @set="setCells" @insert="insertRows" @remove="removeRows" />
 			<p v-if="!listRows.length" class="hint small">No rows yet for the {{ list.name }}. Use “+ Row”.</p>
 			<p v-for="m in errors ?? []" :key="m" class="warn small">{{ m }}</p>

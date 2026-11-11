@@ -199,6 +199,7 @@ def load_type_lists() -> dict:
     from workbench_core.keylists.instrument_runsheet import number_count
     from workbench_core.keylists.instrument_runsheet import tags as instrument_tags
     from workbench_core.keylists.loadgen import LISTS, ROW_SETTINGS, TAGS, TEMPLATE_LISTS
+    from workbench_core.keylists.tag_paths import MODIFIERS, help_paths
     cols = get_keylists().master_columns()
     return {"lists": [{"key": k, "name": LISTS[k].deliverable_type, "columns": cols.of(k),
                        "settings": [{"name": n, "values": list(v)} for n, v in ROW_SETTINGS.get(k, {}).items()]}
@@ -207,7 +208,11 @@ def load_type_lists() -> dict:
             # what an equipment type's rows can use: the columns of the Instrument Runsheet
             # (with as many <<#n>> as the runsheet has number columns now; a higher one can be typed)
             "instrument_tags": [{"tag": t, "meaning": m}
-                                for t, m in instrument_tags(number_count(get_keylists().instrument_runsheet()))]}
+                                for t, m in instrument_tags(number_count(get_keylists().instrument_runsheet()))],
+            # dot notation: the linked records' fields a load's / a runsheet row's rows can reach, and the modifiers
+            "paths": [{"tag": t, "meaning": m} for t, m in help_paths("load")],
+            "instrument_paths": [{"tag": t, "meaning": m} for t, m in help_paths("runsheet")],
+            "modifiers": [{"name": n, "meaning": m, "example": e, "args": a} for n, (a, m, e) in MODIFIERS.items()]}
 
 
 @router.put("/load-types", response_model=LoadTypeList)

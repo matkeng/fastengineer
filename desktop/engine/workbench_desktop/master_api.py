@@ -32,16 +32,24 @@ class Inputs(BaseModel, arbitrary_types_allowed=True):
     runsheet: object
     equipment_types: dict
     columns: dict  # list key -> the project's columns of the list
+    links: object  # tag_paths.Links: the project's lists, for dot notation in the rows' tags
 
 
 def inputs() -> Inputs:
     from .loadlist_api import current_rows  # imported late: it runs the imports
 
+    from workbench_core.keylists.tag_paths import Links
+
     lists = get_keylists()
-    return Inputs(loads=current_rows()[0], load_types={t.id: t for t in lists.load_types().items},
-                  areas={n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}, cables=lists.cable_types().items,
-                  runsheet=lists.instrument_runsheet(), equipment_types={t.id: t for t in lists.equipment_packages().types},
-                  columns=lists.master_columns().all())
+    loads, load_types, nodes = current_rows()[0], lists.load_types().items, lists.plant_areas().nodes
+    packages, cables = lists.equipment_packages(), lists.cable_types().items
+    links = Links(load_types=load_types, areas=nodes, loads=loads, eel=lists.eel().items, codes=lists.code_list("equipment-codes").items,
+                  packages=packages.items, equipment_types=packages.types, cables=cables, plc=lists.plc(),
+                  load_labels=lists.load_fields().labels())
+    return Inputs(loads=loads, load_types={t.id: t for t in load_types},
+                  areas={n.id: (n.tag, n.description) for n in nodes}, cables=cables,
+                  runsheet=lists.instrument_runsheet(), equipment_types={t.id: t for t in packages.types},
+                  columns=lists.master_columns().all(), links=links)
 
 
 def master_of(list_key: str, src: Inputs | None = None) -> tuple[BuildResult, list[str], list[str]]:
@@ -50,12 +58,12 @@ def master_of(list_key: str, src: Inputs | None = None) -> tuple[BuildResult, li
     src = src or inputs()
     warnings: list[str] = []
     cols = src.columns[list_key]
-    power = generate(list_key, src.loads, src.load_types, src.areas, src.cables, warnings, cols)
+    power = generate(list_key, src.loads, src.load_types, src.areas, src.cables, warnings, cols, links=src.links)
     result = master_list(list_key, power, src.runsheet, src.equipment_types, {i: a[0] for i, a in src.areas.items()},  # type: ignore[arg-type]
-                         cols)
+                         cols, src.links)
     if result.unresolved_count:
         warnings.append(f"{result.unresolved_count} tag(s) in the load types' or equipment types' rows match nothing and were left "
-                        "as they are: " + ", ".join(result.unresolved_tokens[:10]))
+                        "as they are: " + "; ".join(result.unresolved_tokens[:10]))
     gone = sum(1 for r in src.runsheet.rows if r.equipment_type_id not in src.equipment_types)  # type: ignore[attr-defined]
     if gone:
         warnings.append(f"{gone} row(s) of the Instrument Runsheet have an equipment type that no longer exists and add nothing.")

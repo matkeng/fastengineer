@@ -9,13 +9,14 @@ import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, type SelectFilter, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
 import { runningInTauri } from '../../lib/engine';
 import {
-	PHASES, RATING_UNITS, type AttachedFile, type LoadType, type LoadTypeField, type LoadTypeForm, fileSize, loadTypeProblems,
+	PHASES, RATING_UNITS, type AttachedFile, type LoadType, type LoadTypeField, type LoadTypeForm, fileSize, loadTypeProblems, modifierText,
 } from '../../lib/keyListTypes';
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
 import AppModal from '../common/AppModal.vue';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
+import TagHelp from './TagHelp.vue';
 
 // Load types: a grid of every row; a row is added or edited in a form and saved from there.
 // Each load type also holds predefined rows for the deliverable lists (one tab per list): every
@@ -116,7 +117,8 @@ const editing = ref<{ isNew: boolean; form: LoadTypeForm; pdf: AttachedFile | nu
 // The dialog's tab: 'details' or the key of a deliverable list.
 const tab = ref('details');
 const lists = computed(() => kl.templateLists?.lists ?? []);
-const tagNames = computed(() => (kl.templateLists?.tags ?? []).map((t) => t.tag));
+const tagNames = computed(() => [...(kl.templateLists?.tags ?? []), ...(kl.templateLists?.paths ?? [])].map((t) => t.tag));
+const modifierNames = computed(() => (kl.templateLists?.modifiers ?? []).map(modifierText));
 const rowCount = (rows: LoadType['rows'] | undefined) => Object.values(rows ?? {}).reduce((n, r) => n + r.length, 0);
 const list = computed(() => lists.value.find((l) => l.key === tab.value) ?? null);
 const listRows = computed(() => (list.value && editing.value ? (editing.value.form.rows[list.value.key] ??= []) : []));
@@ -318,9 +320,10 @@ onBeforeUnmount(() => {
 					Every load of this type in the Load List adds these rows to the <strong>{{ list.name }}</strong>. Type <code>&lt;&lt;</code> in a cell
 					to pick a tag; it is replaced with that load's data.
 					<template v-if="settings.length">A row with <strong>Repeat</strong> = <em>{{ settings[0].values[0] }}</em> is written once for each of the load's power cables, looked up in Cable Types from its Cable Type and Cores cells.</template>
-					<span class="tag-help" :title="(kl.templateLists?.tags ?? []).map((t) => `${t.tag}  ${t.meaning}`).join('\n')">All tags ⓘ</span>
+					Follow a link with <code>.</code> (<code>&lt;&lt;LoadType.Name&gt;&gt;</code>), change it with <code>|</code> (<code>&lt;&lt;Tag|upper&gt;&gt;</code>).
+					<TagHelp :tags="kl.templateLists?.tags ?? []" :paths="kl.templateLists?.paths ?? []" :modifiers="kl.templateLists?.modifiers ?? []" />
 				</p>
-				<EditGrid :columns="gridCols" :cells="gridCells" :tag-suggestions="tagNames" :cell-class="tagClass"
+				<EditGrid :columns="gridCols" :cells="gridCells" :tag-suggestions="tagNames" :modifier-suggestions="modifierNames" :cell-class="tagClass"
 					:height="Math.min(360, 96 + 26 * Math.max(4, listRows.length))" @set="setCells" @insert="insertRows" @remove="removeRows" />
 				<p v-if="!listRows.length" class="hint small">No rows yet: loads of this type add nothing to the {{ list.name }}. Use “+ Row”.</p>
 				<p v-for="(msg, k) in kl.fieldErrors" v-show="String(k).startsWith(`${editing.form.id}.rows`)" :key="k" class="warn small">{{ msg }}</p>

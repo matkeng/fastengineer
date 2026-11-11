@@ -30,6 +30,7 @@ const props = withDefaults(defineProps<{
 	rowLabels?: string[];
 	cellClass?: (r: number, c: number) => string;
 	tagSuggestions?: string[]; // offered after typing "<<"
+	modifierSuggestions?: string[]; // offered after a "|" inside a tag, e.g. "upper", "left:3"
 	canEditRows?: boolean;
 	height?: number;
 	growColumns?: boolean; // a paste wider than the grid is passed on whole: the parent adds the columns
@@ -78,6 +79,12 @@ const tagPick = ref(0);
 const tagMatches = computed(() => {
 	if (tagQuery.value === null || !props.tagSuggestions?.length) return [];
 	const q = tagQuery.value.toLowerCase();
+	const bar = tagQuery.value.lastIndexOf('|');
+	if (bar >= 0) { // a modifier after the path: <<Tag|up… -> <<Tag|upper>>
+		const base = tagQuery.value.slice(0, bar);
+		const part = q.slice(bar + 1);
+		return (props.modifierSuggestions ?? []).filter((m) => m.toLowerCase().startsWith(part)).map((m) => `<<${base}|${m}>>`).slice(0, 12);
+	}
 	return props.tagSuggestions.filter((t) => t.toLowerCase().startsWith(`<<${q}`)).slice(0, 12);
 });
 

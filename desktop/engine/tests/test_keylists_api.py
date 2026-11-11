@@ -371,3 +371,23 @@ def test_cable_schedule_rows_can_repeat_per_power_cable() -> None:
     assert saved.json()["items"][0]["rows"]["cable_schedule"][0]["Repeat"] == "Per power cable"
     assert client.put(LOAD_URL, json={"items": [dict(LOADS[0], rows={"cable_schedule": [{"Repeat": "x", "From": "a"}]})]}).status_code == 422
     assert client.put(LOAD_URL, json={"items": [dict(LOADS[0], rows={"plc_io_list": [{"Repeat": "Per power cable", "Tag": "a"}]})]}).status_code == 422
+
+
+def test_dotted_tags_and_modifiers_in_the_master_lists() -> None:
+    meta = client.get("/api/keylists/load-types/lists").json()
+    assert {"tag": "<<LoadType.Name>>", "meaning": "the load type's name"} in meta["paths"]
+    assert any(p["tag"] == "<<Parent.LoadType.Code>>" for p in meta["instrument_paths"])
+    assert {m["name"] for m in meta["modifiers"]} >= {"upper", "int", "pad", "default", "replace"}
+    assert client.post("/api/sample-data").status_code == 200
+    types = client.get("/api/keylists/load-types").json()["items"]
+    dol = next(t for t in types if t["code"] == "DOL")
+    dol["rows"]["equipment_list"] = [{"Tag": "<<Tag>>", "Description": "<<LoadType.Name|upper>>",
+                                      "Plant Area": "<<PlantArea.Parent.Tag|default:none>>", "Supplied From": "<<SuppliedFrom.Description>>",
+                                      "Remarks": "<<LoadType.Nope>>"}]
+    assert client.put("/api/keylists/load-types", json={"items": types}).status_code == 200
+    master = client.get("/api/master/equipment_list").json()
+    head = master["result"]["header"]
+    p101 = next(dict(zip(head, r["cells"])) for r in master["result"]["rows"] if r["cells"][0] == "P-101")
+    assert p101["Description"] == "DIRECT ON LINE MOTOR STARTER" and p101["Plant Area"] == "W-1"
+    assert p101["Supplied From"] == "Motor control centre 1"
+    assert any("<<LoadType.Nope>> ('Nope' is not a field of a load type" in w for w in master["warnings"])

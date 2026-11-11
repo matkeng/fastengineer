@@ -938,6 +938,39 @@ Tags (not case-sensitive; type `<<` in a cell to pick one):
 | `<<CableNo>>`, `<<Phase>>` | 1, 2, … and L1 / L2 / L3 / N / E for each cable of a "Per power cable" row |
 | any mapped load-list field, e.g. `<<starter_type>>` | that field of the load |
 
+### Tags in template rows: dot notation and modifiers
+
+A cell of a load type's or an equipment type's rows can hold
+`<<path|modifier|modifier:arg>>` (`keylists/tag_paths.py`).
+
+- **path**: one name as before (`<<Tag>>`, `<<LoadTypeName>>`, `<<load_rating>>`,
+  `<<#1>>`, `<<STD>>`, the cable tags), or names joined by dots that follow the
+  row's links to other records and end on one of their fields. Names ignore case,
+  spaces and `_`. A path that ends on a record gives its name (a load's tag, a
+  load type's code, a plant area's tag…).
+
+  | From | Links | Example |
+  |---|---|---|
+  | a load (Power) | `LoadType`, `PlantArea`, `SuppliedFrom` (a load), `Eel` (its Electrical Equipment List item), `Cable` (the matched Cable Types row, per-cable rows) | `<<SuppliedFrom.LoadType.Code>>` |
+  | a runsheet row (Instrument) | `EquipmentType` (→ `Package`), `PlantArea`, `Parent` (the load its parent tag names), `Rack` (the PLC List rack, → `System`, `PlantArea`) | `<<Parent.PlantArea.Parent.Tag>>` |
+  | a plant area | `Parent` | `<<PlantArea.Parent.Parent.Tag>>` |
+  | an Equipment List item | `EquipmentCode`, `VendorPackage`, `SuppliedBy`, `InstalledBy`, `TerminatedBy`, `PlantArea`, `LoadType`, `Load` | `<<Eel.EquipmentCode.Name>>` |
+
+  A load's fields are every Load List field (by tag or name, calculated ones
+  too), its tags and its cable details; the other records' fields are listed in
+  the editor's **All tags ⓘ** panel.
+- **modifiers**, left to right: `upper`, `lower`, `title`, `trim`, `nohyphen`,
+  `int` (cut off), `round:n`, `dec:n` (always n decimals, kept as text),
+  `pad:n` (zero-pad, kept as text), `left:n`, `right:n`, `replace:a:b` (`\:`
+  for a colon), `prefix:x` / `suffix:x` (only when not blank), `default:x`
+  (when blank). E.g. `<<LoadType.Name|upper>>`, `<<#1|int|pad:3>>`,
+  `<<EquipmentType.Package.Vendor|default:TBA>>`.
+- A link the row doesn't have (no load type allocated, no parent found) gives
+  blank. A name that isn't a link or field, or an unknown modifier, leaves the
+  tag as typed and is listed with what is wrong in the master list's warning.
+- In the rows grid, typing `<<` offers the tags, a `.` after a link offers that
+  record's fields, and `|` offers the modifiers.
+
 ### Cables: the load's details pick the cable from Cable Types
 
 Cable sizing is done outside the app. Each load in the **Load List** has a

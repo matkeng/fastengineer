@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from ..generators.models import BuildResult, BuildStats, OutputRow, Scalar
 from .instrument_runsheet import FIXED, MAX_NUMBERS, InstrumentRunsheet
-from .loadgen import LISTS, TEMPLATE_LISTS, _cell, expand
+from .loadgen import LISTS, TEMPLATE_LISTS, expand_cell
 from .models import EquipmentType
 
 #: The lists that have a project master (the lists load types and equipment types have rows for).
@@ -53,11 +53,16 @@ def runsheet_tags(row, type_name: str, area_tag: str) -> dict[str, str]:
 
 
 def instrument_rows(list_key: str, runsheet: InstrumentRunsheet, types: dict[str, EquipmentType], area_tags: dict[str, str],
-                    unresolved: dict[str, int] | None = None, columns: list[str] | None = None) -> list[tuple[OutputRow, bool]]:
+                    unresolved: dict[str, int] | None = None, columns: list[str] | None = None,
+                    links=None) -> list[tuple[OutputRow, bool]]:
     """What the Instrument generator adds to a list: for each runsheet row, in order, the rows
     its equipment type has for the list, filled in. Each comes with the runsheet row's
     Confirmed. `types`: equipment types by id; `area_tags`: plant area id -> tag number.
-    A row whose equipment type is gone produces nothing."""
+    A row whose equipment type is gone produces nothing. `links`: the project's lists
+    (tag_paths.Links) for dot notation (<<EquipmentType.Package.Vendor>>, <<Parent.LoadType.Code>>)."""
+    from .tag_paths import Links
+
+    links = links or Links(equipment_types=types.values())
     cols = LISTS[list_key].columns if columns is None else columns
     unresolved = {} if unresolved is None else unresolved
     out: list[tuple[OutputRow, bool]] = []
@@ -68,19 +73,20 @@ def instrument_rows(list_key: str, runsheet: InstrumentRunsheet, types: dict[str
         tags = runsheet_tags(row, kind.name, area_tags.get(row.plant_area_id, ""))
         for i, template in enumerate(kind.rows.get(list_key, []), start=1):
             tags["row"] = str(i)
-            cells = [_cell(expand(template.get(c, ""), tags, unresolved)) for c in cols]
+            root = links.runsheet(row, tags)
+            cells = [expand_cell(template.get(c, ""), tags, unresolved, root) for c in cols]
             out.append((OutputRow(cells=cells, run_row_id=f"runsheet/{row.id}", template_id=kind.name, template_seq=i), row.confirmed))
     return out
 
 
 def master_list(list_key: str, power: BuildResult, runsheet: InstrumentRunsheet, types: dict[str, EquipmentType],
-                area_tags: dict[str, str], columns: list[str] | None = None) -> BuildResult:
+                area_tags: dict[str, str], columns: list[str] | None = None, links=None) -> BuildResult:
     """The project master of a list: the Power generator's rows (`power`: loadgen.generate for
     the list, with the same `columns`), then the Instrument generator's, each with its
     Generator and Confirmed. `columns`: the project's columns of the list."""
     unresolved: dict[str, int] = {}
     rows = [r.model_copy(update={"cells": [*r.cells, POWER, "TRUE"]}) for r in power.rows]
-    for r, confirmed in instrument_rows(list_key, runsheet, types, area_tags, unresolved, columns):
+    for r, confirmed in instrument_rows(list_key, runsheet, types, area_tags, unresolved, columns, links):
         extra: list[Scalar] = [INSTRUMENT, "TRUE" if confirmed else "FALSE"]
         rows.append(r.model_copy(update={"cells": [*r.cells, *extra]}))
     tokens = sorted(set(power.unresolved_tokens) | set(unresolved))

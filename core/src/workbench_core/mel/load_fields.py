@@ -45,7 +45,9 @@ LOCKED: tuple[str, ...] = ("tag", "desc", "area", "equip_type", "equip_qty", "lo
 #: itself (loadgen.tags_for), which would hide a field's own value.
 _DERIVED = {"tag", "description", "area", "rating", "units", "voltage", "phases", "equiptype", "qty", "plantarea",
             "plantareadesc", "loadtype", "loadtypename", "suppliedfrom", "suppliedfromdesc", "stddrg", "buckettype", "source",
-            "row", "cableno", "cabletype", "cablecode", "cablecores", "cablesize", "cableinsulation"}
+            "row", "cableno", "cabletype", "cablecode", "cablecores", "cablesize", "cableinsulation",
+            # the links dot notation follows (keylists.tag_paths)
+            "suppliedfrom", "eel", "cable", "parent", "equipmenttype", "package", "system"}
 MAX_FIELDS = 80
 MAX_LABEL = 60
 

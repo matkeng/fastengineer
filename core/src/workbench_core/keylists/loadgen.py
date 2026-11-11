@@ -171,14 +171,34 @@ def tags_for(row: LoadListRow, load_types: dict[str, LoadType], areas: dict[str,
     return out
 
 
-def expand(text: str, tags: dict[str, str], unresolved: dict[str, int]) -> str:
+def expand(text: str, tags: dict[str, str], unresolved: dict[str, int], root=None, as_text: list[bool] | None = None) -> str:
+    """The text with its <<tags>> filled in from `tags` (lower-case name -> text). `root`: the
+    row as a tag_paths.Record, for dot notation and modifiers (<<LoadType.Name|upper>>); without
+    it only the plain tags are filled in. A tag that matches nothing is left as it is and
+    counted in `unresolved` (with what is wrong when it says). `as_text` gets True when a
+    modifier made text that must not become a number (dec, pad)."""
+    from .tag_paths import resolve
+
     def sub(m: re.Match) -> str:
-        name = m.group(1).casefold()
-        if name in tags:
-            return tags[name]
-        unresolved[m.group(0)] = unresolved.get(m.group(0), 0) + 1
+        name = m.group(1)
+        if name.casefold() in tags:
+            return tags[name.casefold()]
+        value, keep, problem = resolve(name, tags, root)
+        if value is not None:
+            if keep and as_text is not None:
+                as_text.append(True)
+            return value
+        key = m.group(0) if problem is None else f"{m.group(0)} ({problem})"
+        unresolved[key] = unresolved.get(key, 0) + 1
         return m.group(0)
     return _TAG.sub(sub, text)
+
+
+def expand_cell(text: str, tags: dict[str, str], unresolved: dict[str, int], root=None) -> Scalar:
+    """A template cell filled in, as a cell: a number stays a number, unless a modifier made it text."""
+    keep: list[bool] = []
+    out = expand(text, tags, unresolved, root, keep)
+    return out.strip() if keep else _cell(out)
 
 
 # -- cables ------------------------------------------------------------------------------------
@@ -270,13 +290,15 @@ def _value(x: object) -> Scalar:
 
 def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, LoadType],
              areas: dict[str, tuple[str, str]], cables: list[CableType] | None = None,
-             notes: list[str] | None = None, columns: list[str] | None = None, load_fields=None) -> BuildResult:
+             notes: list[str] | None = None, columns: list[str] | None = None, load_fields=None, links=None) -> BuildResult:
     """The rows of one list for the active loads. `load_types` by id; `areas`: plant area id ->
     (tag, description). Loads without a load type produce nothing in a templated list (the
     caller reports them: see missing_load_types). `cables`: the Cable Types list, for rows
     that use the cable tags; `notes` collects the loads whose cable could not be found.
     `columns`: the project's columns for a templated list (default: the built-in ones).
-    `load_fields`: the project's Load List fields, for the Load List's own (see load_list_columns)."""
+    `load_fields`: the project's Load List fields, for the Load List's own (see load_list_columns).
+    `links`: the project's lists (tag_paths.Links) for dot notation in the rows' tags (default:
+    only what is given here)."""
     spec = LISTS[list_key]
     cols = tuple(columns) if columns is not None and spec.templated else spec.columns
     if not spec.templated:
@@ -287,6 +309,9 @@ def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, Load
     by_ref = {r.ref(): r for r in loads}
     unresolved: dict[str, int] = {}
     rows: list[OutputRow] = []
+    if links is None and spec.templated:
+        from .tag_paths import Links
+        links = Links(load_types=load_types.values(), loads=loads, cables=cables)
     for load in ordered(loads):
         tags = tags_for(load, load_types, areas, by_ref)
         lt = load_types.get(load.load_type_id or "")
@@ -302,7 +327,8 @@ def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, Load
         for i, template in enumerate((lt.rows.get(list_key, []) if lt else []), start=1):
             tags["row"] = str(i)
             every = template.get(REPEAT) == PER_CABLE
-            uses = every or any(m.casefold() in _CABLE_TAGS for cell in template.values() for m in _TAG.findall(cell))
+            uses = every or any(m.casefold().split("|")[0].strip() in _CABLE_TAGS or m.casefold().replace(" ", "").startswith("cable.")
+                                for cell in template.values() for m in _TAG.findall(cell))
             if not uses:
                 for t in _CABLE_TAGS:
                     tags.pop(t, None)
@@ -315,11 +341,12 @@ def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, Load
                     unmatched.setdefault(p, []).append(load.tag())
             for cable in found:
                 row_tags = tags | cable
-                cells = {c: expand(template.get(c, ""), row_tags, unresolved) for c in cols}
+                root = links.load(load, row_tags, cable.get("cablecode", ""))
+                cells: dict[str, Scalar] = {c: expand_cell(template.get(c, ""), row_tags, unresolved, root) for c in cols}
                 if every:  # what was matched, whatever the template's cells say
-                    cells |= {"Cable Type": cable["cabletype"], "Cores": cable["cablecores"]}
+                    cells |= {"Cable Type": _cell(cable["cabletype"]), "Cores": _cell(cable["cablecores"])}
                     cells["Cable Code"] = cells.get("Cable Code") or cable["cablecode"]
-                rows.append(OutputRow(cells=[_cell(cells.get(c, "")) for c in cols], run_row_id=load.ref(),
+                rows.append(OutputRow(cells=[cells.get(c, "") for c in cols], run_row_id=load.ref(),
                                       template_id=lt.code, template_seq=i))
     if notes is not None:
         for problem, tags_ in unmatched.items():
