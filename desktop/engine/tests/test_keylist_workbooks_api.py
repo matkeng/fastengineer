@@ -250,3 +250,23 @@ def test_reset_parts_of_the_load_list() -> None:
     assert row("P-101")["plant_area_by"] == "auto" and row("F-301")["cable_size"] == ""
     assert client.post("/api/loadlist/reset", json={"parts": ["supply"]}).json()["message"].startswith("Nothing needed resetting")
     assert client.post("/api/loadlist/reset", json={}).json()["counts"] == {"all": 12}
+
+
+def test_equipment_type_rows_are_in_the_workbook() -> None:
+    wb = load_workbook(io.BytesIO(_export("equipment-packages")))
+    assert wb.sheetnames == ["Packages", "Equipment types", "Cable Schedule rows", "Equipment List rows", "Instrument List rows",
+                             "PLC I-O List rows"]
+    ws = wb["Instrument List rows"]
+    assert [c.value for c in ws[1]][:3] == ["Equipment type", "Tag", "Description"] and ws["A2"].value == "Centrifugal pump"
+
+    def change(wb) -> None:
+        wb["Instrument List rows"].append(["Centrifugal pump", "<<Tag>>-TT", "<<Description>> bearing temperature"])
+        wb["Instrument List rows"].append(["No such type", "x"])
+        del wb["PLC I-O List rows"]  # left out: those rows stay
+    res = _import("equipment-packages", _edit(_export("equipment-packages"), change), apply=True)
+    assert res.status_code == 200 and any("No such type" in n for n in res.json()["notes"]), res.text
+    pump = next(t for t in client.get(LISTS["equipment-packages"]).json()["types"] if t["name"] == "Centrifugal pump")
+    assert [r["Tag"] for r in pump["rows"]["instrument_list"]] == ["<<Tag>>-PT", "<<Tag>>-TT"] and len(pump["rows"]["plc_io_list"]) == 1
+    bad = client.put(LISTS["equipment-packages"], json={"items": client.get(LISTS["equipment-packages"]).json()["items"], "types": [
+        dict(pump, rows={"instrument_list": [{"Nope": "x"}]})]})
+    assert bad.status_code == 422 and f"{pump['id']}.rows.instrument_list" in bad.json()["fields"]

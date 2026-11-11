@@ -202,10 +202,20 @@ PACKAGE_HEAD = ["Number", "Description", "Vendor", "Type"]
 EQUIP_TYPE_HEAD = ["Package number", "Name", "Description"]
 
 
+def _rows_columns(key: str) -> list[str]:
+    return list(LISTS[key].columns) + list(ROW_SETTINGS.get(key, {}))
+
+
 def export_equipment_packages(p: EquipmentPackageList) -> Sheets:
     numbers = {i.id: i.number for i in p.items}
-    return [("Packages", [PACKAGE_HEAD] + [[i.number, i.description, i.vendor or None, i.package_type] for i in p.items]),
-            ("Equipment types", [EQUIP_TYPE_HEAD] + [[numbers.get(t.package_id), t.name, t.description or None] for t in p.types])]
+    out: Sheets = [
+        ("Packages", [PACKAGE_HEAD] + [[i.number, i.description, i.vendor or None, i.package_type] for i in p.items]),
+        ("Equipment types", [EQUIP_TYPE_HEAD] + [[numbers.get(t.package_id), t.name, t.description or None] for t in p.types])]
+    for key in TEMPLATE_LISTS:  # the rows an equipment type has for a list, one sheet per list
+        columns = _rows_columns(key)
+        out.append((_rows_sheet(key), [["Equipment type"] + columns] + [
+            [t.name] + [row.get(c) or None for c in columns] for t in p.types for row in t.rows.get(key, [])]))
+    return out
 
 
 def import_equipment_packages(sheets: dict[str, Rows], old: EquipmentPackageList) -> Parsed:
@@ -220,12 +230,34 @@ def import_equipment_packages(sheets: dict[str, Rows], old: EquipmentPackageList
         old_numbers = {i.id: i.number for i in old.items}
         keep_type = _keep([(t.id, f"{old_numbers.get(t.package_id, '')}|{t.name}") for t in old.types])
         types = []
+        before = {t.id: t for t in old.types}
         for r in _sheet(sheets, "Equipment types", ("Package number", "Name")):
             package = packages.get(_get(r, "Package number"))
             if package:
-                types.append({"id": keep_type(f"{_get(r, 'Package number')}|{_get(r, 'Name')}"), "package_id": package,
-                              "name": _get(r, "Name"), "description": _get(r, "Description")})
+                tid = keep_type(f"{_get(r, 'Package number')}|{_get(r, 'Name')}")
+                types.append({"id": tid, "package_id": package, "name": _get(r, "Name"), "description": _get(r, "Description"),
+                              "rows": {k: [dict(x) for x in v] for k, v in before[tid].rows.items()} if tid in before else {}})
         packages.note(notes, "those equipment types are left out")
+        # the types' rows for the deliverable lists: a sheet in the file replaces those rows, a sheet left out keeps them
+        by_name = {name_key(t["name"]): t for t in types}
+        for key in TEMPLATE_LISTS:
+            title = _rows_sheet(key)
+            if title.casefold() not in sheets:
+                if any(t["rows"].get(key) for t in types):
+                    notes.append(f'No "{title}" sheet: those rows stay as they are.')
+                continue
+            for t in types:
+                t["rows"][key] = []
+            unknown: set[str] = set()
+            for r in _sheet(sheets, title, ("Equipment type",)):
+                owner = by_name.get(name_key(_get(r, "Equipment type")))
+                if owner is None:
+                    unknown.add(_get(r, "Equipment type"))
+                    continue
+                owner["rows"][key].append({c: _get(r, c) for c in _rows_columns(key) if _get(r, c)})
+            if unknown:
+                notes.append(f"{title}: rows of equipment type(s) not in the Equipment types sheet are left out: "
+                             + ", ".join(sorted(unknown)))
     else:
         kept = {i["id"] for i in items}
         types = [t.model_dump() for t in old.types if t.package_id in kept]

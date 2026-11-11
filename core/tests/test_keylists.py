@@ -346,3 +346,20 @@ def test_check_eel() -> None:
                       plant_area_id="a1", plant_area_by="eel", is_panel=True, is_panel_by="eel")
     row = apply_auto_supply(apply_auto(row, {"100": "a2"}, {}), {"x": "r/X"})
     assert (row.plant_area_id, row.is_panel, row.supplied_from) == ("a1", True, "r/X")
+
+
+def test_equipment_types_have_rows_for_the_lists_like_load_types() -> None:
+    rows = {"instrument_list": [{"Tag": " <<Tag>>-FT ", "Description": "<<Description>> flow", "Signal": ""}, {"Remarks": " "}],
+            "cable_schedule": [{"Cable Number": "<<Tag>>-C1", "Repeat": "per power cable"}], "plc_io_list": []}
+    packages = _with_types(("t1", "a", "Flow meter", ""))
+    packages.types[0].rows = rows
+    out = check_equipment_packages(packages).types[0].rows
+    assert out == {"instrument_list": [{"Tag": "<<Tag>>-FT", "Description": "<<Description>> flow"}],
+                   "cable_schedule": [{"Cable Number": "<<Tag>>-C1", "Repeat": "Per power cable"}]}
+    assert EquipmentType(package_id="a", name="x").rows == {}
+    for bad, field, text in (({"load_list": [{"Tag": "x"}]}, "t1.rows", "equipment types"),
+                             ({"equipment_list": [{"Nope": "x"}]}, "t1.rows.equipment_list", "Not a column")):
+        packages.types[0].rows = bad
+        with pytest.raises(RefValidationError) as exc:
+            check_equipment_packages(packages)
+        assert text in exc.value.fields[field]

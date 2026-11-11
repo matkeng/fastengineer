@@ -140,7 +140,10 @@ def load_sample_data() -> Added:
                  pk("sk2", "PKG-020", "Process pumps", "Globex Pumps", "Large Mech"),
                  pk("sk3", "PKG-030", "Electrical installation", "Initech Electrical", "Installer")]
         types = [EquipmentType(package_id="sk1", name="Motor control centre"), EquipmentType(package_id="sk1", name="Distribution board"),
-                 EquipmentType(package_id="sk2", name="Centrifugal pump", description="API 610")]
+                 EquipmentType(package_id="sk2", name="Centrifugal pump", description="API 610", rows={
+                     # for the Instrument generator (to come): what each pump of this type brings with it
+                     "instrument_list": [_instrument("PT", "discharge pressure", "Pressure transmitter", "4-20 mA", "AI")],
+                     "plc_io_list": [_io("PT", "discharge pressure", "4-20 mA", "AI")]})]
         lists.save_equipment_packages(check_equipment_packages(EquipmentPackageList(items=items, types=types)))
         return len(items) + len(types)
 

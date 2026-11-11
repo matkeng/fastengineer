@@ -478,6 +478,17 @@ You don't create or name them: each project has one of each.
   **Description**. Each type belongs to one package; its Package drop-down
   moves it to another. A package that has equipment types can't be deleted
   until they are moved or deleted. Types are saved together with the packages.
+  - **Lists** on an equipment type opens its predefined rows for the
+    **Cable Schedule**, **Equipment List**, **Instrument List** and **PLC I/O
+    List**: the same four lists, columns, `<<tags>>` and grid as a load type's
+    rows (one tab per list; the button shows how many rows it has). They are
+    kept with the type and saved with the packages.
+  - These rows are for the **Instrument generator**, which is not available
+    yet: nothing is produced from them today, and the tags offered are the load
+    list's until that generator defines its own.
+  - In the list's workbook each list's rows are a sheet ("Cable Schedule rows",
+    ...) with an **Equipment type** column; a rows sheet left out of a file
+    leaves those rows as they are.
 - **Load Types**: a flat list shown as a sortable, filterable grid; click a row
   (or **Add load type**) to edit it in a form, which saves straight away.
   **Code** and **Name** are required and unique; **kW or Amps**, **Voltage**

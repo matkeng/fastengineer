@@ -50,6 +50,10 @@ class EquipmentType(BaseModel):
     package_id: str
     name: str
     description: str = ""
+    #: Predefined rows per deliverable list, exactly as a load type has them (list key -> rows,
+    #: each {column name: text with <<tags>>}). They are for the Instrument generator, which is
+    #: to come: nothing produces lists from them yet.
+    rows: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
 
 
 class EquipmentPackageList(BaseModel):

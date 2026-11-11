@@ -12,7 +12,11 @@ export type PackageType = (typeof PACKAGE_TYPES)[number];
 
 export interface EquipmentPackage { id: string; number: string; description: string; vendor: string; package_type: PackageType }
 /** A kind of equipment supplied in a package; package_id is the id of its EquipmentPackage. */
-export interface EquipmentType { id: string; package_id: string; name: string; description: string }
+export interface EquipmentType {
+	id: string; package_id: string; name: string; description: string;
+	/** Predefined rows per deliverable list, as a load type has them (for the Instrument generator, to come). */
+	rows: TemplateRows;
+}
 export interface EquipmentPackageList { items: EquipmentPackage[]; types: EquipmentType[]; updated_at: string | null }
 
 export const RATING_UNITS = ['kW', 'Amps'] as const;

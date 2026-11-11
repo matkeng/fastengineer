@@ -1107,3 +1107,8 @@ main.fill .key-dp { overflow: auto; }
 .gen-type-lists { margin: 0 0 10px; }
 .gen-type-lists td.n, .gen-type-lists th:not(:first-child) { text-align: right; width: 110px; }
 .gen-older { margin: 16px 0 4px; font-size: 0.95rem; }
+/* Equipment types: their rows for the deliverable lists */
+dialog.modal.type-lists { width: min(1080px, calc(100vw - 32px)); }
+.key-packages .type-row .actions .count { margin-left: 5px; font-family: var(--font-mono); font-size: 10px; padding: 0 5px; border-radius: 2px;
+	background: var(--chrome); border: 1px solid var(--border); color: var(--muted); }
+.key-packages .type-row .actions .has-rows .count { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text); }

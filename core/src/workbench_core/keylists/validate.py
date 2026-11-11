@@ -113,7 +113,8 @@ def check_equipment_packages(packages: EquipmentPackageList) -> EquipmentPackage
     and extra spaces). The vendor name is optional and may repeat. Row order is kept.
 
     Equipment types: the name is required and unique across all types; each belongs to a
-    package of the list, so a package can't be removed while it has types. Returns the
+    package of the list, so a package can't be removed while it has types. A type's predefined
+    rows for the deliverable lists follow the same rules as a load type's. Returns the
     types grouped by package, in package order, keeping their order within a package."""
     errors: dict[str, str] = {}
     items = []
@@ -130,7 +131,8 @@ def check_equipment_packages(packages: EquipmentPackageList) -> EquipmentPackage
     types = []
     type_ids: set[str] = set()
     for t in packages.types:
-        t = t.model_copy(update={"name": t.name.strip(), "description": t.description.strip()})
+        t = t.model_copy(update={"name": t.name.strip(), "description": t.description.strip(),
+                                 "rows": _template_rows(t.rows, t.id, errors, "equipment types")})
         if t.id in type_ids:
             raise RefValidationError("Two equipment types have the same id.", {f"{t.id}.name": "Duplicate item"})
         type_ids.add(t.id)
@@ -145,9 +147,10 @@ def check_equipment_packages(packages: EquipmentPackageList) -> EquipmentPackage
     return packages.model_copy(update={"items": items, "types": types})
 
 
-def _template_rows(raw: object, rid: str, errors: dict[str, str]) -> dict[str, list[dict[str, str]]]:
-    """A load type's rows per deliverable list: known lists and columns only, text trimmed,
-    blank cells and wholly blank rows dropped."""
+def _template_rows(raw: object, rid: str, errors: dict[str, str], owners: str = "load types") -> dict[str, list[dict[str, str]]]:
+    """The predefined rows per deliverable list of a load type (or an equipment type, which has
+    the same): known lists and columns only, text trimmed, blank cells and wholly blank rows
+    dropped. `owners`: what has the rows, for the messages."""
     from .loadgen import LISTS, ROW_SETTINGS, TEMPLATE_LISTS
 
     out: dict[str, list[dict[str, str]]] = {}
@@ -155,7 +158,7 @@ def _template_rows(raw: object, rid: str, errors: dict[str, str]) -> dict[str, l
         return out
     for key, rows in raw.items():
         if key not in TEMPLATE_LISTS:
-            errors[f"{rid}.rows"] = f"'{key}' is not a list that load types have rows for"
+            errors[f"{rid}.rows"] = f"'{key}' is not a list that {owners} have rows for"
             continue
         kept = []
         for row in rows if isinstance(rows, list) else []:

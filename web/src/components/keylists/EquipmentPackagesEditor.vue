@@ -9,6 +9,8 @@ import {
 } from '../../lib/keyListTypes';
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
+import AppModal from '../common/AppModal.vue';
+import TemplateRows from './TemplateRows.vue';
 
 // Equipment packages, each with its equipment types as child rows. The types are one flat
 // list (each names its package), saved together with the packages.
@@ -65,7 +67,7 @@ function move(i: number, by: -1 | 1) {
 }
 
 function addType(pkg: EquipmentPackage) {
-	const type: EquipmentType = { id: newId(), package_id: pkg.id, name: '', description: '' };
+	const type: EquipmentType = { id: newId(), package_id: pkg.id, name: '', description: '', rows: {} };
 	d.value.types.push(type);
 	filter.value = '';
 	if (collapsed.value.has(pkg.id)) toggle(pkg.id);
@@ -85,6 +87,23 @@ function moveType(t: EquipmentType, by: -1 | 1) {
 
 function removeType(t: EquipmentType) {
 	d.value.types.splice(d.value.types.indexOf(t), 1);
+}
+
+// An equipment type's predefined rows for the deliverable lists (as a load type has), edited
+// in a dialog. They are part of the draft: Save on the list saves them.
+const listsOf = ref<EquipmentType | null>(null);
+const rowCount = (t: EquipmentType) => Object.values(t.rows ?? {}).reduce((n, r) => n + r.length, 0);
+const rowErrors = computed(() => (listsOf.value
+	? Object.entries(problems.value).filter(([k]) => k.startsWith(`${listsOf.value!.id}.rows`)).map(([, m]) => m) : []));
+function openLists(t: EquipmentType) {
+	t.rows ??= {};
+	listsOf.value = t;
+}
+function closeLists() {
+	const t = listsOf.value;
+	// rows left wholly blank, and lists left with none, are not kept
+	if (t) t.rows = Object.fromEntries(Object.entries(t.rows).map(([k, v]) => [k, v.filter((r) => Object.keys(r).length)] as const).filter(([, v]) => v.length));
+	listsOf.value = null;
 }
 
 const label = (p: EquipmentPackage) => [p.number, p.description].filter(Boolean).join(' – ') || '(new package)';
@@ -169,6 +188,9 @@ const label = (p: EquipmentPackage) => [p.number, p.description].filter(Boolean)
 									</div>
 								</td>
 								<td class="actions">
+									<button type="button" class="secondary small" :class="{ 'has-rows': rowCount(t) }"
+										title="The rows this equipment type has for the Cable Schedule, Equipment List, Instrument List and PLC I/O List"
+										@click="openLists(t)">Lists<span class="count">{{ rowCount(t) }}</span></button>
 									<button type="button" class="secondary small" :disabled="ti === 0 || filtering" title="Move up" @click="moveType(t, -1)">↑</button>
 									<button type="button" class="secondary small" :disabled="ti === r.types.length - 1 || filtering" title="Move down" @click="moveType(t, 1)">↓</button>
 									<button type="button" class="secondary small" title="Delete equipment type" @click="removeType(t)">✕</button>
@@ -184,7 +206,22 @@ const label = (p: EquipmentPackage) => [p.number, p.description].filter(Boolean)
 		<div class="nav">
 			<button type="button" @click="add">Add package</button>
 			<span class="hint">Package numbers and descriptions are required and unique. Equipment type names are required and unique across all
-				packages. A package with equipment types can't be deleted.</span>
+				packages. A package with equipment types can't be deleted. <strong>Lists</strong> on an equipment type holds its rows for the
+				deliverable lists, for the Instrument generator.</span>
 		</div>
+
+		<AppModal class="type-lists" :open="!!listsOf" :title="`Lists of ${listsOf?.name || 'the equipment type'}`" @close="closeLists">
+			<TemplateRows v-if="listsOf" :key="listsOf.id" :rows="listsOf.rows" :errors="rowErrors">
+				<template #default="{ list }">
+					The rows this equipment type has for the <strong>{{ list.name }}</strong>, set out as a load type's are.
+					They are for the <strong>Instrument generator</strong>, which is not available yet, so nothing is produced from them today.
+				</template>
+			</TemplateRows>
+			<template #footer>
+				<span class="hint small">Kept with the list: press Save on Equipment Packages to save them.</span>
+				<span class="spacer" />
+				<button type="button" @click="closeLists">Done</button>
+			</template>
+		</AppModal>
 	</section>
 </template>
