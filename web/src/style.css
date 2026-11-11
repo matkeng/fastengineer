@@ -1139,7 +1139,7 @@ main.fill .key-master { overflow: hidden; }
 /* Enums and the Drawing List */
 main.fill .key-enums { overflow: auto; }
 .key-enums .key-title, .key-drawings .key-title { margin: 0; font-size: 1rem; }
-.enum-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+.enum-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
 .enum-box h3 { margin: 0 0 2px; font-size: 0.95rem; }
 .enum-box h3 .count { font-family: var(--font-mono); font-size: 10px; padding: 0 5px; border-radius: 2px; background: var(--chrome); border: 1px solid var(--border); color: var(--muted); font-weight: 400; }
 .enum-box table { margin: 4px 0 8px; }

@@ -50,7 +50,7 @@ export interface LoadTypeForm {
 }
 export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id' | 'rows'>;
 
-export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | 'cable-types' | 'distribution-panels' | 'instrument-runsheet' | 'mel' | 'master' | 'enums' | 'drawing-list' | CodeListId;
+export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'eel' | 'plc' | 'cable-types' | 'distribution-panels' | 'instrument-runsheet' | 'mel' | 'master' | 'enums' | 'drawing-list' | 'document-list' | CodeListId;
 
 /** A cable type; every project starts with a default set. `sort` orders the list. */
 export interface CableType {
@@ -189,6 +189,7 @@ export interface KeyListOverview {
 	instrument_runsheet: { items: number };
 	mel: { items: number };
 	drawing_list: { items: number };
+	document_list: { items: number };
 	enums: { items: number };
 	/** The project's Disciplines enum. */
 	disciplines: { code: string; name: string }[];
@@ -293,20 +294,20 @@ export function fileSize(bytes: number): string {
 
 /** The project's Enums: the choice lists other lists pick from (mirrors keylists.enums). */
 export interface EnumItem { id: string; code: string; name: string }
-export type EnumKey = 'disciplines' | 'drawing_types' | 'drawing_statuses';
-export interface ProjectEnums { disciplines: EnumItem[]; drawing_types: EnumItem[]; drawing_statuses: EnumItem[]; updated_at: string | null }
+export type EnumKey = 'disciplines' | 'drawing_types' | 'document_types' | 'drawing_statuses';
+export interface ProjectEnums { disciplines: EnumItem[]; drawing_types: EnumItem[]; document_types: EnumItem[]; drawing_statuses: EnumItem[]; updated_at: string | null }
 export interface EnumsView { enums: ProjectEnums; titles: Record<EnumKey, string>; need_code: EnumKey[]; in_use: Record<string, number> }
 export const enumLabel = (i: EnumItem) => i.code || i.name;
 
-/** A drawing of the Drawing List, as text (mirrors drawing_list_api.DrawingRow). */
-export type DrawingChoice = 'discipline' | 'drawing_type' | 'status';
-export interface DrawingRow {
-	id: string; number: string; project_name: string; title_1: string; title_2: string; title_3: string;
-	discipline: string; discipline_id: string | null; drawing_type: string; drawing_type_id: string | null; revision: string;
-	status: string; status_id: string | null; issue_date: string; vendor_drg_number: string; vendor_reference: string;
-	equipment_reference: string; scope: string; unknown_equipment: string[];
-	/** Where the drawing is kept: a web address, or the path of a file or folder. */
-	hyperlink: string;
+/** A register: the Drawing List or the Document List (mirrors drawing_list_api.RegisterView). */
+export type RegisterKind = 'drawing-list' | 'document-list';
+/** An item as text: its fields by name (a choice as the item's label, with `<choice>_id` beside it; the date as dd/mm/yyyy). */
+export type RegisterRow = { id: string; number: string; equipment_reference: string; hyperlink: string; issue_date: string; unknown_equipment: string[] }
+	& Record<string, string | string[] | null>;
+export interface RegisterView {
+	name: string; item: string; items: RegisterRow[]; columns: { field: string; heading: string }[];
+	/** field (discipline, drawing_type or document_type, status) -> the items it can be */
+	choices: Record<string, EnumItem[]>; updated_at: string | null;
 }
 /** What a drawing's hyperlink opens: a web or file:// address as it is, a path as a file:// address. '' if it isn't a link. */
 export function linkHref(link: string): string {
@@ -317,4 +318,3 @@ export function linkHref(link: string): string {
 	if (/^[a-z]:[\\/]/i.test(l)) return `file:///${l.replace(/\\/g, '/')}`; // C:\x -> file:///C:/x
 	return l.startsWith('/') ? `file://${l}` : '';
 }
-export interface DrawingsView { items: DrawingRow[]; columns: { field: string; heading: string }[]; choices: Record<DrawingChoice, EnumItem[]>; updated_at: string | null }

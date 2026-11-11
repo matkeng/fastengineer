@@ -16,7 +16,7 @@ import InstrumentRunsheetEditor from './InstrumentRunsheetEditor.vue';
 import MelListView from './MelListView.vue';
 import MasterListView from './MasterListView.vue';
 import EnumsEditor from './EnumsEditor.vue';
-import DrawingListEditor from './DrawingListEditor.vue';
+import RegisterEditor from './RegisterEditor.vue';
 import LoadTypesEditor from './LoadTypesEditor.vue';
 import PlantAreasEditor from './PlantAreasEditor.vue';
 
@@ -25,10 +25,10 @@ const kl = useKeyLists();
 const ui = useUi();
 const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Load List',
 	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes', eel: 'Electrical Equipment List', plc: 'PLC List',
-	'cable-types': 'Cable Types', 'distribution-panels': 'Distribution Panels', 'instrument-runsheet': 'Instrument Runsheet', mel: 'MEL', master: 'Project Master list', enums: 'Enums', 'drawing-list': 'Drawing List' };
+	'cable-types': 'Cable Types', 'distribution-panels': 'Distribution Panels', 'instrument-runsheet': 'Instrument Runsheet', mel: 'MEL', master: 'Project Master list', enums: 'Enums', 'drawing-list': 'Drawing List', 'document-list': 'Document List' };
 const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true,
 	'equipment-codes': kl.codeLists['equipment-codes'], 'instrument-codes': kl.codeLists['instrument-codes'], eel: kl.eel, plc: kl.plcDraft,
-	'cable-types': kl.cableTypes, 'distribution-panels': kl.panelsDraft, 'instrument-runsheet': kl.runsheetView, mel: kl.melList, master: kl.master, enums: kl.enumsDraft, 'drawing-list': kl.drawings }[kl.selected]);
+	'cable-types': kl.cableTypes, 'distribution-panels': kl.panelsDraft, 'instrument-runsheet': kl.runsheetView, mel: kl.melList, master: kl.master, enums: kl.enumsDraft, 'drawing-list': kl.registers['drawing-list'], 'document-list': kl.registers['document-list'] }[kl.selected]);
 
 onMounted(() => kl.load());
 
@@ -123,22 +123,26 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 					</ul>
 				</section>
 				<section>
-					<h3>Drawings</h3>
-					<p class="hint">The project's register of drawings.</p>
+					<h3>Drawings and documents</h3>
+					<p class="hint">The project's registers of drawings and of documents.</p>
 					<ul class="ref-nav">
 						<li :class="{ current: kl.selected === 'drawing-list' }" @click="kl.select('drawing-list')">
 							<span class="name">Drawing List</span>
 							<span class="count" title="drawing(s)">{{ kl.overview?.drawing_list?.items ?? 0 }}</span>
 						</li>
+						<li :class="{ current: kl.selected === 'document-list' }" @click="kl.select('document-list')">
+							<span class="name">Document List</span>
+							<span class="count" title="document(s)">{{ kl.overview?.document_list?.items ?? 0 }}</span>
+						</li>
 					</ul>
 				</section>
 				<section>
 					<h3>Enums</h3>
-					<p class="hint">The choices other lists pick from: disciplines, drawing types and drawing statuses.</p>
+					<p class="hint">The choices other lists pick from: disciplines, drawing types, document types and statuses.</p>
 					<ul class="ref-nav">
 						<li :class="{ current: kl.selected === 'enums' }" @click="kl.select('enums')">
 							<span class="name">Enums</span><span v-if="kl.enumsDirty" class="dirty-dot" title="Unsaved changes">●</span>
-							<span class="count" title="item(s) in the three enums">{{ kl.overview?.enums?.items ?? 0 }}</span>
+							<span class="count" title="item(s) in the enums">{{ kl.overview?.enums?.items ?? 0 }}</span>
 						</li>
 					</ul>
 				</section>
@@ -175,7 +179,8 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 			<MelListView v-if="kl.melList" v-show="kl.selected === 'mel'" />
 			<MasterListView v-if="kl.master && kl.selected === 'master'" />
 			<EnumsEditor v-if="kl.enumsDraft && kl.enumsView" v-show="kl.selected === 'enums'" />
-			<DrawingListEditor v-if="kl.drawings" v-show="kl.selected === 'drawing-list'" />
+			<RegisterEditor v-if="kl.registers['drawing-list']" v-show="kl.selected === 'drawing-list'" kind="drawing-list" />
+			<RegisterEditor v-if="kl.registers['document-list']" v-show="kl.selected === 'document-list'" kind="document-list" />
 			<section v-if="!loaded" class="card wizard ref-empty">
 				<h2>{{ TITLES[kl.selected] }}</h2>
 				<p v-if="kl.error" class="error">{{ kl.error }}</p>

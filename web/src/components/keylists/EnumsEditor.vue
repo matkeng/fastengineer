@@ -1,8 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only
      Copyright (C) 2026 Matthew Kelly -->
 <script setup lang="ts">
-// The project's Enums: the choice lists other lists pick from. Disciplines (Equipment Codes
-// and the Drawing List), Drawing types and Drawing statuses (the Drawing List). The three are
+// The project's Enums: the choice lists other lists pick from. Disciplines (Equipment Codes,
+// the Drawing List and the Document List), Drawing types, Document types and Drawing statuses. They are
 // edited together and saved with Save. An item that is in use can't be removed; renaming one
 // is fine, as the lists that use it follow.
 import { computed } from 'vue';
@@ -14,11 +14,12 @@ import HistoryButton from '../audit/HistoryButton.vue';
 const kl = useKeyLists();
 const view = computed(() => kl.enumsView!);
 const d = computed(() => kl.enumsDraft!);
-const KEYS: EnumKey[] = ['disciplines', 'drawing_types', 'drawing_statuses'];
+const KEYS: EnumKey[] = ['disciplines', 'drawing_types', 'document_types', 'drawing_statuses'];
 const USED_BY: Record<EnumKey, string> = {
-	disciplines: 'Used by Equipment Codes and the Drawing List. Every discipline needs a code.',
+	disciplines: 'Used by Equipment Codes, the Drawing List and the Document List. Every discipline needs a code.',
 	drawing_types: 'Used by the Drawing List. A code is optional.',
-	drawing_statuses: 'Used by the Drawing List. A status with a code is shown by its code.',
+	document_types: 'Used by the Document List. A code is optional.',
+	drawing_statuses: 'Used by the Drawing List and the Document List. A status with a code is shown by its code.',
 };
 const key = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 const uses = (i: EnumItem) => view.value.in_use[i.id] ?? 0;

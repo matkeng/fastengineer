@@ -629,20 +629,21 @@ You don't create or name them: each project has one of each.
   - It can't be undone; the change log records the reset and how many rows it
     changed.
 - **Enums** (`keylists/enums.py`, API `/api/enums`): the choice lists other
-  lists pick from, edited per project in the **Enums** section. There are three,
+  lists pick from, edited per project in the **Enums** section. There are four,
   edited together and saved with Save:
 
   | Enum | A project starts with | Used by |
   |---|---|---|
-  | Disciplines | E Electrical, I Instrumentation, M Mechanical, P Piping, C Civil, S Structural, H HVAC, PR Process, G General | Equipment Codes, Drawing List |
+  | Disciplines | E Electrical, I Instrumentation, M Mechanical, P Piping, C Civil, S Structural, H HVAC, PR Process, G General | Equipment Codes, Drawing List, Document List |
   | Drawing types | Single Line Diagram, Schematic, Termination Diagram, Loop Diagram, Block Diagram, Cable Block Diagram, Layout, General Arrangement, P&ID, Hook-up, Panel Schedule, Schedule, Index, Standard Detail, Datasheet, Other | Drawing List |
-  | Drawing statuses | Draft, IFR, IFA, IFT, IFC, AB, Superseded, Cancelled | Drawing List |
+  | Document types | Specification, Datasheet, Calculation, Report, Study, Procedure, Philosophy, Design Criteria, Scope of Work, List, Schedule, Manual, Certificate, Inspection and Test Plan, Vendor Document, Other | Document List |
+  | Drawing statuses | Draft, IFR, IFA, IFT, IFC, AB, Superseded, Cancelled | Drawing List, Document List |
 
   - An item has a **code** and a **name**. A discipline needs a code; for the
     others it is optional, and an item is shown by its code when it has one.
     Codes are unique and names are unique within an enum. Items can be added,
     renamed, reordered and removed.
-  - An item that a drawing or an equipment code **uses can't be removed** (the
+  - An item that a drawing, a document or an equipment code **uses can't be removed** (the
     count is shown beside it); renaming it is fine, and the lists follow.
     A discipline that equipment codes use keeps its code.
   - **Equipment Codes** tick their disciplines from this Disciplines enum.
@@ -677,6 +678,14 @@ You don't create or name them: each project has one of each.
     read by its code or its name, and one that is not in the Enums refuses the
     file, naming the drawing. Dates are read as `dd/mm/yyyy`, `yyyy-mm-dd` or
     an Excel date.
+- **Document List** (API `/api/document-list`): the project's register of
+  documents (specifications, datasheets, reports…). It is the Drawing List with
+  **one Title** in place of the three: Document number (required, unique),
+  Project name, Title, Document discipline, Document type, Revision, Status,
+  Issue date, Vendor doc number, Vendor reference, Equipment reference, Scope
+  and Hyperlink, with the same grid and form, the same rules, and the same
+  Excel export and import. Its type is picked from the **Document types** enum;
+  discipline and status are the ones the drawings use.
 - **Instrument Runsheet** (`keylists/instrument_runsheet.py`, API
   `/api/instrument-runsheet`): what the **Instrument generator** will run from
   (see [Deliverable generators](#deliverable-generators)).
@@ -926,7 +935,7 @@ and types, equipment and instrument codes, four load types with rows for every
 list, three switchboards in the Electrical Equipment List, a PLC, a MEL import
 of nine loads, the schedule of
 MCC-2 in Distribution Panels, three rows in the Instrument Runsheet, four
-drawings in the Drawing List, and one
+drawings in the Drawing List, three documents in the Document List, and one
 deliverable of each type. Lists that already have data are left
 alone, so it is safe to run on a project in use.
 

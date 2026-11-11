@@ -8,7 +8,7 @@ import {
 } from '../lib/engine';
 import type { Catalogue } from '../lib/genTypes';
 import type {
-	DrawingRow, DrawingsView, EnumsView, ProjectEnums,
+	EnumsView, ProjectEnums, RegisterKind, RegisterRow, RegisterView,
 	Allocation, CableTypeForm, CableTypeList, CodeList, EelForm, EelView, PlcImportPreview, PlcList, PlcView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList, TemplateLists,
 } from '../lib/keyListTypes';
 import type { DistributionPanelList, PanelsView } from '../lib/panelTypes';
@@ -69,7 +69,7 @@ export const useKeyLists = defineStore('keylists', () => {
 	const enumsView = ref<EnumsView | null>(null);
 	const enumsDraft = ref<ProjectEnums | null>(null);
 	const enumsDirty = computed(() => !!enumsView.value && differ(enumsDraft.value, enumsView.value.enums));
-	const drawings = ref<DrawingsView | null>(null);
+	const registers = ref<Record<RegisterKind, RegisterView | null>>({ 'drawing-list': null, 'document-list': null });
 	// The Project Master lists (read only): all four in brief, and the one that is showing.
 	const masters = ref<MasterSummary[]>([]);
 	const masterKey = ref('cable_schedule');
@@ -112,7 +112,7 @@ export const useKeyLists = defineStore('keylists', () => {
 		if (id === 'instrument-runsheet') void loadRunsheet(); // what its rows can refer to may have changed
 		if (id === 'mel') void loadMel();
 		if (id === 'master') void loadMaster();
-		if (id === 'drawing-list') void loadDrawings(); // its choices and equipment may have changed
+		if (id === 'drawing-list' || id === 'document-list') void loadRegister(id); // its choices and equipment may have changed
 		if (id === 'enums' && !enumsDirty.value) void loadEnums();
 	}
 
@@ -151,7 +151,8 @@ export const useKeyLists = defineStore('keylists', () => {
 		if (selected.value === 'master') await loadMaster();
 		await loadMasters();
 		if (!enumsDirty.value) await loadEnums();
-		await loadDrawings();
+		await loadRegister('drawing-list');
+		await loadRegister('document-list');
 		const ct = await run(() => apiGet<CableTypeList>('/api/keylists/cable-types'));
 		if (ct) cableTypes.value = ct;
 		const e = await run(() => apiGet<EelView>('/api/eel'));
@@ -423,30 +424,30 @@ export const useKeyLists = defineStore('keylists', () => {
 		}
 	}
 
-	async function loadDrawings() {
-		const v = await run(() => apiGet<DrawingsView>('/api/drawing-list'));
-		if (v) drawings.value = v;
+	async function loadRegister(kind: RegisterKind) {
+		const v = await run(() => apiGet<RegisterView>(`/api/${kind}`));
+		if (v) registers.value[kind] = v;
 	}
 
-	async function putDrawings(items: unknown[]): Promise<boolean> {
-		const v = await run(() => apiPut<DrawingsView>('/api/drawing-list', { items }));
+	async function putRegister(kind: RegisterKind, items: unknown[]): Promise<boolean> {
+		const v = await run(() => apiPut<RegisterView>(`/api/${kind}`, { items }));
 		if (!v) return false;
-		drawings.value = v;
+		registers.value[kind] = v;
 		await refresh();
 		return true;
 	}
 
-	/** Add the drawing, or replace the saved one with the same id. False (errors set) if refused. */
-	function saveDrawing(row: Partial<DrawingRow> & { id: string }): Promise<boolean> {
-		const items: unknown[] = [...(drawings.value?.items ?? [])];
+	/** Add the drawing or document, or replace the saved one with the same id. False (errors set) if refused. */
+	function saveRegisterItem(kind: RegisterKind, row: Partial<RegisterRow> & { id: string }): Promise<boolean> {
+		const items: unknown[] = [...(registers.value[kind]?.items ?? [])];
 		const i = items.findIndex((r) => (r as { id: string }).id === row.id);
 		if (i >= 0) items.splice(i, 1, row);
 		else items.push(row);
-		return putDrawings(items);
+		return putRegister(kind, items);
 	}
 
-	function deleteDrawing(id: string): Promise<boolean> {
-		return putDrawings((drawings.value?.items ?? []).filter((r) => r.id !== id));
+	function deleteRegisterItem(kind: RegisterKind, id: string): Promise<boolean> {
+		return putRegister(kind, (registers.value[kind]?.items ?? []).filter((r) => r.id !== id));
 	}
 
 	async function loadMasters() {
@@ -541,7 +542,7 @@ export const useKeyLists = defineStore('keylists', () => {
 		saveLoadType, deleteLoadType, templateLists, loadTemplateLists, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem, cableTypes, saveCableType, deleteCableType, addDefaultCableTypes,
 		plcSaved, plcDraft, plcView, catSaved, catDraft, plcDirty, catDirty, loadPlc, savePlc, checkPlc, saveCatalogue,
 		addDefaultTypes, exportPlc, importPlc,
-		enumsView, enumsDraft, enumsDirty, loadEnums, saveEnums, drawings, loadDrawings, saveDrawing, deleteDrawing,
+		enumsView, enumsDraft, enumsDirty, loadEnums, saveEnums, registers, loadRegister, saveRegisterItem, deleteRegisterItem,
 		masters, masterKey, master, loadMasters, loadMaster,
 		runsheetView, runsheetDraft, runsheetDirty, loadRunsheet, saveRunsheet, melList, loadMel,
 		panelsSaved, panelsDraft, panelsView, panelSelected, panelsDirty, loadPanels, savePanels, checkPanels, placePanelLoads,
