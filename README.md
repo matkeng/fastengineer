@@ -661,7 +661,14 @@ You don't create or name them: each project has one of each.
   | Vendor drg number, Vendor reference | text |
   | Equipment reference | one or more tags, separated by commas |
   | Scope | text |
+  | Hyperlink | where the drawing is kept: a web address (`https://…`), or the path of a file or folder (`\\\\server\\share\\…`, `C:\\…`) |
 
+  - The **hyperlink** shows in the grid as a link that opens in a new window
+    (clicking it does not open the form); the form has **Open** and **Copy**
+    beside it. Only web addresses, `file://` addresses and paths are accepted,
+    so a link is safe to open. A web address opens in the browser; opening a
+    file path depends on what the browser or desktop shell allows, which is
+    what Copy is for.
   - A tag of the **equipment reference** that is in neither the MEL nor the
     Electrical Equipment List is **flagged** (⚠ on the row, and after saving),
     but never stops a save.

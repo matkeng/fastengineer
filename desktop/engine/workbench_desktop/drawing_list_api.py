@@ -103,6 +103,7 @@ class DrawingRow(BaseModel):
     vendor_reference: str = ""
     equipment_reference: str = ""
     scope: str = ""
+    hyperlink: str = ""
     unknown_equipment: list[str] = []  # tags of its equipment reference that are in neither the MEL nor the EEL
 
 

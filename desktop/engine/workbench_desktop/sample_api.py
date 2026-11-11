@@ -227,7 +227,7 @@ def load_sample_data() -> Added:
         for number, title_1, title_2, discipline, kind, rev, status, issued, equipment in want:
             row = {"number": number, "project_name": "Sample plant", "title_1": title_1, "title_2": title_2, "discipline": discipline,
                    "drawing_type": kind, "revision": rev, "status": status, "issue_date": issued, "equipment_reference": equipment,
-                   "scope": "Detailed design"}
+                   "scope": "Detailed design", "hyperlink": f"https://dms.example.com/drawings/{number}"}
             rows.append({k: v for k, v in row.items() if k not in has or name_key(v) in has[k]})
         lists.save_drawing_list(check_drawings(rows, enums))
         return len(rows)

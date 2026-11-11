@@ -4,8 +4,8 @@ from datetime import date, datetime
 
 import pytest
 
-from workbench_core.keylists.drawing_list import (FIELDS, HEADINGS, as_typed, check_drawings, equipment_warnings, parse_date,
-                                                  tags_of)
+from workbench_core.keylists.drawing_list import (FIELDS, HEADINGS, as_typed, check_drawings, equipment_warnings, link_problem,
+                                                  parse_date, tags_of)
 from workbench_core.keylists.enums import EnumItem, ProjectEnums, check_enums, default_enums, lookup
 from workbench_core.refdata import RefValidationError
 
@@ -50,7 +50,7 @@ def test_drawings_are_checked_and_their_choices_resolved() -> None:
     enums = default_enums()
     assert FIELDS[0] == "number" and HEADINGS == [
         "Drawing number", "Project name", "Title 1", "Title 2", "Title 3", "Drawing discipline", "Drawing type", "Revision", "Status",
-        "Issue date", "Vendor drg number", "Vendor reference", "Equipment reference", "Scope"]
+        "Issue date", "Vendor drg number", "Vendor reference", "Equipment reference", "Scope", "Hyperlink"]
     rows = [{"id": "d1", "number": " 3510-E-SLD-001 ", "project_name": "Plant A", "title_1": "MCC-1", "title_2": "Single line diagram",
              "discipline": "electrical", "drawing_type": "Single Line Diagram", "revision": 0, "status": "ifc", "issue_date": "14/03/2026",
              "vendor_drg_number": "V-100", "equipment_reference": "MCC-1 ; P-101,, X-9", "scope": "Detailed design"},
@@ -78,3 +78,17 @@ def test_what_refuses_a_drawing_list() -> None:
     assert exc.value.fields["a.status"] == "'Done' is not a status of the project's Enums"
     with pytest.raises(RefValidationError):
         check_drawings([{"id": "a", "number": "1"}, {"id": "a", "number": "2"}], default_enums())
+
+
+def test_a_drawing_has_a_hyperlink() -> None:
+    for ok in ("", "https://dms.example.com/drawings/3510-E-SLD-001?rev=B", "http://server/x.pdf", "HTTPS://Server/x", "file:///C:/dwg/a.pdf",
+               r"C:\Drawings\3510\a.pdf", r"\\server\share\3510\a.pdf", "/mnt/drawings/a.pdf", "drawings/a.pdf"):
+        assert link_problem(ok) is None, ok
+    for bad in ("javascript:alert(1)", "data:text/html,x", "https://", "ftp://server/a.pdf", "mailto:a@b.c"):
+        assert link_problem(bad), bad
+    rows = [{"id": "a", "number": "D-1", "hyperlink": "  https://dms.example.com/D-1  "}, {"id": "b", "number": "D-2", "hyperlink": "javascript:1"}]
+    with pytest.raises(RefValidationError) as exc:
+        check_drawings(rows, default_enums())
+    assert set(exc.value.fields) == {"b.hyperlink"}
+    saved = check_drawings(rows[:1], default_enums()).items[0]
+    assert saved.hyperlink == "https://dms.example.com/D-1" and as_typed(saved, default_enums())["hyperlink"] == saved.hyperlink

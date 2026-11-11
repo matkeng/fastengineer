@@ -108,11 +108,13 @@ def test_the_drawing_list_workbook() -> None:
     ws = wb["Drawing List"]
     assert [c.value for c in ws[1]] == ["Drawing number", "Project name", "Title 1", "Title 2", "Title 3", "Drawing discipline",
                                         "Drawing type", "Revision", "Status", "Issue date", "Vendor drg number", "Vendor reference",
-                                        "Equipment reference", "Scope"]
+                                        "Equipment reference", "Scope", "Hyperlink"]
     assert (ws["A2"].value, ws["F2"].value, ws["I2"].value, ws["J2"].value) == ("100-E-SLD-001", "E", "IFC", "14/03/2026")
     old = {d["number"]: d["id"] for d in client.get(URL).json()["items"]}
 
-    ws.append(["100-E-TER-001", "Sample plant", "MCC-1", "Terminations", None, "Electrical", "Termination Diagram", "A", "ifr", "2026-06-01"])
+    ws.append(["100-E-TER-001", "Sample plant", "MCC-1", "Terminations", None, "Electrical", "Termination Diagram", "A", "ifr", "2026-06-01",
+               None, None, None, None, "https://dms.example.com/100-E-TER-001"])
+    assert ws["O2"].value == "https://dms.example.com/drawings/100-E-SLD-001"
     ws["I2"].value = "As Built"  # a status by its name
     out = io.BytesIO()
     wb.save(out)
@@ -121,6 +123,9 @@ def test_the_drawing_list_workbook() -> None:
     items = client.get(URL).json()["items"]
     assert {d["number"]: d["id"] for d in items if d["number"] in old} == old  # drawings keep their identity
     assert (items[0]["status"], items[-1]["discipline"], items[-1]["status"], items[-1]["issue_date"]) == ("AB", "E", "IFR", "01/06/2026")
+    assert items[-1]["hyperlink"] == "https://dms.example.com/100-E-TER-001"
+    bad = client.put(URL, json={"items": [dict(items[0], hyperlink="javascript:alert(1)")]})
+    assert bad.status_code == 422 and set(bad.json()["fields"]) == {f"{items[0]['id']}.hyperlink"}
 
     ws["I3"].value = "Nearly done"
     out = io.BytesIO()

@@ -1150,3 +1150,9 @@ main.fill .key-enums { overflow: auto; }
 	background: color-mix(in srgb, var(--accent) 16%, transparent); text-align: center; cursor: help; }
 dialog.modal.drawing-form { width: min(760px, calc(100vw - 32px)); }
 .key-drawings .result-table td { white-space: nowrap; }
+.key-drawings a.drawing-link { text-decoration: none; }
+.key-drawings a.drawing-link:hover { text-decoration: underline; }
+.drawing-form .row.tight { flex-wrap: nowrap; gap: 6px; align-items: center; }
+.drawing-form .row.tight input { flex: 1; min-width: 0; }
+.drawing-form a.button-link { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 3px;
+	font-size: 11px; color: var(--text); background: var(--card); white-space: nowrap; }

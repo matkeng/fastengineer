@@ -4,7 +4,8 @@
 
 A drawing has a number (required, unique), the project's name, up to three title lines, a
 discipline, a type, a revision, a status, an issue date, the vendor's drawing number and
-reference, the equipment it is about, and a scope.
+reference, the equipment it is about, a scope, and a hyperlink to where the drawing is kept (a
+web address, or the path of a file or folder).
 
 Discipline, type and status are fixed choices: each is blank or an item of the project's
 Enums (see keylists.enums), typed or imported as the item's code or name and kept by its id,
@@ -29,13 +30,16 @@ COLUMNS: list[tuple[str, str]] = [
     ("number", "Drawing number"), ("project_name", "Project name"), ("title_1", "Title 1"), ("title_2", "Title 2"),
     ("title_3", "Title 3"), ("discipline", "Drawing discipline"), ("drawing_type", "Drawing type"), ("revision", "Revision"),
     ("status", "Status"), ("issue_date", "Issue date"), ("vendor_drg_number", "Vendor drg number"),
-    ("vendor_reference", "Vendor reference"), ("equipment_reference", "Equipment reference"), ("scope", "Scope")]
+    ("vendor_reference", "Vendor reference"), ("equipment_reference", "Equipment reference"), ("scope", "Scope"),
+    ("hyperlink", "Hyperlink")]
 FIELDS: list[str] = [c[0] for c in COLUMNS]
 HEADINGS: list[str] = [c[1] for c in COLUMNS]
 #: field -> (the enum it picks from, what it is called)
 CHOICES: dict[str, tuple[str, str]] = {"discipline": ("disciplines", "discipline"), "drawing_type": ("drawing_types", "drawing type"),
                                        "status": ("drawing_statuses", "status")}
-_TEXT = ("number", "project_name", "title_1", "title_2", "title_3", "revision", "vendor_drg_number", "vendor_reference", "scope")
+_TEXT = ("number", "project_name", "title_1", "title_2", "title_3", "revision", "vendor_drg_number", "vendor_reference", "scope",
+         "hyperlink")
+_SCHEME = re.compile(r"^([A-Za-z][A-Za-z0-9+.\-]*):")
 
 
 class Drawing(BaseModel):
@@ -54,6 +58,7 @@ class Drawing(BaseModel):
     vendor_reference: str = ""
     equipment_reference: str = ""  # tags, separated by commas
     scope: str = ""
+    hyperlink: str = ""  # where the drawing is kept: http(s)://..., file://..., or a file or folder path
 
 
 class DrawingList(BaseModel):
@@ -89,6 +94,20 @@ def parse_date(v: object) -> date | None:
     if re.fullmatch(r"\d{4,6}(\.\d+)?", text):  # Excel's day number
         return date(1899, 12, 30) + timedelta(days=int(float(text)))
     raise ValueError("Not a date: use dd/mm/yyyy")
+
+
+def link_problem(link: str) -> str | None:
+    """What is wrong with a hyperlink, if anything. A link is a web address (http or https), a
+    file:// address, or the path of a file or folder (C:\\..., \\\\server\\share\\..., /...). Anything
+    else that has a scheme (javascript:, data:, ...) is refused, so a link is safe to open."""
+    m = _SCHEME.match(link)
+    if not link or m is None or len(m[1]) == 1:  # blank, a path, or a drive letter
+        return None
+    if m[1].casefold() in ("http", "https"):
+        return None if re.match(r"^https?://[^\s/]+", link, re.I) else "Not a web address: use https://..."
+    if m[1].casefold() == "file":
+        return None
+    return "A link is a web address (https://...) or the path of a file or folder"
 
 
 def tags_of(reference: str) -> list[str]:
@@ -136,6 +155,9 @@ def check_drawings(rows: list[dict], enums: ProjectEnums) -> DrawingList:
                     errors[f"{rid}.{field}"] = f"'{text}' is not a {what} of the project's Enums"
             elif by_id:
                 errors[f"{rid}.{field}"] = f"That {what} is no longer in the project's Enums"
+        problem = link_problem(str(data["hyperlink"]))
+        if problem:
+            errors[f"{rid}.hyperlink"] = problem
         try:
             data["issue_date"] = parse_date(raw.get("issue_date"))
         except ValueError as exc:

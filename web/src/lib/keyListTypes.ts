@@ -305,5 +305,16 @@ export interface DrawingRow {
 	discipline: string; discipline_id: string | null; drawing_type: string; drawing_type_id: string | null; revision: string;
 	status: string; status_id: string | null; issue_date: string; vendor_drg_number: string; vendor_reference: string;
 	equipment_reference: string; scope: string; unknown_equipment: string[];
+	/** Where the drawing is kept: a web address, or the path of a file or folder. */
+	hyperlink: string;
+}
+/** What a drawing's hyperlink opens: a web or file:// address as it is, a path as a file:// address. '' if it isn't a link. */
+export function linkHref(link: string): string {
+	const l = link.trim();
+	if (/^(https?|file):\/\//i.test(l)) return l;
+	if (/^[a-z][a-z0-9+.-]+:/i.test(l)) return ''; // another scheme: not opened
+	if (/^\\\\/.test(l)) return `file:${l.replace(/\\/g, '/')}`; // \\server\share\x -> file://server/share/x
+	if (/^[a-z]:[\\/]/i.test(l)) return `file:///${l.replace(/\\/g, '/')}`; // C:\x -> file:///C:/x
+	return l.startsWith('/') ? `file://${l}` : '';
 }
 export interface DrawingsView { items: DrawingRow[]; columns: { field: string; heading: string }[]; choices: Record<DrawingChoice, EnumItem[]>; updated_at: string | null }

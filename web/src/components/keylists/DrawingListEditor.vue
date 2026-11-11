@@ -9,7 +9,7 @@ import type { ColumnsConfig } from 'datatables.net';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, type SelectFilter, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
-import { type DrawingChoice, type DrawingRow, type EnumItem, enumLabel } from '../../lib/keyListTypes';
+import { type DrawingChoice, type DrawingRow, type EnumItem, enumLabel, linkHref } from '../../lib/keyListTypes';
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
 import { useProjects } from '../../stores/projects';
@@ -45,6 +45,11 @@ function build() {
 			if (type !== 'display') return v;
 			if (c.field === 'equipment_reference' && row.unknown_equipment.length) {
 				return `${escapeHtml(v)} <span class="warnText" title="Not in the MEL or the Electrical Equipment List: ${escapeHtml(row.unknown_equipment.join(', '))}">⚠</span>`;
+			}
+			if (c.field === 'hyperlink' && v) {
+				const href = linkHref(v);
+				const text = escapeHtml(v.length > 48 ? `${v.slice(0, 47)}…` : v);
+				return href ? `<a class="drawing-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" title="Open ${escapeHtml(v)}">🔗 ${text}</a>` : text;
 			}
 			return escapeHtml(v);
 		},
@@ -101,7 +106,17 @@ function open(row: DrawingRow | null) {
 	};
 }
 
+const copied = ref(false);
+async function copyLink(link: string) {
+	try {
+		await navigator.clipboard.writeText(link);
+		copied.value = true;
+		setTimeout(() => { copied.value = false; }, 2000);
+	} catch { /* the clipboard is not available: the link can still be selected in the field */ }
+}
+
 function onClick(e: MouseEvent) {
+	if ((e.target as HTMLElement).closest('a.drawing-link')) return; // the link opens; the form doesn't
 	const tr = (e.target as HTMLElement).closest('tbody tr');
 	if (!tr || !table) return;
 	const row = table.api.row(tr as HTMLTableRowElement).data() as DrawingRow | undefined;
@@ -112,6 +127,8 @@ async function save(addAnother = false) {
 	const e = editing.value;
 	if (!e) return;
 	const errors: Record<string, string> = {};
+	const link = e.form.hyperlink.trim();
+	if (link && /^[a-z][a-z0-9+.-]+:/i.test(link) && !/^(https?:\/\/\S|file:)/i.test(link)) errors.hyperlink = 'A link is a web address (https://...) or the path of a file or folder';
 	if (!key(e.form.number)) errors.number = 'Drawing number is required';
 	else if (items.value.some((r) => r.id !== e.form.id && key(r.number) === key(e.form.number))) errors.number = 'Another drawing has this number';
 	formErrors.value = errors;
@@ -218,6 +235,17 @@ onBeforeUnmount(() => table?.api.destroy());
 				<label class="field wide">
 					<span>Scope</span>
 					<input v-model="editing.form.scope" type="text" />
+				</label>
+				<label class="field wide">
+					<span>Hyperlink</span>
+					<span class="row tight">
+						<input v-model="editing.form.hyperlink" type="text" class="mono" :class="{ invalid: formErrors.hyperlink }"
+							placeholder="https://…  or the path of the file, e.g. \\server\drawings\3510\…pdf" />
+						<a v-if="linkHref(editing.form.hyperlink)" class="button-link" :href="linkHref(editing.form.hyperlink)" target="_blank" rel="noopener noreferrer">Open</a>
+						<button type="button" class="secondary small" :disabled="!editing.form.hyperlink.trim()" @click="copyLink(editing.form.hyperlink.trim())">{{ copied ? 'Copied' : 'Copy' }}</button>
+					</span>
+					<span v-if="formErrors.hyperlink" class="warn small">{{ formErrors.hyperlink }}</span>
+					<span v-else class="hint small">Where the drawing is kept: a web address, or a file or folder path. A web address opens in the browser; a file path may be blocked from opening here, so Copy puts it on the clipboard to paste into File Explorer.</span>
 				</label>
 				<button type="submit" hidden />
 			</form>
