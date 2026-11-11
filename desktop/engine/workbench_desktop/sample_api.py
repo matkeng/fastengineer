@@ -238,8 +238,8 @@ def load_sample_data() -> Added:
         from workbench_core.keylists.enums import lookup
         enums = lists.enums()
         has = {"discipline": lookup(enums.disciplines), "document_type": lookup(enums.document_types), "status": lookup(enums.drawing_statuses)}
-        want = [("100-E-SPC-001", "LV switchgear and MCC specification", "E", "Specification", "B", "IFT", "10/02/2026", "MCC-1, MCC-2"),
-                ("100-E-CAL-001", "Cable sizing calculation", "E", "Calculation", "A", "IFR", "05/03/2026", ""),
+        want = [("100-E-SCH-001", "Cable schedule", "E", "Schedule", "B", "IFC", "10/02/2026", "MCC-1, MCC-2"),
+                ("100-E-LST-001", "Electrical equipment list", "E", "List", "A", "IFR", "05/03/2026", ""),
                 ("100-I-DS-001", "Pressure transmitter datasheet", "I", "Datasheet", "0", "IFA", "", "P-101")]
         rows = []
         for number, title, discipline, kind, rev, status, issued, equipment in want:

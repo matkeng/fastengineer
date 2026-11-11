@@ -7,8 +7,8 @@ discipline, a type, a revision, a status, an issue date, the vendor's drawing nu
 reference, the equipment it is about, a scope, and a hyperlink to where the drawing is kept (a
 web address, or the path of a file or folder).
 
-The **Document List** is the same register for the project's documents (specifications,
-datasheets, reports...): identical, but with one title line, and its type picked from the
+The **Document List** is the same register for the project's documents (lists, schedules,
+datasheets...): identical, but with one title line, and its type picked from the
 Document types enum. Both are described by a RegisterSpec, and every function here takes one.
 
 Discipline, type and status are fixed choices: each is blank or an item of the project's

@@ -99,13 +99,14 @@ def test_the_document_list_spec() -> None:
     assert list(REGISTERS) == ["drawing-list", "document-list"] and DRAWINGS.headings == HEADINGS
     assert [f for f in DOCUMENTS.fields if f.startswith("title")] == ["title"] and len(DOCUMENTS.fields) == len(DRAWINGS.fields) - 2
     enums = default_enums()
-    assert len(enums.document_types) == 16 and enums.document_types[1].name == "Datasheet"
-    docs = check_drawings([{"id": "a", "number": "S-1", "title": " Spec ", "discipline": "E", "document_type": "specification", "status": "IFC",
+    assert [t.name for t in enums.document_types] == ["List", "Schedule", "Datasheet", "Index", "Register", "Calculation", "Specification",
+                                                      "Report", "Other"]
+    docs = check_drawings([{"id": "a", "number": "S-1", "title": " Spec ", "discipline": "E", "document_type": "schedule", "status": "IFC",
                             "issue_date": "01/02/2026", "vendor_doc_number": "V-9", "hyperlink": "https://x.example/s-1"}], enums, DOCUMENTS)
     d = docs.items[0]
     assert (type(d).__name__, d.title, d.discipline_id, d.document_type_id, d.status_id, d.vendor_doc_number) == (
-        "Document", "Spec", "d-e", "doc1", "ds5", "V-9")
-    assert as_typed(d, enums, DOCUMENTS)["document_type"] == "Specification"
+        "Document", "Spec", "d-e", "doc2", "ds5", "V-9")
+    assert as_typed(d, enums, DOCUMENTS)["document_type"] == "Schedule"
     with pytest.raises(RefValidationError) as exc:
         check_drawings([{"id": "a", "number": "", "document_type": "Layout"}], enums, DOCUMENTS)
     assert exc.value.fields == {"a.number": "Document number is required",

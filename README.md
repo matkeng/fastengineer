@@ -636,7 +636,7 @@ You don't create or name them: each project has one of each.
   |---|---|---|
   | Disciplines | E Electrical, I Instrumentation, M Mechanical, P Piping, C Civil, S Structural, H HVAC, PR Process, G General | Equipment Codes, Drawing List, Document List |
   | Drawing types | Single Line Diagram, Schematic, Termination Diagram, Loop Diagram, Block Diagram, Cable Block Diagram, Layout, General Arrangement, P&ID, Hook-up, Panel Schedule, Schedule, Index, Standard Detail, Datasheet, Other | Drawing List |
-  | Document types | Specification, Datasheet, Calculation, Report, Study, Procedure, Philosophy, Design Criteria, Scope of Work, List, Schedule, Manual, Certificate, Inspection and Test Plan, Vendor Document, Other | Document List |
+  | Document types | List, Schedule, Datasheet, Index, Register, Calculation, Specification, Report, Other | Document List |
   | Drawing statuses | Draft, IFR, IFA, IFT, IFC, AB, Superseded, Cancelled | Drawing List, Document List |
 
   - An item has a **code** and a **name**. A discipline needs a code; for the
@@ -679,7 +679,7 @@ You don't create or name them: each project has one of each.
     file, naming the drawing. Dates are read as `dd/mm/yyyy`, `yyyy-mm-dd` or
     an Excel date.
 - **Document List** (API `/api/document-list`): the project's register of
-  documents (specifications, datasheets, reports…). It is the Drawing List with
+  documents: its lists, schedules, datasheets and the like. It is the Drawing List with
   **one Title** in place of the three: Document number (required, unique),
   Project name, Title, Document discipline, Document type, Revision, Status,
   Issue date, Vendor doc number, Vendor reference, Equipment reference, Scope

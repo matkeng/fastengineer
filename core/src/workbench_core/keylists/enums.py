@@ -34,9 +34,8 @@ ENUMS: dict[str, tuple[str, str, bool]] = {
 DRAWING_TYPES: tuple[str, ...] = (
     "Single Line Diagram", "Schematic", "Termination Diagram", "Loop Diagram", "Block Diagram", "Cable Block Diagram", "Layout",
     "General Arrangement", "P&ID", "Hook-up", "Panel Schedule", "Schedule", "Index", "Standard Detail", "Datasheet", "Other")
-DOCUMENT_TYPES: tuple[str, ...] = (
-    "Specification", "Datasheet", "Calculation", "Report", "Study", "Procedure", "Philosophy", "Design Criteria", "Scope of Work",
-    "List", "Schedule", "Manual", "Certificate", "Inspection and Test Plan", "Vendor Document", "Other")
+#: The Document List is for the project's lists, schedules, datasheets and the like.
+DOCUMENT_TYPES: tuple[str, ...] = ("List", "Schedule", "Datasheet", "Index", "Register", "Calculation", "Specification", "Report", "Other")
 #: (code, name) of the statuses a project starts with.
 DRAWING_STATUSES: tuple[tuple[str, str], ...] = (
     ("", "Draft"), ("IFR", "Issued for Review"), ("IFA", "Issued for Approval"), ("IFT", "Issued for Tender"),
