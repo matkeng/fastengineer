@@ -420,3 +420,27 @@ def test_motor_data_starts_with_the_weg_w22_range() -> None:
     assert len(client.get("/api/keylists/motors").json()["items"]) == 145
     # the Load List's fields include Poles, so an import can map it
     assert any(f["key"] == "poles" and f["kind"] == "number" for f in client.get("/api/load-fields").json()["fields"])
+
+
+def test_drive_data_starts_with_the_powerflex_755ts_range() -> None:
+    import io as _io
+
+    from openpyxl import load_workbook as _load
+
+    items = client.get("/api/keylists/drives").json()["items"]
+    assert len(items) == 297 and items[0]["cat_no"] == "20G21RB2P2JA0NNNNN" and items[0]["frame"] == "1"
+    assert client.get("/api/keylists").json()["drives"]["items"] == 297
+    mine = items[1:] + [{"cat_no": "ACS880-01-012A-3", "voltage": 400, "enclosure": "Open", "frame": "R1", "nd_amps": 12}]
+    assert client.put("/api/keylists/drives", json={"items": mine}).status_code == 200
+    added = client.post("/api/keylists/drives/defaults").json()["items"]
+    assert len(added) == 298 and added[-1]["cat_no"] == "20G21RB2P2JA0NNNNN"
+    data = client.post("/api/list-workbooks/drives/export", json={}).content
+    sheet = [list(r) for r in _load(_io.BytesIO(data))["Drive Data"].iter_rows(values_only=True)]
+    assert sheet[0][:7] == ["Cat No", "Manufacturer", "Series", "Voltage", "Enclosure", "Frame", "ND Amps"] and len(sheet) == 299
+    back = client.post("/api/list-workbooks/drives/import", params={"filename": "d.xlsx", "apply": True}, content=data)
+    assert back.status_code == 200, back.text
+    assert client.get("/api/keylists/drives").json()["items"] == added
+    assert client.post("/api/list-workbooks/drives/reset").status_code == 200
+    assert len(client.get("/api/keylists/drives").json()["items"]) == 297
+    keys = {f["key"] for f in client.get("/api/load-fields").json()["fields"]}
+    assert {"drive_duty", "drive_enclosure", "poles"} <= keys

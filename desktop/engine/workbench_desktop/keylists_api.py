@@ -62,6 +62,7 @@ def overview() -> dict:
             "plc": _plc_counts(lists.plc()),
             "cable_types": {"items": len(lists.cable_types().items)},
             "motors": {"items": len(lists.motors().items)},
+            "drives": {"items": len(lists.drives().items)},
             "distribution_panels": {"items": len(lists.distribution_panels().panels)},
             "instrument_runsheet": {"items": len(lists.instrument_runsheet().rows)},
             "mel": {"items": _mel_count()},
@@ -333,6 +334,35 @@ def motor_defaults():
     if not missing:
         return lists.motors()
     return lists.save_motors(items + missing, note=f"{len(missing)} WEG W22 motor(s) added")
+
+
+# -- drive data --------------------------------------------------------------------------------
+
+@router.get("/drives")
+def get_drives():
+    return get_keylists().drives()
+
+
+@router.put("/drives")
+def update_drives(body: CodeListUpdate):
+    from workbench_core.keylists.drives import check_drives
+    try:
+        return get_keylists().save_drives(check_drives(body.items))
+    except RefValidationError as exc:
+        return invalid(exc)
+
+
+@router.post("/drives/defaults")
+def drive_defaults():
+    """Add the PowerFlex 755TS drives that are missing (by voltage and catalog number); the rest is kept."""
+    from workbench_core.keylists.drives import default_drives
+    lists = get_keylists()
+    items = lists.drives().items
+    have = {(name_key(d.cat_no), d.voltage) for d in items}
+    missing = [d for d in default_drives() if (name_key(d.cat_no), d.voltage) not in have]
+    if not missing:
+        return lists.drives()
+    return lists.save_drives(items + missing, note=f"{len(missing)} PowerFlex 755TS drive(s) added")
 
 
 # -- cable types -------------------------------------------------------------------------------

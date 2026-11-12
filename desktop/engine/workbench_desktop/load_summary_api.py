@@ -47,7 +47,8 @@ def _names() -> tuple[list[Choice], list[Choice]]:
             seen.add(c.key)
             refs.append(c)
     numeric_app = [c for c in app if c.key in ("rating", "voltage", "qty", "cable_length", "cable_size", "earth_size", "cable_parallel")
-                   or c.key in ("motor.kw", "motor.flc", "motor.eff100", "motor.pf100", "motor.weight", "motor.torque")]
+                   or c.key in ("motor.kw", "motor.flc", "motor.eff100", "motor.pf100", "motor.weight", "motor.torque",
+                                "drive.amps", "drive.kw", "drive.hp")]
     return fields + numeric_app, refs
 
 
@@ -56,7 +57,7 @@ def _work_out(page: SummaryPage) -> list[SummaryOutTable]:
 
     lists = get_keylists()
     return work_out(page, current_rows()[0], {t.id: t for t in lists.load_types().items},
-                    {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}, lists.motors().items)
+                    {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}, lists.motors().items, lists.drives().items)
 
 
 def _view(page: SummaryPage) -> SummaryView:

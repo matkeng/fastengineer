@@ -34,7 +34,7 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 #: list id -> (its name, what its items are called)
 LISTS = {"plant-areas": ("Plant Areas", "plant area"), "equipment-packages": ("Equipment Packages", "package"),
          "load-types": ("Load Types", "load type"), "equipment-codes": ("Equipment Codes", "equipment code"),
-         "instrument-codes": ("Instrument Codes", "instrument code"), "cable-types": ("Cable Types", "cable type"), "motors": ("Motor Data", "motor"),
+         "instrument-codes": ("Instrument Codes", "instrument code"), "cable-types": ("Cable Types", "cable type"), "motors": ("Motor Data", "motor"), "drives": ("Drive Data", "drive"),
          "eel": ("Electrical Equipment List", "item"), "load-list": ("Load List", "row"),
          "distribution-panels": ("Distribution Panels", "panel"), "instrument-runsheet": ("Instrument Runsheet", "row"),
          "mel": ("MEL", "row"), "drawing-list": ("Drawing List", "drawing"), "document-list": ("Document List", "document")}
@@ -72,6 +72,8 @@ def _sheets(list_id: str) -> wbk.Sheets:
         return wbk.export_cable_types(lists.cable_types().items)
     if list_id == "motors":
         return wbk.export_motors(lists.motors().items)
+    if list_id == "drives":
+        return wbk.export_drives(lists.drives().items)
     if list_id == "eel":
         return wbk.export_eel(lists.eel(), _eel_names())
     if list_id in REGISTERS:
@@ -228,6 +230,9 @@ def _parse(list_id: str, data: bytes) -> tuple[wbk.Parsed, list[str]]:
     if list_id == "motors":
         old = lists.motors().items
         return wbk.import_motors(sheets, old), [m.part_no for m in old]
+    if list_id == "drives":
+        old = lists.drives().items
+        return wbk.import_drives(sheets, old), [f"{d.cat_no} {d.voltage}V" for d in old]
     if list_id == "eel":
         old = lists.eel()
         return wbk.import_eel(sheets, old, _eel_names()), [i.tag for i in old.items]
@@ -274,6 +279,9 @@ def _check(list_id: str, parsed: wbk.Parsed) -> None:
     elif list_id == "motors":
         from workbench_core.keylists.motors import check_motors
         check_motors(p["items"])  # type: ignore[index]
+    elif list_id == "drives":
+        from workbench_core.keylists.drives import check_drives
+        check_drives(p["items"])  # type: ignore[index]
     elif list_id in REGISTERS:
         drawing_list_api.checked(p["items"], REGISTERS[list_id])  # type: ignore[index]
     elif list_id == "instrument-runsheet":
@@ -307,6 +315,9 @@ def _save(list_id: str, parsed: wbk.Parsed):
     if list_id == "motors":
         from workbench_core.keylists.motors import check_motors
         return lists.save_motors(check_motors(p["items"]), note="Imported from a workbook")  # type: ignore[index]
+    if list_id == "drives":
+        from workbench_core.keylists.drives import check_drives
+        return lists.save_drives(check_drives(p["items"]), note="Imported from a workbook")  # type: ignore[index]
     if list_id == "eel":
         return eel_api.save_eel(eel_api.EelUpdate.model_validate(p))
     if list_id in REGISTERS:
@@ -422,6 +433,10 @@ def reset_list(list_id: str):
         gone = get_loadlist().reset().get("all", 0)
         rows = [r for r in loadlist_api.current_rows()[0] if r.status == "active"]
         return ResetResult(message=f"{gone} remembered row(s) forgotten. The imports were read again: {len(rows)} row(s).")
+    if list_id == "drives":
+        from workbench_core.keylists.drives import default_drives
+        items = lists.save_drives(default_drives(), note="Reset to the PowerFlex 755TS drives").items
+        return ResetResult(message=f"Drive Data is back to the {len(items)} PowerFlex 755TS drives.")
     if list_id == "motors":
         from workbench_core.keylists.motors import default_motors
         items = lists.save_motors(default_motors(), note="Reset to the WEG W22 motors").items

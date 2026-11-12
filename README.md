@@ -632,6 +632,28 @@ You don't create or name them: each project has one of each.
   `<<Motor.PF100>>`… (`|default:` for a load with no motor), and calculated
   fields and the Load List Summary Page as the same names, e.g. input kW
   `<<rating>> / <<Motor.Eff100>> * 100`.
+- **Drive Data** (`keylists/drives.py`): variable speed drives and their ratings.
+  Every project starts with the **Rockwell PowerFlex 755TS** drives (297, from
+  the PowerFlex 750TS-Series Technical Data, publication 750-TD104F-EN-P, pages 8
+  to 21, as printed; `keylists/drive_data_755ts.py`): 200…240 V, 380…400 V, 480 V,
+  575…600 V and 660…690 V, each in **Open** (IP00/IP20, Type Open), **IP54**
+  (Type 12) and **Flange** mount (none at 690 V), with the catalog number, the
+  **frame size**, and Normal Duty and Heavy Duty output amps (continuous, 1 min,
+  3 s) and power (Hp at 240/480/600 V, kW at 400/690 V, both at 240 V; the 240 V
+  drives' amps at 208 V too). Frame 6 and 7 drives are dual-voltage: listed at
+  600 V and at 690 V with the same catalog number. Edited, exported, imported,
+  reset and topped up (**Add missing PowerFlex 755TS**) like Motor Data.
+
+  A load is **matched to a drive** of its voltage class (200…240 → 240, 380…415 →
+  400, 440…480 → 480, 550…600 → 600, 660…690 → 690), its **Drive enclosure**
+  (a Load List field: Open, IP54 or Flange; blank: Open) and its **Drive duty**
+  (ND or HD; blank: Normal Duty): the smallest whose continuous amps at that duty
+  (the 208 V figure for a 200…220 V load) cover the matched motor's FLC (a rating
+  in Amps when there is no motor), or with no current, whose power covers the
+  load's kW; the smaller frame of two the same. Reached as `<<Drive.CatNo>>`,
+  `<<Drive.Frame>>`, `<<Drive.Amps>>` (at the load's duty), `<<Drive.kW>>`,
+  `<<Drive.Duty>>`, `<<Drive.Enclosure>>`, `<<Drive.NDAmps>>`, `<<Drive.HDAmps>>`…
+  in template rows, calculated fields and the summary page.
 - **Electrical Equipment List** (EEL): equipment entered and edited here, in
   addition to any EEL import. A grid of every item; click a row (or **Add
   equipment**) for a form. **Tag number** (required, and unique across this list

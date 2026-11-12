@@ -547,6 +547,35 @@ def import_motors(sheets: dict[str, Rows], old) -> Parsed:
     return Parsed({"items": items}, [i["part_no"] for i in items], labels={i["id"]: i["part_no"] for i in items})
 
 
+# -- Drive Data ------------------------------------------------------------------------------------
+
+def _drive_head() -> list[tuple[str, str]]:
+    from .drives import NUMBERS, TEXTS
+
+    return [(f, TEXTS[f][0]) for f in ("cat_no", "manufacturer", "series")] + [("voltage", "Voltage"), ("enclosure", "Enclosure"),
+            ("frame", "Frame")] + [(f, t) for f, (t, _) in NUMBERS.items()]
+
+
+def export_drives(items) -> Sheets:
+    head = _drive_head()
+    return [("Drive Data", [[t for _, t in head]] + [[None if getattr(d, f) in ("", None) else getattr(d, f) for f, _ in head]
+                                                    for d in items])]
+
+
+def import_drives(sheets: dict[str, Rows], old) -> Parsed:
+    head = _drive_head()
+    rows = _sheet(sheets, "Drive Data", ("Cat No", "Voltage", "ND Amps"))
+    ids = {(name_key(d.cat_no), d.voltage): d.id for d in old}
+    items = []
+    for r in rows:
+        try:
+            v = int(float(_get(r, "Voltage")))
+        except ValueError:
+            v = 0
+        items.append({"id": ids.get((name_key(_get(r, "Cat No")), v)) or new_id()} | {f: _get(r, t) for f, t in head})
+    return Parsed({"items": items}, [f"{i['cat_no']} {i['voltage']}V" for i in items], labels={i["id"]: i["cat_no"] for i in items})
+
+
 # -- the Electrical Equipment List -----------------------------------------------------------------
 
 EEL_HEAD = ["Tag", "Description", "Equipment code", "Plant area", "Vendor package", "Load type", "Rating", "Units", "Voltage",

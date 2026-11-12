@@ -62,7 +62,18 @@ SCHEMA: dict[str, tuple[str, str, list[tuple[str, str]], list[tuple[str, str, st
         ("LoadType", "loadtype", "load type"), ("PlantArea", "area", "plant area"), ("SuppliedFrom", "load", "panel it is supplied from"),
         ("Eel", "eel", "Electrical Equipment List item (its rows only)"), ("Cable", "cable", "cable (per-cable rows only)"),
         ("Motor", "motor", "motor (Motor Data, matched by its rating and Poles)"),
+        ("Drive", "drive", "drive (Drive Data, matched by voltage, Drive enclosure, Drive duty and the motor's FLC)"),
     ]),
+    "drive": ("a drive", "CatNo", [
+        ("CatNo", "catalog number"), ("Manufacturer", "manufacturer"), ("Series", "range"), ("Voltage", "voltage class (V)"),
+        ("VoltageRange", "voltage range"), ("Enclosure", "Open, IP54 or Flange"), ("Frame", "frame size"),
+        ("Duty", "the duty it was matched on (ND/HD)"), ("Amps", "continuous output amps at the load's duty"),
+        ("Amps1min", "1 min output amps at the load's duty"), ("Amps3s", "3 s output amps at the load's duty"),
+        ("kW", "power (kW) at the load's duty"), ("Hp", "power (Hp) at the load's duty"),
+        ("NDAmps", "Normal Duty continuous amps"), ("ND1min", "Normal Duty 1 min amps"), ("ND3s", "Normal Duty 3 s amps"),
+        ("NDkW", "Normal Duty kW"), ("NDHp", "Normal Duty Hp"), ("HDAmps", "Heavy Duty continuous amps"),
+        ("HD1min", "Heavy Duty 1 min amps"), ("HD3s", "Heavy Duty 3 s amps"), ("HDkW", "Heavy Duty kW"), ("HDHp", "Heavy Duty Hp"),
+    ], []),
     "motor": ("a motor", "PartNo", [
         ("PartNo", "part number"), ("Manufacturer", "manufacturer"), ("Series", "range"), ("Design", "Standard or High-Output"),
         ("Poles", "poles"), ("Frame", "IEC frame"), ("kW", "output (kW)"), ("Speed", "rated speed (rpm)"),
@@ -167,8 +178,9 @@ class Links:
     link to a list that isn't given is blank."""
 
     def __init__(self, load_types=None, areas=None, loads=None, eel=None, codes=None, packages=None, equipment_types=None,
-                 cables=None, plc=None, load_labels: dict[str, str] | None = None, motors=None):
+                 cables=None, plc=None, load_labels: dict[str, str] | None = None, motors=None, drives=None):
         self.motors = list(motors or [])
+        self.drives = list(drives or [])
         self.load_types = {t.id: t for t in load_types or []}
         self.areas = {a.id: a for a in areas or []}
         self.loads = list(loads or [])
@@ -220,6 +232,16 @@ class Links:
 
         m = motor_for(flat.get("rating"), flat.get("units"), flat.get("poles"), self.motors)
         return None if m is None else Record("motor", dict(motor_fields(m)), name=m.part_no)
+
+    def drive(self, flat: dict[str, object]):
+        """The Drive Data row a load matches (keylists.drives.drive_for_load), on its motor's FLC."""
+        from .drives import drive_fields, drive_for_load
+        from .motors import motor_for
+
+        m = motor_for(flat.get("rating"), flat.get("units"), flat.get("poles"), self.motors)
+        x = drive_for_load(flat.get("rating"), flat.get("units"), flat.get("voltage"), m.flc if m else None,
+                           flat.get("drive_duty"), flat.get("drive_enclosure"), self.drives)
+        return None if x is None else Record("drive", dict(drive_fields(x, flat.get("drive_duty"))), name=x.cat_no)
 
     def package(self, i):
         p = self.packages.get(i or "")
@@ -284,7 +306,7 @@ class Links:
             supply = lambda: self.load(self.by_ref.get(row.supplied_from or ""))  # noqa: E731
         links = {"loadtype": lambda: self.load_type(row.load_type_id, rec), "plantarea": lambda: self.area(row.plant_area_id),
                  "suppliedfrom": supply, "eel": lambda: self.eel_item(row.key) if row.recipe_id == EEL_SOURCE else None,
-                 "cable": lambda: self.cable(cable_code), "motor": lambda: self.motor(flat)}
+                 "cable": lambda: self.cable(cable_code), "motor": lambda: self.motor(flat), "drive": lambda: self.drive(flat)}
         rec = Record("load", fields, links, row.tag())
         return rec
 

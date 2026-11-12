@@ -36,6 +36,7 @@ DEFAULT_LABELS: dict[str, str] = {
     "phases": "Phases", "status": "Status", "starter_type": "Starter type", "load_type": "Load type", "starter_addons": "Starter add-ons",
     "load_addons": "Load add-ons", "field_addons": "Field add-ons", "is_a_loadcentre": "Is a load centre", "loadcentre": "Load centre",
     "supplied_from": "Supplied from", "is_deleted": "Deleted", "poles": "Poles",
+    "drive_duty": "Drive duty", "drive_enclosure": "Drive enclosure",
 }
 #: Fields the app reads (allocations, the deliverable, distribution panels, the Electrical
 #: Equipment List): they can be relabelled and moved, not deleted, and keep their kind.
@@ -49,7 +50,7 @@ _DERIVED = {"tag", "description", "area", "rating", "units", "voltage", "phases"
             # the links dot notation follows (keylists.tag_paths)
             "suppliedfrom", "eel", "cable", "parent", "equipmenttype", "package", "system",
             # what a calculation or a summary can use about a load (keylists.load_calcs.load_cells)
-            "supplychain", "ispanel"}
+            "supplychain", "ispanel", "motor", "drive"}
 MAX_FIELDS = 80
 MAX_LABEL = 60
 

@@ -736,6 +736,27 @@ class KeyListStore:
     PLC = "plc"
     CABLE_TYPES = "cable-types"
     MOTORS = "motors"
+    DRIVES = "drives"
+
+    def drives(self):
+        """Drive Data; a project that never saved it has the PowerFlex 755TS range (keylists.drives)."""
+        from workbench_core.keylists.drives import DriveList, default_drives
+
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.DRIVES,)).fetchone()
+        return DriveList.model_validate_json(row[0]) if row else DriveList(items=default_drives())
+
+    def save_drives(self, items: list, note: str | None = None):
+        from workbench_core.keylists.drives import DriveList, default_drives
+
+        drives = DriveList(items=items, updated_at=_now())
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.DRIVES,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.DRIVES, drives.model_dump_json()))
+            audit.log(self._db, "drives", self.DRIVES, before or DriveList(items=default_drives()).model_dump_json(),
+                      drives.model_dump_json(), label="Drive Data", note=note)
+        return drives
 
     def motors(self):
         """Motor Data; a project that never saved it has the WEG W22 range (keylists.motors)."""

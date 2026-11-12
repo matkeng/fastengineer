@@ -140,8 +140,21 @@ def _motor_refs() -> list[tuple[str, str]]:
     return out
 
 
+def _drive_refs() -> list[tuple[str, str]]:
+    from .drives import NUMBERS, TEXTS
+
+    out = [("drive.catno", "the matched drive's catalog number (Drive Data, by voltage, Drive enclosure, Drive duty and the motor's FLC)"),
+           ("drive.amps", "the matched drive's continuous output amps at the load's duty"),
+           ("drive.amps1min", "its 1 min output amps at the load's duty"), ("drive.amps3s", "its 3 s output amps at the load's duty"),
+           ("drive.kw", "its power (kW) at the load's duty"), ("drive.hp", "its power (Hp) at the load's duty"),
+           ("drive.duty", "the duty it was matched on: ND or HD"), ("drive.voltagerange", "its voltage range")]
+    out += [(f"drive.{t.replace(' ', '').casefold()}", f"the matched drive's {m}") for f, (t, m) in {**TEXTS, **NUMBERS}.items()
+            if f != "cat_no"]
+    return out
+
+
 #: What a calculation can use about a load's matched motor (keylists.motors): <<Motor.FLC>>…
-MOTOR_REFS: list[tuple[str, str]] = _motor_refs()
+MOTOR_REFS: list[tuple[str, str]] = _motor_refs() + _drive_refs()
 
 
 def known_refs(fields: LoadFields) -> set[str]:
@@ -226,7 +239,7 @@ def supply_chain(row: LoadListRow, by_ref: dict[str, LoadListRow]) -> list[str]:
 
 
 def load_cells(row: LoadListRow, load_types: dict[str, LoadType], areas: dict[str, tuple[str, str]],
-               by_ref: dict[str, LoadListRow], motors: list | None = None) -> dict[str, object]:
+               by_ref: dict[str, LoadListRow], motors: list | None = None, drives: list | None = None) -> dict[str, object]:
     """What an expression about a load can refer to, by lower-case name: the app's tags for it,
     its own values (a number staying a number; a blank one leaves what the app works out), its
     cable, <<supplychain>>: the panels it is fed from, nearest first (see supply_chain), and
@@ -240,11 +253,16 @@ def load_cells(row: LoadListRow, load_types: dict[str, LoadType], areas: dict[st
     from .motors import motor_fields, motor_for
     m = motor_for(cells.get("rating"), cells.get("units"), cells.get("poles"), motors or [])
     cells |= {f"motor.{k}": v for k, v in motor_fields(m).items()}
+    from .drives import drive_fields, drive_for_load
+    x = drive_for_load(cells.get("rating"), cells.get("units"), cells.get("voltage"), m.flc if m else None,
+                       cells.get("drive_duty"), cells.get("drive_enclosure"), drives or [])
+    cells |= {f"drive.{k}": v for k, v in drive_fields(x, cells.get("drive_duty")).items()}
     return cells
 
 
 def apply_calcs(rows: list[LoadListRow], fields: LoadFields, load_types: dict[str, LoadType],
-                areas: dict[str, tuple[str, str]], only: str | None = None, motors: list | None = None) -> None:
+                areas: dict[str, tuple[str, str]], only: str | None = None, motors: list | None = None,
+                drives: list | None = None) -> None:
     """Work out the calculated fields for every row, in place: each answer goes in the row's
     values under the field's key (blank when it can't be worked out), and what is wrong goes in
     its calc_issues. `only`: a calculated field's key, to work out just that one (with what it uses)."""
@@ -268,7 +286,7 @@ def apply_calcs(rows: list[LoadListRow], fields: LoadFields, load_types: dict[st
     by_ref = {r.ref(): r for r in rows}
     ai = make_interpreter()
     for row in rows:
-        cells = load_cells(row, load_types, areas, by_ref, motors)
+        cells = load_cells(row, load_types, areas, by_ref, motors, drives)
         issues: list[CalcIssue] = []
         for k in keys:
             test, formula, otherwise, checks = compiled[k]
