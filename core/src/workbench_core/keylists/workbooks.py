@@ -520,6 +520,33 @@ def import_cable_types(sheets: dict[str, Rows], old: list[CableType]) -> Parsed:
     return Parsed({"items": items}, [i["code"] for i in items], labels={i["id"]: i["code"] for i in items})
 
 
+# -- Motor Data ------------------------------------------------------------------------------------
+
+def _motor_head() -> list[tuple[str, str]]:
+    from .motors import NUMBERS, TEXTS
+
+    return [(f, TEXTS[f][0]) for f in ("part_no", "manufacturer", "series")] + [("poles", "Poles"), ("design", "Design"),
+            ("kw", "kW"), ("frame", "Frame"), ("reduced_frame", "Reduced frame")] + [
+            (f, t) for f, (t, _) in NUMBERS.items() if f != "kw"]
+
+
+def export_motors(items) -> Sheets:
+    head = _motor_head()
+    def cell(m, f):
+        v = getattr(m, f)
+        if f == "reduced_frame":
+            return "Yes" if v else None
+        return None if v in ("", None) else v
+    return [("Motor Data", [[t for _, t in head]] + [[cell(m, f) for f, _ in head] for m in items])]
+
+
+def import_motors(sheets: dict[str, Rows], old) -> Parsed:
+    keep = _keep([(m.id, m.part_no) for m in old])
+    head = _motor_head()
+    items = [{"id": keep(_get(r, "Part No"))} | {f: _get(r, t) for f, t in head} for r in _sheet(sheets, "Motor Data", ("Part No", "Poles", "kW"))]
+    return Parsed({"items": items}, [i["part_no"] for i in items], labels={i["id"]: i["part_no"] for i in items})
+
+
 # -- the Electrical Equipment List -----------------------------------------------------------------
 
 EEL_HEAD = ["Tag", "Description", "Equipment code", "Plant area", "Vendor package", "Load type", "Rating", "Units", "Voltage",

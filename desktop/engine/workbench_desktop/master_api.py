@@ -45,7 +45,7 @@ def inputs() -> Inputs:
     packages, cables = lists.equipment_packages(), lists.cable_types().items
     links = Links(load_types=load_types, areas=nodes, loads=loads, eel=lists.eel().items, codes=lists.code_list("equipment-codes").items,
                   packages=packages.items, equipment_types=packages.types, cables=cables, plc=lists.plc(),
-                  load_labels=lists.load_fields().labels())
+                  load_labels=lists.load_fields().labels(), motors=lists.motors().items)
     return Inputs(loads=loads, load_types={t.id: t for t in load_types},
                   areas={n.id: (n.tag, n.description) for n in nodes}, cables=cables,
                   runsheet=lists.instrument_runsheet(), equipment_types={t.id: t for t in packages.types},
@@ -259,7 +259,7 @@ class LoadFieldsView(BaseModel):
 
 
 def _load_fields_view() -> LoadFieldsView:
-    from workbench_core.keylists.load_calcs import APP_REFS
+    from workbench_core.keylists.load_calcs import APP_REFS, MOTOR_REFS
     from workbench_core.mel.functions import FUNCTIONS, METHODS
     from workbench_core.mel.load_fields import LOCKED
 
@@ -267,7 +267,7 @@ def _load_fields_view() -> LoadFieldsView:
     return LoadFieldsView(fields=[FieldView(key=f.key, label=f.label, kind=f.kind, locked=f.key in LOCKED,
                                             calc=f.calc.model_dump() if f.calc else None) for f in lf.fields],
                           kinds=["text", "number", "yes/no", "calc"],
-                          app_refs=[Reference(ref=f"<<{r}>>", label=m) for r, m in APP_REFS],
+                          app_refs=[Reference(ref=f"<<{r}>>", label=m) for r, m in APP_REFS + MOTOR_REFS],
                           functions=sorted(FUNCTIONS), text_functions=list(METHODS))
 
 

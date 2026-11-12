@@ -735,6 +735,27 @@ class KeyListStore:
 
     PLC = "plc"
     CABLE_TYPES = "cable-types"
+    MOTORS = "motors"
+
+    def motors(self):
+        """Motor Data; a project that never saved it has the WEG W22 range (keylists.motors)."""
+        from workbench_core.keylists.motors import MotorList, default_motors
+
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.MOTORS,)).fetchone()
+        return MotorList.model_validate_json(row[0]) if row else MotorList(items=default_motors())
+
+    def save_motors(self, items: list, note: str | None = None):
+        from workbench_core.keylists.motors import MotorList, default_motors
+
+        motors = MotorList(items=items, updated_at=_now())
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.MOTORS,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.MOTORS, motors.model_dump_json()))
+            audit.log(self._db, "motors", self.MOTORS, before or MotorList(items=default_motors()).model_dump_json(),
+                      motors.model_dump_json(), label="Motor Data", note=note)
+        return motors
 
     def cable_types(self) -> CableTypeList:
         """The cable types; a project that never saved them has the default set."""

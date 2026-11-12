@@ -35,7 +35,7 @@ DEFAULT_LABELS: dict[str, str] = {
     "load_units": "Load units (kW, HP…)", "load_rating": "Load rating", "load_voltage": "Voltage", "csv_row_num": "Source row number",
     "phases": "Phases", "status": "Status", "starter_type": "Starter type", "load_type": "Load type", "starter_addons": "Starter add-ons",
     "load_addons": "Load add-ons", "field_addons": "Field add-ons", "is_a_loadcentre": "Is a load centre", "loadcentre": "Load centre",
-    "supplied_from": "Supplied from", "is_deleted": "Deleted",
+    "supplied_from": "Supplied from", "is_deleted": "Deleted", "poles": "Poles",
 }
 #: Fields the app reads (allocations, the deliverable, distribution panels, the Electrical
 #: Equipment List): they can be relabelled and moved, not deleted, and keep their kind.

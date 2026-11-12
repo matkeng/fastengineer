@@ -61,7 +61,18 @@ SCHEMA: dict[str, tuple[str, str, list[tuple[str, str]], list[tuple[str, str, st
     ], [
         ("LoadType", "loadtype", "load type"), ("PlantArea", "area", "plant area"), ("SuppliedFrom", "load", "panel it is supplied from"),
         ("Eel", "eel", "Electrical Equipment List item (its rows only)"), ("Cable", "cable", "cable (per-cable rows only)"),
+        ("Motor", "motor", "motor (Motor Data, matched by its rating and Poles)"),
     ]),
+    "motor": ("a motor", "PartNo", [
+        ("PartNo", "part number"), ("Manufacturer", "manufacturer"), ("Series", "range"), ("Design", "Standard or High-Output"),
+        ("Poles", "poles"), ("Frame", "IEC frame"), ("kW", "output (kW)"), ("Speed", "rated speed (rpm)"),
+        ("FLC", "full load current (A)"), ("ILIr", "locked rotor current (x FLC)"), ("Torque", "full load torque (Nm)"),
+        ("TLTr", "locked rotor torque (x full load)"), ("TbTr", "breakdown torque (x full load)"),
+        ("Eff50", "efficiency at 50 % load (%)"), ("Eff75", "efficiency at 75 % load (%)"), ("Eff100", "efficiency at full load (%)"),
+        ("PF50", "power factor at 50 % load"), ("PF75", "power factor at 75 % load"), ("PF100", "power factor at full load"),
+        ("Sound", "sound pressure (dB(A))"), ("Inertia", "moment of inertia (kgm²)"), ("LockedCold", "max. locked rotor time, cold (s)"),
+        ("LockedHot", "max. locked rotor time, hot (s)"), ("Weight", "approximate weight (kg)"), ("Voltage", "rated voltage (V)"),
+    ], []),
     "loadtype": ("a load type", "Code", [
         ("Code", "code"), ("Name", "name"), ("RatingUnit", "kW or Amps"), ("Voltage", "voltage"), ("Phases", "phases"),
         ("From", "from value"), ("To", "to value"), ("StdDrg", "STD drawing"), ("BucketType", "bucket type"),
@@ -156,7 +167,8 @@ class Links:
     link to a list that isn't given is blank."""
 
     def __init__(self, load_types=None, areas=None, loads=None, eel=None, codes=None, packages=None, equipment_types=None,
-                 cables=None, plc=None, load_labels: dict[str, str] | None = None):
+                 cables=None, plc=None, load_labels: dict[str, str] | None = None, motors=None):
+        self.motors = list(motors or [])
         self.load_types = {t.id: t for t in load_types or []}
         self.areas = {a.id: a for a in areas or []}
         self.loads = list(loads or [])
@@ -201,6 +213,13 @@ class Links:
         return None if c is None else Record("cable", {
             "code": c.code, "application": c.application, "type": c.type, "cores": c.cores, "size": c.diameter,
             "voltage": c.voltage, "insulation": c.insulation, "description": c.description}, name=c.code)
+
+    def motor(self, flat: dict[str, object]):
+        """The Motor Data row a load's rating (and units) and poles match (keylists.motors.motor_for)."""
+        from .motors import motor_fields, motor_for
+
+        m = motor_for(flat.get("rating"), flat.get("units"), flat.get("poles"), self.motors)
+        return None if m is None else Record("motor", dict(motor_fields(m)), name=m.part_no)
 
     def package(self, i):
         p = self.packages.get(i or "")
@@ -265,7 +284,7 @@ class Links:
             supply = lambda: self.load(self.by_ref.get(row.supplied_from or ""))  # noqa: E731
         links = {"loadtype": lambda: self.load_type(row.load_type_id, rec), "plantarea": lambda: self.area(row.plant_area_id),
                  "suppliedfrom": supply, "eel": lambda: self.eel_item(row.key) if row.recipe_id == EEL_SOURCE else None,
-                 "cable": lambda: self.cable(cable_code)}
+                 "cable": lambda: self.cable(cable_code), "motor": lambda: self.motor(flat)}
         rec = Record("load", fields, links, row.tag())
         return rec
 

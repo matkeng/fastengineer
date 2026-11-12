@@ -611,6 +611,27 @@ You don't create or name them: each project has one of each.
   Instrumentation, M Mechanical, P Piping, C Civil, S Structural, H HVAC; the
   grid filters by one); instrument codes have an optional **PLC code** (free
   text, several codes may share one).
+- **Motor Data** (`keylists/motors.py`): motors and their performance data. Every
+  project starts with the **WEG W22 High Efficiency E3** range, 415 V 50 Hz,
+  2, 4, 6 and 8 pole (145 motors, from the WEG W22 catalogue section 15, pages
+  24 to 27, as printed; `keylists/motor_data_w22.py`): part number, poles,
+  design (Standard, or High-Output in a special frame, marked * in the
+  catalogue), kW, IEC frame, rated speed, full load current, locked rotor
+  current, full load torque, locked rotor and breakdown torque, efficiency and
+  power factor at 50/75/100 % load, sound pressure, moment of inertia, max.
+  locked rotor times cold and hot, and weight. A grid with filters (poles,
+  design…); a row is added or edited in a form; **Add missing WEG W22** adds back
+  the catalogue motors that aren't there; Export/Import .xlsx and Reset (to the
+  W22 range) like the other lists.
+
+  A load is **matched to a motor** by its rating and the Load List's **Poles**
+  field (a number an import can map): the smallest motor with those poles whose
+  kW is at least the load's (a rating in HP is converted; Amps matches nothing),
+  a Standard design before a High-Output one of the same kW. Template rows reach
+  it as `<<Motor.PartNo>>`, `<<Motor.Frame>>`, `<<Motor.FLC>>`, `<<Motor.Eff100>>`,
+  `<<Motor.PF100>>`… (`|default:` for a load with no motor), and calculated
+  fields and the Load List Summary Page as the same names, e.g. input kW
+  `<<rating>> / <<Motor.Eff100>> * 100`.
 - **Electrical Equipment List** (EEL): equipment entered and edited here, in
   addition to any EEL import. A grid of every item; click a row (or **Add
   equipment**) for a form. **Tag number** (required, and unique across this list

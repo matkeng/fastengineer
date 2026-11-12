@@ -131,8 +131,21 @@ def _value(x: object) -> object:
     return x
 
 
+def _motor_refs() -> list[tuple[str, str]]:
+    from .motors import NUMBERS, TEXTS
+
+    out = [("motor.partno", "the matched motor's part number (Motor Data, by the load's rating and Poles)")]
+    out += [(f"motor.{t.replace(' ', '').replace('/', '').casefold()}", f"the matched motor's {m}")
+            for f, (t, m) in {**TEXTS, **NUMBERS}.items() if f != "part_no"]
+    return out
+
+
+#: What a calculation can use about a load's matched motor (keylists.motors): <<Motor.FLC>>…
+MOTOR_REFS: list[tuple[str, str]] = _motor_refs()
+
+
 def known_refs(fields: LoadFields) -> set[str]:
-    return {f.key.casefold() for f in fields.fields} | {r for r, _ in APP_REFS} | {"tag"}
+    return {f.key.casefold() for f in fields.fields} | {r for r, _ in APP_REFS} | {r for r, _ in MOTOR_REFS} | {"tag"}
 
 
 def order(fields: LoadFields) -> list[str]:
@@ -213,21 +226,25 @@ def supply_chain(row: LoadListRow, by_ref: dict[str, LoadListRow]) -> list[str]:
 
 
 def load_cells(row: LoadListRow, load_types: dict[str, LoadType], areas: dict[str, tuple[str, str]],
-               by_ref: dict[str, LoadListRow]) -> dict[str, object]:
+               by_ref: dict[str, LoadListRow], motors: list | None = None) -> dict[str, object]:
     """What an expression about a load can refer to, by lower-case name: the app's tags for it,
     its own values (a number staying a number; a blank one leaves what the app works out), its
-    cable, and <<supplychain>>: the panels it is fed from, nearest first (see supply_chain)."""
+    cable, <<supplychain>>: the panels it is fed from, nearest first (see supply_chain), and
+    <<Motor.…>>: the Motor Data row its rating and poles match (keylists.motors; blank if none)."""
     cells: dict[str, object] = {k: _value(v) for k, v in tags_for(row, load_types, areas, by_ref).items()}
     cells |= {k.casefold(): v for k, v in row.values.items() if v is not None and v != ""}
     cells |= {k.casefold(): "" for k, v in row.values.items() if k.casefold() not in cells}
     cells |= {c: ("" if getattr(row, c) is None else _value(getattr(row, c))) for c in CABLE_FIELDS}
     cells["supplychain"] = supply_chain(row, by_ref)
     cells["ispanel"] = row.is_panel
+    from .motors import motor_fields, motor_for
+    m = motor_for(cells.get("rating"), cells.get("units"), cells.get("poles"), motors or [])
+    cells |= {f"motor.{k}": v for k, v in motor_fields(m).items()}
     return cells
 
 
 def apply_calcs(rows: list[LoadListRow], fields: LoadFields, load_types: dict[str, LoadType],
-                areas: dict[str, tuple[str, str]], only: str | None = None) -> None:
+                areas: dict[str, tuple[str, str]], only: str | None = None, motors: list | None = None) -> None:
     """Work out the calculated fields for every row, in place: each answer goes in the row's
     values under the field's key (blank when it can't be worked out), and what is wrong goes in
     its calc_issues. `only`: a calculated field's key, to work out just that one (with what it uses)."""
@@ -251,7 +268,7 @@ def apply_calcs(rows: list[LoadListRow], fields: LoadFields, load_types: dict[st
     by_ref = {r.ref(): r for r in rows}
     ai = make_interpreter()
     for row in rows:
-        cells = load_cells(row, load_types, areas, by_ref)
+        cells = load_cells(row, load_types, areas, by_ref, motors)
         issues: list[CalcIssue] = []
         for k in keys:
             test, formula, otherwise, checks = compiled[k]

@@ -391,3 +391,32 @@ def test_dotted_tags_and_modifiers_in_the_master_lists() -> None:
     assert p101["Description"] == "DIRECT ON LINE MOTOR STARTER" and p101["Plant Area"] == "W-1"
     assert p101["Supplied From"] == "Motor control centre 1"
     assert any("<<LoadType.Nope>> ('Nope' is not a field of a load type" in w for w in master["warnings"])
+
+
+def test_motor_data_starts_with_the_weg_w22_range() -> None:
+    import io as _io
+
+    from openpyxl import load_workbook as _load
+
+    items = client.get("/api/keylists/motors").json()["items"]
+    assert len(items) == 145 and items[0]["part_no"] == "K07 W22" and items[0]["manufacturer"] == "WEG"
+    assert client.get("/api/keylists").json()["motors"]["items"] == 145
+    # edit: drop one, add one of our own; defaults add back what's missing only
+    mine = [m for m in items if m["part_no"] != "K25 W22"] + [{"part_no": "ABB M3BP 160", "poles": 4, "kw": 11, "flc": 21}]
+    res = client.put("/api/keylists/motors", json={"items": mine})
+    assert res.status_code == 200, res.text
+    bad = client.put("/api/keylists/motors", json={"items": [{"part_no": "", "poles": 4, "kw": 1}]})
+    assert bad.status_code == 422
+    added = client.post("/api/keylists/motors/defaults").json()["items"]
+    assert len(added) == 146 and added[-1]["part_no"] == "K25 W22"
+    # the workbook: a sheet with every motor, read back as it was
+    data = client.post("/api/list-workbooks/motors/export", json={}).content
+    sheet = [list(r) for r in _load(_io.BytesIO(data))["Motor Data"].iter_rows(values_only=True)]
+    assert sheet[0][:7] == ["Part No", "Manufacturer", "Series", "Poles", "Design", "kW", "Frame"] and len(sheet) == 147
+    back = client.post("/api/list-workbooks/motors/import", params={"filename": "m.xlsx", "apply": True}, content=data)
+    assert back.status_code == 200, back.text
+    assert client.get("/api/keylists/motors").json()["items"] == added
+    assert client.post("/api/list-workbooks/motors/reset").status_code == 200
+    assert len(client.get("/api/keylists/motors").json()["items"]) == 145
+    # the Load List's fields include Poles, so an import can map it
+    assert any(f["key"] == "poles" and f["kind"] == "number" for f in client.get("/api/load-fields").json()["fields"])

@@ -61,6 +61,7 @@ def overview() -> dict:
             "eel": {"items": len(lists.eel().items)},
             "plc": _plc_counts(lists.plc()),
             "cable_types": {"items": len(lists.cable_types().items)},
+            "motors": {"items": len(lists.motors().items)},
             "distribution_panels": {"items": len(lists.distribution_panels().panels)},
             "instrument_runsheet": {"items": len(lists.instrument_runsheet().rows)},
             "mel": {"items": _mel_count()},
@@ -303,6 +304,35 @@ def _code_list_routes(list_id: str, model, list_model, what: str) -> None:
 
 _code_list_routes("equipment-codes", EquipmentCode, EquipmentCodeList, "equipment codes")
 _code_list_routes("instrument-codes", InstrumentCode, InstrumentCodeList, "instrument codes")
+
+
+# -- motor data --------------------------------------------------------------------------------
+
+@router.get("/motors")
+def get_motors():
+    return get_keylists().motors()
+
+
+@router.put("/motors")
+def update_motors(body: CodeListUpdate):
+    from workbench_core.keylists.motors import check_motors
+    try:
+        return get_keylists().save_motors(check_motors(body.items))
+    except RefValidationError as exc:
+        return invalid(exc)
+
+
+@router.post("/motors/defaults")
+def motor_defaults():
+    """Add the WEG W22 motors that are missing (by part number); the rest is kept as it is."""
+    from workbench_core.keylists.motors import default_motors
+    lists = get_keylists()
+    items = lists.motors().items
+    have = {name_key(m.part_no) for m in items}
+    missing = [m for m in default_motors() if name_key(m.part_no) not in have]
+    if not missing:
+        return lists.motors()
+    return lists.save_motors(items + missing, note=f"{len(missing)} WEG W22 motor(s) added")
 
 
 # -- cable types -------------------------------------------------------------------------------

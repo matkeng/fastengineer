@@ -34,19 +34,20 @@ class SummaryView(BaseModel):
 
 
 def _names() -> tuple[list[Choice], list[Choice]]:
-    from workbench_core.keylists.load_calcs import APP_REFS
+    from workbench_core.keylists.load_calcs import APP_REFS, MOTOR_REFS
     from workbench_core.keylists.loadgen import TAGS
 
     lf = get_keylists().load_fields()
     fields = [Choice(key=f.key, label=f.label + (" (calculated)" if f.kind == "calc" else "")) for f in lf.fields]
-    app = [Choice(key=r, label=m) for r, m in APP_REFS] + [Choice(key=t.casefold(), label=m) for t, m in TAGS]
+    app = [Choice(key=r, label=m) for r, m in APP_REFS + MOTOR_REFS] + [Choice(key=t.casefold(), label=m) for t, m in TAGS]
     seen: set[str] = set()
     refs = []
     for c in [Choice(key=f.key, label=f.label) for f in lf.fields] + app:
         if c.key not in seen:
             seen.add(c.key)
             refs.append(c)
-    numeric_app = [c for c in app if c.key in ("rating", "voltage", "qty", "cable_length", "cable_size", "earth_size", "cable_parallel")]
+    numeric_app = [c for c in app if c.key in ("rating", "voltage", "qty", "cable_length", "cable_size", "earth_size", "cable_parallel")
+                   or c.key in ("motor.kw", "motor.flc", "motor.eff100", "motor.pf100", "motor.weight", "motor.torque")]
     return fields + numeric_app, refs
 
 
@@ -55,7 +56,7 @@ def _work_out(page: SummaryPage) -> list[SummaryOutTable]:
 
     lists = get_keylists()
     return work_out(page, current_rows()[0], {t.id: t for t in lists.load_types().items},
-                    {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes})
+                    {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}, lists.motors().items)
 
 
 def _view(page: SummaryPage) -> SummaryView:

@@ -1289,3 +1289,7 @@ main.fill .key-summary { overflow: auto; }
 .sum-col .row > input.sum-col-name { flex: 0 0 170px !important; }
 .sum-col .row > label.check input.sum-dp { flex: 0 0 56px !important; width: 56px !important; }
 .sum-col .row > label.check { display: inline-flex; align-items: center; gap: 4px; }
+/* Motor Data */
+.motor-form { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.motor-form .field code { margin-left: 4px; font-size: 10px; }
+dialog.modal:has(.motor-form) { width: min(860px, calc(100vw - 32px)); }

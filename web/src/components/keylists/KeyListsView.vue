@@ -18,6 +18,7 @@ import MasterListView from './MasterListView.vue';
 import EnumsEditor from './EnumsEditor.vue';
 import RegisterEditor from './RegisterEditor.vue';
 import LoadTypesEditor from './LoadTypesEditor.vue';
+import MotorDataEditor from './MotorDataEditor.vue';
 import LoadSummaryView from './LoadSummaryView.vue';
 import PlantAreasEditor from './PlantAreasEditor.vue';
 
@@ -26,10 +27,10 @@ const kl = useKeyLists();
 const ui = useUi();
 const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Project Master Load List', 'load-summary': 'Load List Summary Page',
 	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes', eel: 'Electrical Equipment List', plc: 'PLC List',
-	'cable-types': 'Cable Types', 'distribution-panels': 'Distribution Panels', 'instrument-runsheet': 'Instrument Runsheet', mel: 'MEL', master: 'Project Master list', enums: 'Enums', 'drawing-list': 'Drawing List', 'document-list': 'Document List' };
+	'cable-types': 'Cable Types', motors: 'Motor Data', 'distribution-panels': 'Distribution Panels', 'instrument-runsheet': 'Instrument Runsheet', mel: 'MEL', master: 'Project Master list', enums: 'Enums', 'drawing-list': 'Drawing List', 'document-list': 'Document List' };
 const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true, 'load-summary': true,
 	'equipment-codes': kl.codeLists['equipment-codes'], 'instrument-codes': kl.codeLists['instrument-codes'], eel: kl.eel, plc: kl.plcDraft,
-	'cable-types': kl.cableTypes, 'distribution-panels': kl.panelsDraft, 'instrument-runsheet': kl.runsheetView, mel: kl.melList, master: kl.master, enums: kl.enumsDraft, 'drawing-list': kl.registers['drawing-list'], 'document-list': kl.registers['document-list'] }[kl.selected]);
+	'cable-types': kl.cableTypes, motors: true, 'distribution-panels': kl.panelsDraft, 'instrument-runsheet': kl.runsheetView, mel: kl.melList, master: kl.master, enums: kl.enumsDraft, 'drawing-list': kl.registers['drawing-list'], 'document-list': kl.registers['document-list'] }[kl.selected]);
 
 onMounted(() => kl.load());
 
@@ -83,6 +84,10 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 						<li :class="{ current: kl.selected === 'cable-types' }" @click="kl.select('cable-types')">
 							<span class="name">Cable Types</span>
 							<span class="count" title="cable type(s)">{{ kl.overview?.cable_types.items ?? 0 }}</span>
+						</li>
+						<li :class="{ current: kl.selected === 'motors' }" title="Motors and their performance data (starts with WEG W22): <<Motor.FLC>>…" @click="kl.select('motors')">
+							<span class="name">Motor Data</span>
+							<span class="count" title="motor(s)">{{ kl.overview?.motors?.items ?? 0 }}</span>
 						</li>
 						<li :class="{ current: kl.selected === 'plc' }" @click="kl.select('plc')">
 							<span class="name">PLC List</span><span v-if="kl.plcDirty || kl.catDirty" class="dirty-dot" title="Unsaved changes">●</span>
@@ -175,6 +180,7 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 			<CodeListEditor v-if="kl.codeLists['equipment-codes']" v-show="kl.selected === 'equipment-codes'" list-id="equipment-codes" />
 			<CodeListEditor v-if="kl.codeLists['instrument-codes']" v-show="kl.selected === 'instrument-codes'" list-id="instrument-codes" />
 			<CableTypesEditor v-if="kl.cableTypes" v-show="kl.selected === 'cable-types'" />
+			<MotorDataEditor v-if="kl.selected === 'motors'" />
 			<EelEditor v-if="kl.eel" v-show="kl.selected === 'eel'" />
 			<PlcEditor v-if="kl.plcDraft" v-show="kl.selected === 'plc'" />
 			<LoadListEditor v-if="kl.selected === 'load-list'" />

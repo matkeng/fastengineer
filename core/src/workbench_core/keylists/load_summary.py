@@ -241,12 +241,12 @@ def check_page(page: SummaryPage, load_names: set[str]) -> SummaryPage:
 
 
 def work_out(page: SummaryPage, loads: list[LoadListRow], load_types: dict[str, LoadType],
-             areas: dict[str, tuple[str, str]]) -> list[SummaryOutTable]:
+             areas: dict[str, tuple[str, str]], motors: list | None = None) -> list[SummaryOutTable]:
     """Every table of the page over the Load List as it is (`loads`: its rows, with their
     calculated fields worked out)."""
     by_ref = {r.ref(): r for r in loads}
     active = [r for r in loads if r.status == "active"]
-    cells = {r.ref(): {norm(k): v for k, v in load_cells(r, load_types, areas, by_ref).items()} for r in active}
+    cells = {r.ref(): {norm(k): v for k, v in load_cells(r, load_types, areas, by_ref, motors).items()} for r in active}
     by_tag = {name_key(r.tag()): r for r in active}
     ai = make_interpreter()
     out = []

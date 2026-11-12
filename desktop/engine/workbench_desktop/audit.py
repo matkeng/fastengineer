@@ -58,6 +58,7 @@ ENTITIES = {
     "deliverable": "deliverable",
     "deliverable_revision": "deliverable revision",
     "cable_types": "cable types list",
+    "motors": "motor data list",
     "equipment_codes": "equipment codes list",
     "instrument_codes": "instrument codes list",
     "load_list_row": "load list row",

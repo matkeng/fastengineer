@@ -15,9 +15,9 @@ ELEC_LOAD_FIELDS: list[str] = [
     "equip_type", "equip_subtype", "load_units", "load_rating", "load_voltage",
     "csv_row_num", "phases", "status", "starter_type", "load_type", "starter_addons",
     "load_addons", "field_addons", "is_a_loadcentre", "loadcentre", "supplied_from",
-    "is_deleted",
+    "is_deleted", "poles",
 ]
-NUMERIC_FIELDS = {"equip_qty", "standby_qty", "load_rating", "load_voltage", "csv_row_num", "phases"}
+NUMERIC_FIELDS = {"equip_qty", "standby_qty", "load_rating", "load_voltage", "csv_row_num", "phases", "poles"}
 
 # Instrument-list fields a PIL recipe maps onto (fed by the P&ID tags list).
 INSTRUMENT_FIELDS: list[str] = [
