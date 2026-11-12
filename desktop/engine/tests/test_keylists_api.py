@@ -444,3 +444,29 @@ def test_drive_data_starts_with_the_powerflex_755ts_range() -> None:
     assert len(client.get("/api/keylists/drives").json()["items"]) == 297
     keys = {f["key"] for f in client.get("/api/load-fields").json()["fields"]}
     assert {"drive_duty", "drive_enclosure", "poles"} <= keys
+
+
+def test_starter_coordination_starts_with_the_nhp_charts() -> None:
+    import io as _io
+
+    from openpyxl import load_workbook as _load
+
+    got = client.get("/api/keylists/starters").json()
+    assert len(got["items"]) == 126 and got["default_chart"] == "ECH64.2" and got["items"][0]["chart"] == "ECH54.2"
+    assert client.get("/api/keylists").json()["starters"]["items"] == 126
+    bad = client.put("/api/keylists/starters", json={"items": got["items"], "default_chart": "NOPE"})
+    assert bad.status_code == 422 and "default_chart" in bad.text
+    mine = got["items"][1:] + [{"chart": "MINE", "kw": 4, "cb": "X / 16A"}]
+    saved = client.put("/api/keylists/starters", json={"items": mine, "default_chart": "RECH64.24"})
+    assert saved.status_code == 200 and saved.json()["default_chart"] == "RECH64.24"
+    added = client.post("/api/keylists/starters/defaults").json()
+    assert len(added["items"]) == 127 and added["items"][-1]["chart"] == "ECH54.2" and added["default_chart"] == "RECH64.24"
+    data = client.post("/api/list-workbooks/starters/export", json={}).content
+    book = _load(_io.BytesIO(data))
+    assert [c.value for c in book["Starter Coordination"][1]][:4] == ["Chart", "Fault kA", "Manufacturer", "kW"]
+    back = client.post("/api/list-workbooks/starters/import", params={"filename": "s.xlsx", "apply": True}, content=data)
+    assert back.status_code == 200, back.text
+    assert client.get("/api/keylists/starters").json()["items"] == added["items"]
+    assert client.post("/api/list-workbooks/starters/reset").status_code == 200
+    reset = client.get("/api/keylists/starters").json()
+    assert len(reset["items"]) == 126 and reset["default_chart"] == "ECH64.2"

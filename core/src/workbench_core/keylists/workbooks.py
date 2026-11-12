@@ -305,9 +305,9 @@ def import_equipment_packages(sheets: dict[str, Rows], old: EquipmentPackageList
 # -- Load Types ------------------------------------------------------------------------------------
 
 LOAD_TYPE_HEAD = ["Code", "Name", "Rating unit", "Voltage", "Phases", "From", "To", "STD Drg", "Bucket type", "Load type",
-                  "Field options", "Multi load", "Load qty", "PDF"]
+                  "Field options", "Multi load", "Load qty", "Starter chart", "PDF"]
 _LT_FIELDS = ("code", "name", "rating_unit", "voltage", "phases", "from_value", "to_value", "std_drg", "bucket_type",
-              "load_type", "field_options", "multi_load", "load_qty")
+              "load_type", "field_options", "multi_load", "load_qty", "starter_chart")
 
 
 def _rows_sheet(key: str) -> str:
@@ -574,6 +574,45 @@ def import_drives(sheets: dict[str, Rows], old) -> Parsed:
             v = 0
         items.append({"id": ids.get((name_key(_get(r, "Cat No")), v)) or new_id()} | {f: _get(r, t) for f, t in head})
     return Parsed({"items": items}, [f"{i['cat_no']} {i['voltage']}V" for i in items], labels={i["id"]: i["cat_no"] for i in items})
+
+
+# -- Starter Coordination --------------------------------------------------------------------------
+
+def _starter_head() -> list[tuple[str, str]]:
+    from .starters import NUMBERS, TEXTS
+
+    order = ("chart", "fault_ka", "manufacturer", "kw", "flc", "cb", "cb_amps", "el_setting", "contactor", "overload", "range_min",
+             "range_max", "inst_trip", "min_trip", "note")
+    return [(f, {**TEXTS, **NUMBERS}[f][0]) for f in order]
+
+
+def export_starters(starters) -> Sheets:
+    """The rows on "Starter Coordination", the project's default chart on "Settings"."""
+    head = _starter_head()
+    return [("Starter Coordination", [[t for _, t in head]] + [[None if getattr(s, f) in ("", None) else getattr(s, f) for f, _ in head]
+                                                              for s in starters.items]),
+            ("Settings", [["Setting", "Value"], ["Default chart", starters.default_chart or None]])]
+
+
+def import_starters(sheets: dict[str, Rows], old) -> Parsed:
+    head = _starter_head()
+    rows = _sheet(sheets, "Starter Coordination", ("Chart", "kW"))
+    ids = {(name_key(s.chart), s.kw): s.id for s in old.items}
+    items = []
+    for r in rows:
+        try:
+            kw = float(_get(r, "kW"))
+        except ValueError:
+            kw = -1.0
+        items.append({"id": ids.get((name_key(_get(r, "Chart")), kw)) or new_id()} | {f: _get(r, t) for f, t in head})
+    default, notes = old.default_chart, []
+    if "settings" in sheets:
+        found = [_get(r, "Value") for r in _sheet(sheets, "Settings", ("Setting", "Value")) if _get(r, "Setting").casefold() == "default chart"]
+        default = found[0] if found else default
+    else:
+        notes.append(f'No "Settings" sheet: the default chart stays {old.default_chart}.')
+    return Parsed({"items": items, "default_chart": default}, [f"{i['chart']} {i['kw']} kW" for i in items], notes,
+                  labels={i["id"]: f"{i['chart']} {i['kw']} kW" for i in items})
 
 
 # -- the Electrical Equipment List -----------------------------------------------------------------

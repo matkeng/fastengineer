@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, type SelectFilter, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
-import { runningInTauri } from '../../lib/engine';
+import { apiGet, runningInTauri } from '../../lib/engine';
 import {
 	PHASES, RATING_UNITS, type AttachedFile, type LoadType, type LoadTypeField, type LoadTypeForm, copyName, fileSize, loadTypeProblems, modifierText,
 } from '../../lib/keyListTypes';
@@ -28,7 +28,7 @@ const host = ref<HTMLDivElement | null>(null);
 let table: FilteredTable<LoadType> | null = null;
 const items = computed(() => kl.loadTypes?.items ?? []);
 
-type Kind = 'text' | 'choice' | 'whole' | 'decimal' | 'yesno';
+type Kind = 'text' | 'choice' | 'whole' | 'decimal' | 'yesno' | 'starter';
 interface Col { field: LoadTypeField; label: string; kind: Kind; required?: boolean; options?: readonly string[]; hint?: string }
 const COLS: Col[] = [
 	{ field: 'code', label: 'Code', kind: 'text', required: true },
@@ -43,6 +43,7 @@ const COLS: Col[] = [
 	{ field: 'load_type', label: 'Load type', kind: 'text' },
 	{ field: 'field_options', label: 'Field options', kind: 'text' },
 	{ field: 'load_qty', label: 'Load qty', kind: 'whole', hint: 'Whole number' },
+	{ field: 'starter_chart', label: 'Starter chart', kind: 'starter' },
 	{ field: 'multi_load', label: 'Multi load', kind: 'yesno' },
 ];
 
@@ -55,6 +56,7 @@ function build() {
 		className: c.kind === 'whole' || c.kind === 'decimal' ? 'dt-right' : c.kind === 'yesno' ? 'center' : c.field === 'code' ? 'key-col' : '',
 		render: (v: string | number | boolean | null, type: string) => {
 			if (c.kind === 'yesno') return type === 'display' ? (v ? '<span class="yes">✓</span>' : '<span class="no">✗</span>') : v ? 'Yes' : 'No';
+			if (c.kind === 'starter' && (v === null || v === '')) return type === 'display' ? `<span class="hint">(default${starters.value.default_chart ? `: ${escapeHtml(starters.value.default_chart)}` : ''})</span>` : '';
 			if (v === null || v === '') return '';
 			if (type === 'sort' || type === 'type') return c.kind === 'whole' || c.kind === 'decimal' ? Number(v) : String(v).toLowerCase();
 			return type === 'display' ? escapeHtml(String(v)) : String(v);
@@ -176,6 +178,7 @@ function open(row: LoadType | null) {
 			voltage: text(row?.voltage), phases: row?.phases ?? '', from_value: text(row?.from_value), to_value: text(row?.to_value),
 			std_drg: row?.std_drg ?? '', bucket_type: row?.bucket_type ?? '', load_type: row?.load_type ?? '',
 			field_options: row?.field_options ?? '', multi_load: row?.multi_load ?? false, load_qty: text(row?.load_qty),
+			starter_chart: row?.starter_chart ?? '',
 			rows: JSON.parse(JSON.stringify(row?.rows ?? {})),
 			components: JSON.parse(JSON.stringify(row?.components ?? [])),
 		},
@@ -320,6 +323,16 @@ async function saveCopy(id: string, name: string) {
 
 watch(() => [host.value, kl.loadTypes, kl.templateLists], build);
 onMounted(() => void kl.loadTemplateLists());
+// the Starter Coordination charts, for the Starter chart choice
+const starters = ref<{ charts: string[]; default_chart: string }>({ charts: [], default_chart: '' });
+async function loadStarters() {
+	try {
+		const got = await apiGet<{ items: { chart: string }[]; default_chart: string }>('/api/keylists/starters');
+		starters.value = { charts: [...new Set(got.items.map((s) => s.chart))], default_chart: got.default_chart };
+	} catch { /* the choice just lists None and the default */ }
+}
+onMounted(loadStarters);
+watch(() => kl.overview?.starters, loadStarters);
 onBeforeUnmount(() => {
 	table?.api.destroy();
 	closeViewer();
@@ -375,7 +388,15 @@ onBeforeUnmount(() => {
 					</template>
 					<template v-else>
 						<span>{{ c.label }}<span v-if="c.required" class="req"> *</span></span>
-						<select v-if="c.kind === 'choice'" v-model="editing.form[c.field]" :class="{ invalid: formErrors[c.field] }">
+						<select v-if="c.kind === 'starter'" v-model="editing.form.starter_chart" :class="{ invalid: formErrors[c.field] }"
+							title="Starter Coordination chart for this type's loads: <<Starter.CB>>, <<Starter.Contactor>>…">
+							<option value="">Project default{{ starters.default_chart ? ` (${starters.default_chart})` : '' }}</option>
+							<option v-for="o in starters.charts" :key="o" :value="o">{{ o }}</option>
+							<option value="None">None (no starter)</option>
+							<option v-if="editing.form.starter_chart && editing.form.starter_chart !== 'None' && !starters.charts.includes(editing.form.starter_chart)"
+								:value="editing.form.starter_chart">{{ editing.form.starter_chart }} (not in the list)</option>
+						</select>
+						<select v-else-if="c.kind === 'choice'" v-model="editing.form[c.field]" :class="{ invalid: formErrors[c.field] }">
 							<option value="">—</option>
 							<option v-for="o in c.options" :key="o" :value="o">{{ o }}</option>
 						</select>

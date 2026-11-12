@@ -113,6 +113,9 @@ class LoadType(BaseModel):
     field_options: str = ""
     multi_load: bool = False
     load_qty: int | None = None
+    #: The Starter Coordination chart its loads' starters come from (keylists.starters): blank
+    #: is the project's default chart, "None" no starter.
+    starter_chart: str = ""
     pdf: AttachedFile | None = None
     #: Predefined rows per deliverable list (keylists.loadgen.TEMPLATE_LISTS): list key ->
     #: rows, each {column name: text with <<tags>>}. Every load of this type produces them.

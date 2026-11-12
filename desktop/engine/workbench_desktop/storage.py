@@ -746,6 +746,30 @@ class KeyListStore:
             row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.DRIVES,)).fetchone()
         return DriveList.model_validate_json(row[0]) if row else DriveList(items=default_drives())
 
+    STARTERS = "starters"
+
+    def starters(self):
+        """Starter Coordination; a project that never saved it has NHP's Type 2 charts, ECH64.2
+        (65 kA) the default (keylists.starters)."""
+        from workbench_core.keylists.starters import StarterList, default_starters
+
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.STARTERS,)).fetchone()
+        return StarterList.model_validate_json(row[0]) if row else StarterList(items=default_starters())
+
+    def save_starters(self, starters, note: str | None = None):
+        """Save a StarterList (its rows and default chart)."""
+        from workbench_core.keylists.starters import StarterList, default_starters
+
+        starters = starters.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.STARTERS,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.STARTERS, starters.model_dump_json()))
+            audit.log(self._db, "starters", self.STARTERS, before or StarterList(items=default_starters()).model_dump_json(),
+                      starters.model_dump_json(), label="Starter Coordination", note=note)
+        return starters
+
     def save_drives(self, items: list, note: str | None = None):
         from workbench_core.keylists.drives import DriveList, default_drives
 

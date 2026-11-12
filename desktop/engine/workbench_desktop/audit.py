@@ -60,6 +60,7 @@ ENTITIES = {
     "cable_types": "cable types list",
     "motors": "motor data list",
     "drives": "drive data list",
+    "starters": "starter coordination list",
     "equipment_codes": "equipment codes list",
     "instrument_codes": "instrument codes list",
     "load_list_row": "load list row",

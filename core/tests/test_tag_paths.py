@@ -65,7 +65,7 @@ def test_paths_through_a_loads_links() -> None:
     assert get("PlantArea.Parent.Parent.Parent.Tag") == ""  # no link there: blank
     assert get("SuppliedFrom") == "MCC-1" and get("SuppliedFrom.Eel.EquipmentCode.Name") == "Motor control centre"
     assert get("SuppliedFrom.SuppliedFrom") == "Primary Supply" and get("LoadType") == "DOL"
-    assert resolve("Nope.X", {}, root)[2] == "'Nope' is not a link of a load (a Load List row) (its links: LoadType, PlantArea, SuppliedFrom, Eel, Cable, Motor, Drive)"
+    assert resolve("Nope.X", {}, root)[2] == "'Nope' is not a link of a load (a Load List row) (its links: LoadType, PlantArea, SuppliedFrom, Eel, Cable, Motor, Drive, Starter)"
     assert "not a field of a load type" in resolve("LoadType.Nope", {}, root)[2]
     assert resolve("Rating|dec:2", {"rating": "7.5"}, root)[:2] == ("7.50", True)  # stays as written
     assert resolve("Nope", {}, root) == (None, False, None)  # a plain tag that matches nothing: as before
@@ -82,9 +82,9 @@ def test_the_power_generator_fills_dotted_tags() -> None:
     mcc = dict(zip(LISTS["equipment_list"].columns, eq.rows[0].cells))
     assert mcc["Model"] == "Motor control centre"
     assert sorted(eq.unresolved_tokens) == ["<<LoadType.Nope>> ('Nope' is not a field of a load type (its fields: Code, Name, RatingUnit, "
-                                            "Voltage, Phases, From, To, StdDrg, BucketType, LoadType, FieldOptions, MultiLoad, LoadQty))",
+                                            "Voltage, Phases, From, To, StdDrg, BucketType, LoadType, FieldOptions, MultiLoad, LoadQty, StarterChart))",
                                             "<<Nope.X>> ('Nope' is not a link of a load (a Load List row) (its links: LoadType, PlantArea, "
-                                            "SuppliedFrom, Eel, Cable, Motor, Drive))"]
+                                            "SuppliedFrom, Eel, Cable, Motor, Drive, Starter))"]
     # a <<Cable.…>> tag makes it a cable row: the matched Cable Types row
     cs = generate("cable_schedule", [_load("P-1")], {t.id: t for t in TYPES}, {}, CABLES)
     row = dict(zip(LISTS["cable_schedule"].columns, cs.rows[0].cells))

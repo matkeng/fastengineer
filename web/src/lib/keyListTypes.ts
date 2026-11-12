@@ -32,6 +32,8 @@ export interface LoadType {
 	id: string; code: string; name: string; rating_unit: RatingUnit; voltage: number; phases: Phases;
 	from_value: string | null; to_value: string | null; std_drg: string; bucket_type: string; load_type: string;
 	field_options: string; multi_load: boolean; load_qty: number | null; pdf: AttachedFile | null;
+	/** The Starter Coordination chart of its loads: blank the project default, "None" no starter. */
+	starter_chart?: string;
 	/** Predefined rows per deliverable list (key -> rows of column name -> text with <<tags>>). */
 	rows: TemplateRows;
 	/** Component tables: a part per range of a load's field, reached as <<LoadType.CB.PartNumber>>. */
@@ -58,11 +60,11 @@ export interface LoadTypeList { items: LoadType[]; updated_at: string | null }
 export interface LoadTypeForm {
 	id: string; code: string; name: string; rating_unit: RatingUnit | ''; voltage: string; phases: Phases | '';
 	from_value: string; to_value: string; std_drg: string; bucket_type: string; load_type: string;
-	field_options: string; multi_load: boolean; load_qty: string; rows: TemplateRows; components: ComponentTable[];
+	field_options: string; multi_load: boolean; load_qty: string; starter_chart: string; rows: TemplateRows; components: ComponentTable[];
 }
 export type LoadTypeField = Exclude<keyof LoadTypeForm, 'id' | 'rows' | 'components'>;
 
-export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'load-summary' | 'eel' | 'plc' | 'cable-types' | 'motors' | 'drives' | 'distribution-panels' | 'instrument-runsheet' | 'mel' | 'master' | 'enums' | 'drawing-list' | 'document-list' | CodeListId;
+export type KeyListId = 'plant-areas' | 'equipment-packages' | 'load-types' | 'load-list' | 'load-summary' | 'eel' | 'plc' | 'cable-types' | 'motors' | 'drives' | 'starters' | 'distribution-panels' | 'instrument-runsheet' | 'mel' | 'master' | 'enums' | 'drawing-list' | 'document-list' | CodeListId;
 
 /** A cable type; every project starts with a default set. `sort` orders the list. */
 export interface CableType {
@@ -205,6 +207,7 @@ export interface KeyListOverview {
 	cable_types: { items: number };
 	motors?: { items: number };
 	drives?: { items: number };
+	starters?: { items: number };
 	distribution_panels: { items: number };
 	instrument_runsheet: { items: number };
 	mel: { items: number };

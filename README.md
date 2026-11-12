@@ -654,6 +654,38 @@ You don't create or name them: each project has one of each.
   `<<Drive.Frame>>`, `<<Drive.Amps>>` (at the load's duty), `<<Drive.kW>>`,
   `<<Drive.Duty>>`, `<<Drive.Enclosure>>`, `<<Drive.NDAmps>>`, `<<Drive.HDAmps>>`…
   in template rows, calculated fields and the summary page.
+- **Starter Coordination** (`keylists/starters.py`): Type 2 coordinated direct on
+  line starter selections by motor kW. Every project starts with **NHP's six Type 2
+  coordination charts** (126 rows, from NHP TD-001-EN, pages 14 to 19, as printed;
+  `keylists/starter_data_nhp.py`), at 400/415 V with Terasaki ZS earth leakage
+  circuit breakers (AS/NZS 60947.4.1-2015):
+
+  | Chart | Fault level | Contactor | Overload |
+  |---|---|---|---|
+  | ECH54.2 | 50 kA | Sprecher+Schuh CA7/CA9 | CEP7-1EF electronic |
+  | ECH54.12 | 50 kA | Sprecher+Schuh CA7/CA9 | E300 (EtherNet/IP) |
+  | RECH54.23 | 50 kA | Allen-Bradley 100-C/100-E | E300 (EtherNet/IP) |
+  | ECH64.2 | 65 kA | Sprecher+Schuh CA7/CA9 | CEP7-1EF electronic |
+  | ECH64.13 | 65 kA | Sprecher+Schuh CA7/CA9 | E300 (EtherNet/IP) |
+  | RECH64.24 | 65 kA | Allen-Bradley 100-C/100-E | E300 (EtherNet/IP) |
+
+  Each row has the chart, its fault level (kA), the motor kW and FLC, the circuit
+  breaker (and its amps), the earth leakage setting range, the contactor, the
+  overload relay and its setting range, the C/B instantaneous trip amps, the
+  minimum trip as a multiple of FLC, and the chart's note (`*`: overload mounted
+  separately or pass-thru; `^`: 75 kW kit with separate CTs). The list has a
+  **project default chart** (ECH64.2, 65 kA, to start with). It is edited,
+  exported (a "Settings" sheet holds the default chart), imported, reset and
+  topped up (**Add missing NHP charts**) like Motor Data.
+
+  Each **load type** has a **Starter chart**. Blank means the project default;
+  **None** means no starter (a VSD, a feeder…). A load gets that chart's row for
+  the smallest motor at least its kW (Hp is converted; a rating in Amps is
+  matched on the chart's FLC; a load above 75 kW gets none). Reached as
+  `<<Starter.CB>>`, `<<Starter.Contactor>>`, `<<Starter.Overload>>`,
+  `<<Starter.Range>>`, `<<Starter.ELSetting>>`, `<<Starter.InstTrip>>`,
+  `<<Starter.MinTrip>>`, `<<Starter.Chart>>`, `<<Starter.FaultkA>>`… in template
+  rows, calculated fields and the summary page.
 - **Electrical Equipment List** (EEL): equipment entered and edited here, in
   addition to any EEL import. A grid of every item; click a row (or **Add
   equipment**) for a form. **Tag number** (required, and unique across this list

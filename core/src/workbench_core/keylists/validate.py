@@ -30,7 +30,7 @@ _AREA_FIELDS = (("tag", "Tag number", True), ("description", "Description", True
 _PACKAGE_FIELDS = (("number", "Package number", True), ("description", "Description", True))
 _TYPE_FIELDS = (("name", "Name", True),)
 _LOAD_FIELDS = (("code", "Code", True), ("name", "Name", True))
-_LOAD_TEXT = ("code", "name", "std_drg", "bucket_type", "load_type", "field_options")
+_LOAD_TEXT = ("code", "name", "std_drg", "bucket_type", "load_type", "field_options", "starter_chart")
 _INTEGER = ColumnDef(name="", type="integer")
 _DECIMAL = ColumnDef(name="", type="decimal")
 
@@ -191,7 +191,7 @@ def _template_rows(raw: object, rid: str, errors: dict[str, str], owners: str = 
 
 #: What a component table can't be called: the load type's own fields (<<LoadType.Code>>…).
 _LOAD_TYPE_TAGS = {"code", "name", "ratingunit", "voltage", "phases", "from", "to", "stddrg", "buckettype", "loadtype",
-                   "fieldoptions", "multiload", "loadqty"}
+                   "fieldoptions", "multiload", "loadqty", "starterchart"}
 _TABLE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_ ]{0,24}$")  # 25 at most: a workbook sheet is "Table <name>"
 
 

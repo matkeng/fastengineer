@@ -63,7 +63,17 @@ SCHEMA: dict[str, tuple[str, str, list[tuple[str, str]], list[tuple[str, str, st
         ("Eel", "eel", "Electrical Equipment List item (its rows only)"), ("Cable", "cable", "cable (per-cable rows only)"),
         ("Motor", "motor", "motor (Motor Data, matched by its rating and Poles)"),
         ("Drive", "drive", "drive (Drive Data, matched by voltage, Drive enclosure, Drive duty and the motor's FLC)"),
+        ("Starter", "starter", "Type 2 starter (Starter Coordination, its load type's chart, matched by its rating)"),
     ]),
+    "starter": ("a Type 2 starter selection", "Chart", [
+        ("Chart", "coordination chart (e.g. ECH64.2)"), ("Description", "what the chart is"), ("FaultkA", "fault level Iq (kA)"),
+        ("Manufacturer", "manufacturer"), ("kW", "the row's motor kW"), ("FLC", "the row's motor FLC @ 400 V (A)"),
+        ("CB", "circuit breaker (e.g. ZS125M / 20A)"), ("CBAmps", "circuit breaker rating (A)"),
+        ("ELSetting", "earth leakage setting range"), ("Contactor", "contactor"), ("Overload", "overload relay"),
+        ("Range", "overload setting range (e.g. 5.4 – 27)"), ("RangeMin", "overload setting from (A)"),
+        ("RangeMax", "overload setting to (A)"), ("InstTrip", "C/B instantaneous trip (A, ±20 %)"),
+        ("MinTrip", "minimum trip as a multiple of motor FLC"), ("Note", "chart note (* or ^)"), ("NoteText", "what the note says"),
+    ], []),
     "drive": ("a drive", "CatNo", [
         ("CatNo", "catalog number"), ("Manufacturer", "manufacturer"), ("Series", "range"), ("Voltage", "voltage class (V)"),
         ("VoltageRange", "voltage range"), ("Enclosure", "Open, IP54 or Flange"), ("Frame", "frame size"),
@@ -88,6 +98,7 @@ SCHEMA: dict[str, tuple[str, str, list[tuple[str, str]], list[tuple[str, str, st
         ("Code", "code"), ("Name", "name"), ("RatingUnit", "kW or Amps"), ("Voltage", "voltage"), ("Phases", "phases"),
         ("From", "from value"), ("To", "to value"), ("StdDrg", "STD drawing"), ("BucketType", "bucket type"),
         ("LoadType", "load type text"), ("FieldOptions", "field options"), ("MultiLoad", "multi load (Yes/No)"), ("LoadQty", "load quantity"),
+        ("StarterChart", "Starter Coordination chart (blank: the project default; None: no starter)"),
     ], []),
     "component": ("a component table's row", "first column", [
         ("Min", "the row's range from"), ("Max", "the row's range to"), ("<column>", "any column of the table, e.g. PartNumber"),
@@ -178,8 +189,9 @@ class Links:
     link to a list that isn't given is blank."""
 
     def __init__(self, load_types=None, areas=None, loads=None, eel=None, codes=None, packages=None, equipment_types=None,
-                 cables=None, plc=None, load_labels: dict[str, str] | None = None, motors=None, drives=None):
+                 cables=None, plc=None, load_labels: dict[str, str] | None = None, motors=None, drives=None, starters=None):
         self.motors = list(motors or [])
+        self.starters = starters  # keylists.starters.StarterList
         self.drives = list(drives or [])
         self.load_types = {t.id: t for t in load_types or []}
         self.areas = {a.id: a for a in areas or []}
@@ -213,7 +225,8 @@ class Links:
         return Record("loadtype", {
             "code": t.code, "name": t.name, "ratingunit": t.rating_unit, "voltage": t.voltage, "phases": t.phases,
             "from": t.from_value, "to": t.to_value, "stddrg": t.std_drg, "buckettype": t.bucket_type, "loadtype": t.load_type,
-            "fieldoptions": t.field_options, "multiload": t.multi_load, "loadqty": t.load_qty}, tables, t.code)
+            "fieldoptions": t.field_options, "multiload": t.multi_load, "loadqty": t.load_qty,
+            "starterchart": t.starter_chart}, tables, t.code)
 
     def area(self, i):
         a = self.areas.get(i or "")
@@ -242,6 +255,15 @@ class Links:
         x = drive_for_load(flat.get("rating"), flat.get("units"), flat.get("voltage"), m.flc if m else None,
                            flat.get("drive_duty"), flat.get("drive_enclosure"), self.drives)
         return None if x is None else Record("drive", dict(drive_fields(x, flat.get("drive_duty"))), name=x.cat_no)
+
+    def starter(self, row, flat: dict[str, object]):
+        """The Starter Coordination row a load gets: its load type's chart (or the project's default),
+        matched by its rating (keylists.starters.starter_for_load)."""
+        from .starters import starter_fields, starter_for_load
+
+        t = self.load_types.get(getattr(row, "load_type_id", None) or "")
+        s = starter_for_load(flat.get("rating"), flat.get("units"), t.starter_chart if t else "", self.starters)
+        return None if s is None else Record("starter", dict(starter_fields(s)), name=s.chart)
 
     def package(self, i):
         p = self.packages.get(i or "")
@@ -306,7 +328,8 @@ class Links:
             supply = lambda: self.load(self.by_ref.get(row.supplied_from or ""))  # noqa: E731
         links = {"loadtype": lambda: self.load_type(row.load_type_id, rec), "plantarea": lambda: self.area(row.plant_area_id),
                  "suppliedfrom": supply, "eel": lambda: self.eel_item(row.key) if row.recipe_id == EEL_SOURCE else None,
-                 "cable": lambda: self.cable(cable_code), "motor": lambda: self.motor(flat), "drive": lambda: self.drive(flat)}
+                 "cable": lambda: self.cable(cable_code), "motor": lambda: self.motor(flat), "drive": lambda: self.drive(flat),
+                 "starter": lambda: self.starter(row, flat)}
         rec = Record("load", fields, links, row.tag())
         return rec
 

@@ -63,6 +63,7 @@ def overview() -> dict:
             "cable_types": {"items": len(lists.cable_types().items)},
             "motors": {"items": len(lists.motors().items)},
             "drives": {"items": len(lists.drives().items)},
+            "starters": {"items": len(lists.starters().items)},
             "distribution_panels": {"items": len(lists.distribution_panels().panels)},
             "instrument_runsheet": {"items": len(lists.instrument_runsheet().rows)},
             "mel": {"items": _mel_count()},
@@ -363,6 +364,41 @@ def drive_defaults():
     if not missing:
         return lists.drives()
     return lists.save_drives(items + missing, note=f"{len(missing)} PowerFlex 755TS drive(s) added")
+
+
+# -- starter coordination -----------------------------------------------------------------------
+
+class StarterListUpdate(BaseModel):
+    items: list[dict]  # as typed in: check_starters converts the numbers and names each problem
+    default_chart: str = ""
+
+
+@router.get("/starters")
+def get_starters():
+    return get_keylists().starters()
+
+
+@router.put("/starters")
+def update_starters(body: StarterListUpdate):
+    from workbench_core.keylists.starters import check_starters
+    try:
+        return get_keylists().save_starters(check_starters(body.items, body.default_chart))
+    except RefValidationError as exc:
+        return invalid(exc)
+
+
+@router.post("/starters/defaults")
+def starter_defaults():
+    """Add the NHP Type 2 chart rows that are missing (by chart and kW); the rest is kept."""
+    from workbench_core.keylists.starters import default_starters
+    lists = get_keylists()
+    current = lists.starters()
+    have = {(name_key(s.chart), s.kw) for s in current.items}
+    missing = [s for s in default_starters() if (name_key(s.chart), s.kw) not in have]
+    if not missing:
+        return current
+    return lists.save_starters(current.model_copy(update={"items": current.items + missing}),
+                               note=f"{len(missing)} NHP Type 2 starter row(s) added")
 
 
 # -- cable types -------------------------------------------------------------------------------

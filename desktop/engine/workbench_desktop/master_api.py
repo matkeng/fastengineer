@@ -46,7 +46,7 @@ def inputs() -> Inputs:
     links = Links(load_types=load_types, areas=nodes, loads=loads, eel=lists.eel().items, codes=lists.code_list("equipment-codes").items,
                   packages=packages.items, equipment_types=packages.types, cables=cables, plc=lists.plc(),
                   load_labels=lists.load_fields().labels(), motors=lists.motors().items,
-                  drives=lists.drives().items)
+                  drives=lists.drives().items, starters=lists.starters())
     return Inputs(loads=loads, load_types={t.id: t for t in load_types},
                   areas={n.id: (n.tag, n.description) for n in nodes}, cables=cables,
                   runsheet=lists.instrument_runsheet(), equipment_types={t.id: t for t in packages.types},

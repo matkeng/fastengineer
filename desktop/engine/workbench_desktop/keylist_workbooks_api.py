@@ -35,6 +35,7 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 LISTS = {"plant-areas": ("Plant Areas", "plant area"), "equipment-packages": ("Equipment Packages", "package"),
          "load-types": ("Load Types", "load type"), "equipment-codes": ("Equipment Codes", "equipment code"),
          "instrument-codes": ("Instrument Codes", "instrument code"), "cable-types": ("Cable Types", "cable type"), "motors": ("Motor Data", "motor"), "drives": ("Drive Data", "drive"),
+         "starters": ("Starter Coordination", "starter row"),
          "eel": ("Electrical Equipment List", "item"), "load-list": ("Load List", "row"),
          "distribution-panels": ("Distribution Panels", "panel"), "instrument-runsheet": ("Instrument Runsheet", "row"),
          "mel": ("MEL", "row"), "drawing-list": ("Drawing List", "drawing"), "document-list": ("Document List", "document")}
@@ -74,6 +75,8 @@ def _sheets(list_id: str) -> wbk.Sheets:
         return wbk.export_motors(lists.motors().items)
     if list_id == "drives":
         return wbk.export_drives(lists.drives().items)
+    if list_id == "starters":
+        return wbk.export_starters(lists.starters())
     if list_id == "eel":
         return wbk.export_eel(lists.eel(), _eel_names())
     if list_id in REGISTERS:
@@ -233,6 +236,9 @@ def _parse(list_id: str, data: bytes) -> tuple[wbk.Parsed, list[str]]:
     if list_id == "drives":
         old = lists.drives().items
         return wbk.import_drives(sheets, old), [f"{d.cat_no} {d.voltage}V" for d in old]
+    if list_id == "starters":
+        cur = lists.starters()
+        return wbk.import_starters(sheets, cur), [f"{s.chart} {s.kw:g} kW" for s in cur.items]
     if list_id == "eel":
         old = lists.eel()
         return wbk.import_eel(sheets, old, _eel_names()), [i.tag for i in old.items]
@@ -282,6 +288,9 @@ def _check(list_id: str, parsed: wbk.Parsed) -> None:
     elif list_id == "drives":
         from workbench_core.keylists.drives import check_drives
         check_drives(p["items"])  # type: ignore[index]
+    elif list_id == "starters":
+        from workbench_core.keylists.starters import check_starters
+        check_starters(p["items"], p["default_chart"])  # type: ignore[index]
     elif list_id in REGISTERS:
         drawing_list_api.checked(p["items"], REGISTERS[list_id])  # type: ignore[index]
     elif list_id == "instrument-runsheet":
@@ -318,6 +327,9 @@ def _save(list_id: str, parsed: wbk.Parsed):
     if list_id == "drives":
         from workbench_core.keylists.drives import check_drives
         return lists.save_drives(check_drives(p["items"]), note="Imported from a workbook")  # type: ignore[index]
+    if list_id == "starters":
+        from workbench_core.keylists.starters import check_starters
+        return lists.save_starters(check_starters(p["items"], p["default_chart"]), note="Imported from a workbook")  # type: ignore[index]
     if list_id == "eel":
         return eel_api.save_eel(eel_api.EelUpdate.model_validate(p))
     if list_id in REGISTERS:
@@ -437,6 +449,10 @@ def reset_list(list_id: str):
         from workbench_core.keylists.drives import default_drives
         items = lists.save_drives(default_drives(), note="Reset to the PowerFlex 755TS drives").items
         return ResetResult(message=f"Drive Data is back to the {len(items)} PowerFlex 755TS drives.")
+    if list_id == "starters":
+        from workbench_core.keylists.starters import StarterList, default_starters
+        items = lists.save_starters(StarterList(items=default_starters()), note="Reset to the NHP Type 2 charts").items
+        return ResetResult(message=f"Starter Coordination is back to the {len(items)} rows of NHP's six Type 2 charts (default chart ECH64.2).")
     if list_id == "motors":
         from workbench_core.keylists.motors import default_motors
         items = lists.save_motors(default_motors(), note="Reset to the WEG W22 motors").items
