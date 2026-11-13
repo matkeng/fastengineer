@@ -79,6 +79,20 @@ class CustomRow(BaseModel):
     note: str = ""  # why: shown in the edits report (mel.edits_report)
 
 
+class Replacement(BaseModel):
+    """A whole cell value and what replaces it (blank allowed). A value with no replacement is kept."""
+    find: str
+    replace: str = ""
+
+
+class FindReplace(BaseModel):
+    """A new column, `name`: the value of `column` in each row, with whole values replaced as listed
+    (a value not listed is kept as it is)."""
+    name: str
+    column: str = ""
+    replacements: list[Replacement] = Field(default_factory=list)
+
+
 class AutoBranch(BaseModel):
     """An "else if" of a calculated column: when `statement` is true (false with `negate`),
     the column is `value`."""
@@ -118,6 +132,7 @@ class Recipe(BaseModel):
     text_columns: list[TextColumn] = Field(default_factory=list)
     overrides: list[Override] = Field(default_factory=list)
     custom_rows: list[CustomRow] = Field(default_factory=list)
+    find_replace: list[FindReplace] = Field(default_factory=list)  # after custom rows, in list order
     auto_columns: list[AutoColumn] = Field(default_factory=list)  # evaluated in list order
     mapping: list[FieldMap] = Field(default_factory=list)
     updated_at: datetime | None = None

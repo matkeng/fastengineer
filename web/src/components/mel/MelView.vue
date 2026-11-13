@@ -12,6 +12,7 @@ import MelCustom from './MelCustom.vue';
 import MelMapping from './MelMapping.vue';
 import MelOverrides from './MelOverrides.vue';
 import MelOverview from './MelOverview.vue';
+import MelReplace from './MelReplace.vue';
 import MelResult from './MelResult.vue';
 import MelRows from './MelRows.vue';
 import MelText from './MelText.vue';
@@ -27,13 +28,14 @@ const TABS: { id: MelTab; label: string; count?: () => number }[] = [
 	{ id: 'text', label: 'Text columns', count: () => mel.draft?.text_columns.length ?? 0 },
 	{ id: 'overrides', label: 'Overrides', count: () => mel.draft?.overrides.length ?? 0 },
 	{ id: 'custom', label: 'Custom rows', count: () => mel.draft?.custom_rows.length ?? 0 },
+	{ id: 'replace', label: 'Find Replace', count: () => mel.draft?.find_replace?.length ?? 0 },
 	{ id: 'auto', label: 'Calculated', count: () => mel.draft?.auto_columns.length ?? 0 },
 	{ id: 'mapping', label: 'Mapping', count: () => mel.draft?.mapping.length ?? 0 },
 	{ id: 'result', label: 'Result' },
 ];
 const panels: Record<MelTab, unknown> = {
 	overview: MelOverview, columns: MelColumns, rows: MelRows, text: MelText, overrides: MelOverrides,
-	custom: MelCustom, auto: MelAuto, mapping: MelMapping, result: MelResult,
+	custom: MelCustom, replace: MelReplace, auto: MelAuto, mapping: MelMapping, result: MelResult,
 };
 
 async function create() {
@@ -55,7 +57,7 @@ async function pickSettings(e: Event, asNew: boolean) {
 		return;
 	}
 	const had = mel.dirty ? ' Your unsaved changes are replaced too.' : '';
-	if (!confirm(`Replace the settings of "${mel.draft?.name}" with those in ${file.name}?\n\nIts column rules, hidden rows, text columns, overrides, added rows, calculated columns and mapping are replaced. The uploaded files stay.${had}\n\nNothing is saved until you press Save; Discard brings the old settings back.`)) return;
+	if (!confirm(`Replace the settings of "${mel.draft?.name}" with those in ${file.name}?\n\nIts column rules, hidden rows, text columns, overrides, added rows, find/replace columns, calculated columns and mapping are replaced. The uploaded files stay.${had}\n\nNothing is saved until you press Save; Discard brings the old settings back.`)) return;
 	if (await mel.readSettings(file)) mel.message = null;
 }
 

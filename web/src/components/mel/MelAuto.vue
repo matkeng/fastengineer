@@ -9,7 +9,7 @@ import { useMel } from '../../stores/mel';
 
 const mel = useMel();
 // Calculated columns run last and can read every column, including custom rows.
-const { result: base } = useStage('custom', (r) => [r.columns, r.hidden_rows, r.text_columns, r.overrides, r.custom_rows]);
+const { result: base } = useStage('replace', (r) => [r.columns, r.hidden_rows, r.text_columns, r.overrides, r.custom_rows, r.find_replace]);
 const selected = ref<number | null>(mel.draft!.auto_columns.length ? 0 : null);
 const preview = ref<PipelineResult | null>(null);
 // The field a column is inserted into: 'statement', 'true_val', 'false_val', or 'b<i>.statement' / 'b<i>.value' for an Else if.

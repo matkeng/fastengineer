@@ -12,6 +12,8 @@ from .models import (
     ELEC_LOAD_FIELDS,
     INSTRUMENT_FIELDS,
     AutoColumn,
+    FindReplace,
+    Replacement,
     ColumnRule,
     CustomRow,
     FieldMap,
@@ -26,7 +28,7 @@ from .models import (
 from .pipeline import STAGES, PipelineResult, load_list, output_list, run_pipeline
 
 __all__ = [
-    "ELEC_LOAD_FIELDS", "INSTRUMENT_FIELDS", "STAGES", "fields_for", "output_list", "output_name", "AutoColumn", "ColumnRule", "CustomRow", "FieldMap",
+    "ELEC_LOAD_FIELDS", "INSTRUMENT_FIELDS", "STAGES", "fields_for", "output_list", "output_name", "AutoColumn", "FindReplace", "Replacement", "ColumnRule", "CustomRow", "FieldMap",
     "IngestError", "Override", "PipelineResult", "Recipe", "Revision", "RowRule",
     "TextColumn", "load_list", "parse_csv", "rows_from_extract", "run_pipeline",
     "unique_headers", "unique_keys",

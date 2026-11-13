@@ -10,7 +10,7 @@ import { tableWizardStore } from './excelWizard';
 
 export const useMelExcel = tableWizardStore('mel');
 
-export type MelTab = 'overview' | 'columns' | 'rows' | 'text' | 'overrides' | 'custom' | 'auto' | 'mapping' | 'result';
+export type MelTab = 'overview' | 'columns' | 'rows' | 'text' | 'overrides' | 'custom' | 'replace' | 'auto' | 'mapping' | 'result';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 

@@ -108,7 +108,7 @@ def test_settings_pass_between_people_as_a_json_file(tmp_path: Path) -> None:
     doc = client.post(f"/api/mel/recipes/{rid}/settings/export", json={}).json()
     assert (doc["format"], doc["version"], doc["name"], doc["target"]) == ("drawing-workbench/list-import-settings", 1, "Plant MEL", "MEL")
     assert doc["settings"]["hidden_rows"] == [{"key": "P-101", "note": ""}] and "id" not in doc and set(doc["settings"]) == {
-        "columns", "hidden_rows", "text_columns", "overrides", "custom_rows", "auto_columns", "mapping"}
+        "columns", "hidden_rows", "text_columns", "overrides", "custom_rows", "find_replace", "auto_columns", "mapping"}
 
     # a colleague makes a new import from the file: same name (made unique here), settings, and no file yet
     new = client.post("/api/mel/settings/new", json=doc)

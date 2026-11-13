@@ -8,7 +8,9 @@
   3 text       constant columns        (before overrides, so they can be overridden)
   4 overrides  single-cell values
   5 custom     appended rows           (after overrides; before calculated columns)
-  6 auto       calculated columns, in order (see every other column)
+  6 replace    find / replace columns: a new column of a column's values, whole values
+               replaced (custom rows too; later ones can use earlier ones)
+  7 auto       calculated columns, in order (see every other column)
 
 Each editor shows the table after the stage before it, e.g. overrides edit
 the output of stage 3.
@@ -27,8 +29,8 @@ from pydantic import BaseModel, Field
 
 from .models import NUMERIC_FIELDS, TARGET_BOOLEAN, TARGET_NUMERIC, Recipe, Revision, fields_for
 
-Stage = Literal["source", "columns", "rows", "text", "overrides", "custom", "auto"]
-STAGES: list[Stage] = ["source", "columns", "rows", "text", "overrides", "custom", "auto"]
+Stage = Literal["source", "columns", "rows", "text", "overrides", "custom", "replace", "auto"]
+STAGES: list[Stage] = ["source", "columns", "rows", "text", "overrides", "custom", "replace", "auto"]
 
 REF = re.compile(r"""(["']?)<<(.+?)>>\1""")
 NUMBER = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$")
@@ -45,7 +47,7 @@ class PipelineRow(BaseModel):
 
 class RuleIssue(BaseModel):
     """A rule that no longer applies (e.g. its key or column isn't in the latest file)."""
-    kind: str  # columns / rows / text / overrides / custom / auto / mapping
+    kind: str  # columns / rows / text / overrides / custom / replace / auto / mapping
     rule: str
     message: str
 
@@ -288,7 +290,27 @@ def run_pipeline(rev: Revision, recipe: Recipe, upto: Stage = "auto") -> Pipelin
     if stop < 6:
         return done()
 
-    # 6. Calculated columns.
+    # 6. Find / replace columns.
+    for fr in recipe.find_replace:
+        name = fr.name.strip()
+        if not name:
+            continue
+        if name in headers:
+            issues.append(RuleIssue(kind="replace", rule=name, message="A column with this name already exists; skipped."))
+            continue
+        if fr.column not in headers:
+            issues.append(RuleIssue(kind="replace", rule=name, message=f"Column '{fr.column}' is not in the table; skipped."
+                                    if fr.column else "No column chosen; skipped."))
+            continue
+        table = {r.find: r.replace for r in fr.replacements}
+        for row in rows:
+            value = row.values.get(fr.column, "")
+            row.values[name] = table.get(value, value)
+        headers.append(name)
+    if stop < 7:
+        return done()
+
+    # 7. Calculated columns.
     _evaluate_auto(rows, headers, recipe, issues)
     return done()
 

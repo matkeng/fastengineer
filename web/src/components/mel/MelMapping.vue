@@ -8,7 +8,7 @@ import { useStage } from '../../lib/useStage';
 import { useMel } from '../../stores/mel';
 
 const mel = useMel();
-const { result } = useStage('auto', (r) => [r.columns, r.hidden_rows, r.text_columns, r.overrides, r.custom_rows, r.auto_columns]);
+const { result } = useStage('auto', (r) => [r.columns, r.hidden_rows, r.text_columns, r.overrides, r.custom_rows, r.find_replace, r.auto_columns]);
 const MANUAL = '__manual__';
 
 const label = (f: string) => mel.labels[f] ?? LOAD_FIELD_LABELS[f] ?? f;

@@ -188,3 +188,29 @@ def test_auto_column_condition_and_value_read_different_columns() -> None:
     col = AutoColumn(name="Pump kW", statement="<<Kind>> == 'Pump'", true_val="<<Rating>> * 2", false_val="<<Kind>>")
     rows = _rows(run_pipeline(rev, Recipe(id="x", name="m", auto_columns=[col])))
     assert (rows["P-1"]["Pump kW"], rows["F-1"]["Pump kW"]) == ("15", "Fan")
+
+
+def test_find_replace_columns() -> None:
+    from workbench_core.mel import FindReplace, Replacement
+
+    recipe = Recipe(id="x", name="x", custom_rows=[CustomRow(key="C-1", values={"Type": "Pump"})],
+                    find_replace=[
+                        FindReplace(name="Kind", column="Type", replacements=[Replacement(find="Pump", replace="Centrifugal Pump"),
+                                                                              Replacement(find="Fan", replace=""),
+                                                                              Replacement(find="Gone", replace="X")]),
+                        FindReplace(name="Kind 2", column="Kind", replacements=[Replacement(find="Centrifugal Pump", replace="CP")]),
+                        FindReplace(name="Tag", column="Type"),  # name taken
+                        FindReplace(name="Other", column="Nope"),  # no such column
+                    ],
+                    auto_columns=[AutoColumn(name="Calc", statement="<<Kind>> == ''", true_val="blank", false_val="<<Kind 2>>")])
+    result = run_pipeline(_rev(CSV, "Tag"), recipe)
+    rows = _rows(result)
+    assert (rows["P-1"]["Kind"], rows["F-1"]["Kind"], rows["C-1"]["Kind"]) == ("Centrifugal Pump", "", "Centrifugal Pump")
+    assert rows["P-1"]["Type"] == "Pump"  # the source column is untouched
+    assert (rows["P-1"]["Kind 2"], rows["F-1"]["Kind 2"]) == ("CP", "")  # a later one can use an earlier one
+    assert (rows["F-1"]["Calc"], rows["P-2"]["Calc"]) == ("blank", "CP")  # calculated columns see them
+    assert [(i.kind, i.rule) for i in result.issues] == [("replace", "Tag"), ("replace", "Other")]
+    assert "Kind" not in run_pipeline(_rev(CSV, "Tag"), recipe, upto="custom").headers
+    # a whole value only: "Pump one" is not touched by a "Pump" rule
+    r2 = Recipe(id="y", name="y", find_replace=[FindReplace(name="D", column="Desc", replacements=[Replacement(find="Pump", replace="Z")])])
+    assert _rows(run_pipeline(_rev(CSV, "Tag"), r2))["P-1"]["D"] == "Pump one"

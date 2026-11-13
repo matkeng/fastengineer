@@ -409,8 +409,19 @@ UI: `web/src/components/mel/`.
    | 3 | Text columns | add a column with the same value in every row |
    | 4 | Overrides | click a cell to replace its value |
    | 5 | Custom rows | add rows that aren't in the file |
-   | 6 | Calculated | `if / then / else / on error` per row; `<<Column>>` refers to a column |
-   | 7 | Mapping | load-list (MEL) or instrument-list (PIL) field <- column or fixed value |
+   | 6 | Find Replace | a new column from a chosen column, whole values replaced |
+   | 7 | Calculated | `if / then / else / on error` per row; `<<Column>>` refers to a column |
+   | 8 | Mapping | load-list (MEL) or instrument-list (PIL) field <- column or fixed value |
+
+   **Find Replace**: choose a column of the table (after Custom rows, so added
+   rows are included) and name a new column. The page lists the column's values,
+   each once and sorted, up to 100 at a time; a filter box finds the others. It
+   shows how many rows have each value. Next to each is a box: type what replaces
+   that **whole value**, leave it empty for no change, or tick **Blank** to make
+   it empty. The new column gets the replaced values; the column read is not
+   changed. Several find/replace columns can be added; each can read the ones
+   before it. Calculated columns and Mapping can use them. A replacement whose
+   value is no longer in a later file is kept and listed, in case it comes back.
 
 3. **Result**: the combined table and the load list (or instrument list), with filters, and export
    to CSV or Excel (.xlsx; overridden cells, custom rows and errors highlighted,

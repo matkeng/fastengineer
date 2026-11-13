@@ -19,6 +19,7 @@ const RULES: { tab: MelTab; label: string; n: () => number; what: string }[] = [
 	{ tab: 'text', label: 'Text columns', n: () => mel.draft!.text_columns.length, what: 'add a column with one value' },
 	{ tab: 'overrides', label: 'Overrides', n: () => mel.draft!.overrides.length, what: 'correct single cells' },
 	{ tab: 'custom', label: 'Custom rows', n: () => mel.draft!.custom_rows.length, what: 'add rows not in the file' },
+	{ tab: 'replace', label: 'Find Replace', n: () => mel.draft!.find_replace?.length ?? 0, what: 'a new column with whole values replaced' },
 	{ tab: 'auto', label: 'Calculated columns', n: () => mel.draft!.auto_columns.length, what: 'if/else formulas per row' },
 	{ tab: 'mapping', label: 'Mapping', n: () => mel.draft!.mapping.length, what: `columns to ${mel.outputName.toLowerCase()} fields` },
 ];

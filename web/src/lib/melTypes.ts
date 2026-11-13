@@ -29,6 +29,10 @@ export interface AutoBranch { statement: string; negate: boolean; value: string 
 export interface AutoColumn {
 	name: string; statement: string; negate?: boolean; true_val: string; else_ifs?: AutoBranch[]; false_val: string; error_val: string;
 }
+/** A whole cell value and what replaces it (blank allowed). */
+export interface Replacement { find: string; replace: string }
+/** A new column: the values of `column`, whole values replaced as listed (others kept). */
+export interface FindReplace { name: string; column: string; replacements: Replacement[] }
 export interface FieldMap { field: string; column: string | null; manual: string | null }
 
 export interface Recipe {
@@ -40,6 +44,7 @@ export interface Recipe {
 	text_columns: TextColumn[];
 	overrides: Override[];
 	custom_rows: CustomRow[];
+	find_replace: FindReplace[];
 	auto_columns: AutoColumn[];
 	mapping: FieldMap[];
 	updated_at: string | null;
@@ -68,7 +73,7 @@ export interface RevisionInfo {
 
 export interface RecipeDetail { recipe: Recipe; revisions: RevisionInfo[]; fields: string[]; labels?: Record<string, string>; output_name: string }
 
-export type Stage = 'source' | 'columns' | 'rows' | 'text' | 'overrides' | 'custom' | 'auto';
+export type Stage = 'source' | 'columns' | 'rows' | 'text' | 'overrides' | 'custom' | 'replace' | 'auto';
 
 export interface PipelineRow {
 	key: string;

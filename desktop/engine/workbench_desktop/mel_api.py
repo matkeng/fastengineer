@@ -157,7 +157,7 @@ def function_help() -> FunctionHelp:
 
 SETTINGS_FORMAT = "drawing-workbench/list-import-settings"
 #: What a person decides in an import: everything of the recipe but its id, name and the files.
-SETTINGS = ("columns", "hidden_rows", "text_columns", "overrides", "custom_rows", "auto_columns", "mapping")
+SETTINGS = ("columns", "hidden_rows", "text_columns", "overrides", "custom_rows", "find_replace", "auto_columns", "mapping")
 
 
 class SettingsBody(BaseModel):
