@@ -84,7 +84,7 @@ Not used any more: **PyMuPDF** (AGPL-3.0); it was removed before release.
 
 ## This project
 
-Drawing Workbench is **open core**: this repository is licensed under the **GNU AGPL-3.0-only**
+ECG Source List is **open core**: this repository is licensed under the **GNU AGPL-3.0-only**
 (`LICENSE`), copyright © 2026 Matthew Kelly, with commercial licenses available from the
 copyright holder; see `LICENSING.md`.
 

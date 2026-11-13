@@ -1,7 +1,7 @@
 [package]
 name = "drawing-workbench"
 version = "0.1.0"
-description = "Drawing Workbench (hello-world proof of concept)"
+description = "ECG Source List (hello-world proof of concept)"
 edition = "2021"
 license = "AGPL-3.0-only"
 authors = ["Matthew Kelly"]

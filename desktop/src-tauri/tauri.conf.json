@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Drawing Workbench",
+  "productName": "ECG Source List",
   "version": "0.1.0",
   "identifier": "com.drawingworkbench.poc",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Drawing Workbench",
+        "title": "ECG Source List",
         "width": 1280,
         "height": 860,
         "minWidth": 760,
@@ -41,7 +41,7 @@
     "externalBin": [
       "binaries/workbench-engine"
     ],
-    "shortDescription": "Drawing Workbench proof of concept",
+    "shortDescription": "ECG Source List proof of concept",
     "windows": {
       "webviewInstallMode": {
         "type": "embedBootstrapper"

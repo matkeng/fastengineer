@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Matthew Kelly
-"""Drawing Workbench core.
+"""ECG Source List core.
 
 Plain Python package shared by the desktop sidecar (FastAPI) and the SaaS
 (Django/Celery). It must never import a web framework.

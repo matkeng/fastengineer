@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "workbench-desktop"
 version = "0.1.0"
-description = "Drawing Workbench desktop sidecar: thin FastAPI adapter over workbench_core"
+description = "ECG Source List desktop sidecar: thin FastAPI adapter over workbench_core"
 requires-python = ">=3.11"
 license = "AGPL-3.0-only"
 authors = [{ name = "Matthew Kelly" }]

@@ -88,7 +88,7 @@ watch(
 		<section class="card about">
 			<h2>About</h2>
 			<p>
-				<strong>Drawing Workbench</strong> · Copyright © 2026 Matthew Kelly.
+				<strong>ECG Source List</strong> · Copyright © 2026 Matthew Kelly.
 			</p>
 			<p>
 				This program is free software: you can redistribute it and/or modify it under the terms of the

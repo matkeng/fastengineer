@@ -40,7 +40,7 @@ from .projects_api import router as projects_router
 from .sample_api import router as sample_router
 from .storage import get_keylists, get_store
 
-app = FastAPI(title="Drawing Workbench engine", version=workbench_core.__version__)
+app = FastAPI(title="ECG Source List engine", version=workbench_core.__version__)
 
 # URLs that address one editable record. A GET or PUT of one returns the record's
 # version as an ETag; the client sends it back as If-Match, and a save made against an

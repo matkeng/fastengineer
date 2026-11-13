@@ -35,18 +35,18 @@ Get-ChildItem (Join-Path $root 'desktop/src-tauri/target/release/bundle') -Recur
 # WebView2 runtime, which Windows 10/11 normally already have.
 $version = (Get-Content (Join-Path $root 'desktop/src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json).version
 $release = Join-Path $root 'desktop/src-tauri/target/release'
-$portable = Join-Path $root "dist/Drawing-Workbench-$version-portable-x64"
+$portable = Join-Path $root "dist/ECG-Source-List-$version-portable-x64"
 if (Test-Path $portable) { Remove-Item $portable -Recurse -Force }
 New-Item -ItemType Directory -Path $portable | Out-Null
-Copy-Item (Join-Path $release 'drawing-workbench.exe') (Join-Path $portable 'Drawing Workbench.exe')
+Copy-Item (Join-Path $release 'drawing-workbench.exe') (Join-Path $portable 'ECG Source List.exe')
 Copy-Item (Join-Path $release 'workbench-engine.exe') (Join-Path $portable 'workbench-engine.exe')
 Copy-Item (Join-Path $root 'samples/*') $portable
 Copy-Item (Join-Path $root 'docs/THIRD_PARTY_LICENSES.md') $portable
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $portable 'LICENSE.txt')
 @"
-Drawing Workbench $version (portable)
+ECG Source List $version (portable)
 
-Run "Drawing Workbench.exe". Nothing is installed.
+Run "ECG Source List.exe". Nothing is installed.
 Keep workbench-engine.exe in the same folder: it is the Python engine the app starts.
 
 - Windows may warn that the app is unrecognised (it is not code-signed yet):
@@ -54,7 +54,7 @@ Keep workbench-engine.exe in the same folder: it is the Python engine the app st
 - Needs the Microsoft Edge WebView2 Runtime, already present on most
   Windows 10/11 PCs. If the window stays blank, install it from
   https://developer.microsoft.com/microsoft-edge/webview2/
-- Drawing Workbench is free software under the GNU AGPL-3.0-only (LICENSE.txt);
+- ECG Source List is free software under the GNU AGPL-3.0-only (LICENSE.txt);
   source code: https://github.com/matkeng/fastengineer
 - THIRD_PARTY_LICENSES.md lists the open-source components and their licenses.
 - pid-sample*.pdf and pid-library.json are the symbol-detection example.

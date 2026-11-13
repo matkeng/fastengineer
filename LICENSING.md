@@ -1,6 +1,6 @@
 # Licensing: open core
 
-Drawing Workbench is **open core**:
+ECG Source List is **open core**:
 
 | Part | License |
 |---|---|

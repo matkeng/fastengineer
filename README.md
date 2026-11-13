@@ -1,6 +1,6 @@
-# Drawing Workbench — hello-world proof of concept
+# ECG Source List — hello-world proof of concept
 
-A minimal, end-to-end slice of the *Drawing Workbench* architecture, built to
+A minimal, end-to-end slice of the *ECG Source List* architecture, built to
 prove the stack installs and runs as a Windows `.exe`:
 
 ```
@@ -75,11 +75,11 @@ large sheets (the whole sheet is loaded into memory).
 ## Getting the Windows installer
 
 **Easiest: from CI.** Every push runs the
-*Drawing Workbench - Windows build* workflow. Open the run in the repo's
-**Actions** tab and download the `drawing-workbench-windows` artifact. It contains:
+*ECG Source List - Windows build* workflow. Open the run in the repo's
+**Actions** tab and download the `ecg-source-list-windows` artifact. It contains:
 
-- `Drawing Workbench_0.1.0_x64-setup.exe` (NSIS installer)
-- `Drawing Workbench_0.1.0_x64_en-US.msi` (for silent/IT deployment: `msiexec /i <file>.msi /qn`)
+- `ECG Source List_0.1.0_x64-setup.exe` (NSIS installer)
+- `ECG Source List_0.1.0_x64_en-US.msi` (for silent/IT deployment: `msiexec /i <file>.msi /qn`)
 
 The builds are **unsigned**, so SmartScreen will say "Windows protected your
 PC": click *More info → Run anyway*. Code signing (spec §3) is a later step.

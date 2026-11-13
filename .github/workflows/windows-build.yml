@@ -1,4 +1,4 @@
-name: Drawing Workbench - Windows build
+name: ECG Source List - Windows build
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: drawing-workbench-${{ github.ref }}
+  group: ecg-source-list-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -242,7 +242,7 @@ jobs:
       - name: Smoke-test the portable app
         run: |
           $dir = Get-ChildItem dist -Directory -Filter '*-portable-x64' | Select-Object -First 1
-          $exe = Join-Path $dir.FullName 'Drawing Workbench.exe'
+          $exe = Join-Path $dir.FullName 'ECG Source List.exe'
 
           # Closing the window the way a user does must end the engine too (both of its processes).
           $app = Start-Process $exe -PassThru
@@ -305,14 +305,14 @@ jobs:
       - name: Upload portable app
         uses: actions/upload-artifact@v4
         with:
-          name: drawing-workbench-portable
-          path: dist/Drawing-Workbench-*-portable-x64/
+          name: ecg-source-list-portable
+          path: dist/ECG-Source-List-*-portable-x64/
           if-no-files-found: error
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: drawing-workbench-windows
+          name: ecg-source-list-windows
           path: |
             desktop/src-tauri/target/release/bundle/nsis/*.exe
             desktop/src-tauri/target/release/bundle/msi/*.msi

@@ -70,7 +70,7 @@ def combined_xlsx(result: PipelineResult, auto_columns: list[str], title: str) -
             cell = ws.cell(row=i, column=c, value=_num(r.values.get(h, "")))
             if h in r.overridden:
                 cell.fill = OVERRIDE
-                cell.comment = Comment("Overridden in the import recipe", "Drawing Workbench")
+                cell.comment = Comment("Overridden in the import recipe", "ECG Source List")
             elif h in r.auto_errors:
                 cell.fill = ERROR
             elif r.origin == "custom":

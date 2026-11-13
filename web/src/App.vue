@@ -110,7 +110,7 @@ onMounted(() => wb.connect());
 	<div class="app">
 		<header class="titlebar">
 			<Icon name="logo" class="logo" />
-			<h1>Drawing Workbench</h1>
+			<h1>ECG Source List</h1>
 			<span class="section">{{ sectionLabel }}</span>
 			<label v-if="projects.mine.length" class="project-pick" title="Each project has its own database">
 				Project

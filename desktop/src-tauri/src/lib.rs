@@ -158,7 +158,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![engine_url, client_identity, save_bytes])
         .build(tauri::generate_context!())
-        .expect("error while building Drawing Workbench")
+        .expect("error while building ECG Source List")
         .run(|app, event| {
             if let RunEvent::Exit = event {
                 if let Some(child) = app.state::<Engine>().child.lock().unwrap().take() {

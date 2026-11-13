@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. Drawing Workbench is open core (see [`LICENSING.md`](LICENSING.md)): this
+Thanks for helping. ECG Source List is open core (see [`LICENSING.md`](LICENSING.md)): this
 repository is licensed under the GNU AGPL-3.0-only, and the copyright holder also offers
 commercial licenses. To keep that possible, contributions are accepted on these terms.
 
