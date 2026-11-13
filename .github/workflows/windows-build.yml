@@ -1,8 +1,7 @@
 name: ECG Source List - Windows build
 
+# Runs only when started by hand: Actions tab → this workflow → Run workflow (choose the branch).
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 permissions:

@@ -75,9 +75,10 @@ large sheets (the whole sheet is loaded into memory).
 
 ## Getting the Windows installer
 
-**Easiest: from CI.** Every push runs the
-*ECG Source List - Windows build* workflow. Open the run in the repo's
-**Actions** tab and download the `ecg-source-list-windows` artifact. It contains:
+**Easiest: from CI.** The *ECG Source List - Windows build* workflow runs only
+when it is started by hand. In the repo's **Actions** tab, choose the workflow,
+press **Run workflow** and pick the branch. When the run finishes, open it and
+download the `ecg-source-list-windows` artifact. It contains:
 
 - `ECG Source List_0.1.0_x64-setup.exe` (NSIS installer)
 - `ECG Source List_0.1.0_x64_en-US.msi` (for silent/IT deployment: `msiexec /i <file>.msi /qn`)
