@@ -39,6 +39,7 @@ The app's tabs:
 - **Engine**: engine status (port, Python version, whether it's
   Nuitka-compiled, PID), a "say hello" round-trip to Python, and a few demo
   model objects.
+- **Help**: help pages for every screen and list, with how-to guides (see [Help](#help)).
 
 ## Excel query wizard
 
@@ -1455,6 +1456,36 @@ engine (`core/src/workbench_core/generators`) still reads a generator workbook
 from its command line (`python -m workbench_core.generators
 import|check|build|diff|export|golden`) and API; only the app's import is gone.
 See [docs/GENERATORS.md](docs/GENERATORS.md).
+
+## Help
+
+The app's **Help** section (and the **Help** button in the title bar, which opens the page about the
+screen you are on) shows pages bundled with the front end:
+
+- `web/src/help/pages/*.md`: one Markdown file per page. The lines between `---` at the top give its
+  `title`, its `group` (one of `HELP_GROUPS` in `web/src/help/index.ts`) and its `order` in the group.
+  A link to another page is `[text](help:page-id)` or `(help:page-id#heading)`; a screenshot is
+  `![caption](img/name.png)`. To add a page, add a file: it appears in the contents and the search.
+- `web/src/help/img/*.png`: the screenshots.
+- `web/src/help/index.ts`: loads the pages, and maps each section and Project list to its page
+  (`SECTION_HELP`, `LIST_HELP`). `web/src/components/help/HelpView.vue` shows them (Markdown is
+  rendered with `marked`).
+
+`node scripts/check-help.cjs` checks every link, heading and image of the pages.
+
+To take the screenshots again after the screens change (needs Playwright with Chromium), start an
+engine on a **new, empty data folder** and the front end, then run the script; it loads the sample
+data and walks through the app:
+
+```bash
+.venv/bin/python -m workbench_desktop --port 8765 --data-dir /tmp/help-data
+(cd web && npm run dev)
+node scripts/help-screenshots.cjs            # or one group, e.g. "import"
+# optional, about a third of the size: 256 colours
+for f in web/src/help/img/*.png; do convert "$f" -strip -colors 255 "PNG8:$f"; done
+```
+
+The steps are in `scripts/help-screenshots.steps.cjs`.
 
 ## Tests
 

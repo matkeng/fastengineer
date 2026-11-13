@@ -4,7 +4,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { IconName } from '../lib/icons';
 
-export type Section = 'dashboard' | 'compare' | 'symbols' | 'mel' | 'keylists' | 'generators' | 'deliverables' | 'history' | 'projects' | 'engine';
+export type Section = 'dashboard' | 'compare' | 'symbols' | 'mel' | 'keylists' | 'generators' | 'deliverables' | 'history' | 'projects' | 'engine' | 'help';
 
 /** `menu: false`: not a tab of its own; it is opened from another section. */
 export const SECTIONS: { id: Section; label: string; icon: IconName; menu?: false }[] = [
@@ -18,6 +18,7 @@ export const SECTIONS: { id: Section; label: string; icon: IconName; menu?: fals
 	{ id: 'history', label: 'Change log', icon: 'history' },
 	{ id: 'projects', label: 'Projects', icon: 'layers' }, // administrators only (see App.vue)
 	{ id: 'engine', label: 'Engine', icon: 'cpu' },
+	{ id: 'help', label: 'Help', icon: 'help' },
 ];
 
 /** Which section of the app is showing; any view can switch it. */
@@ -26,5 +27,15 @@ export const useUi = defineStore('ui', () => {
 	function go(section: Section) {
 		tab.value = section;
 	}
-	return { tab, go };
+	// Help: the open page (a file name in src/help/pages) and, optionally, a heading on it.
+	const helpPage = ref('welcome');
+	const helpAnchor = ref('');
+	/** Show a help page: 'page-id' or 'page-id#heading'. */
+	function openHelp(target: string) {
+		const [page, anchor = ''] = target.split('#');
+		helpPage.value = page;
+		helpAnchor.value = anchor;
+		tab.value = 'help';
+	}
+	return { tab, go, helpPage, helpAnchor, openHelp };
 });

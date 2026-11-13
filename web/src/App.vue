@@ -10,10 +10,12 @@ import Icon from './components/common/Icon.vue';
 import CompareView from './components/compare/CompareView.vue';
 import DashboardView from './components/dashboard/DashboardView.vue';
 import DeliverablesView from './components/deliverables/DeliverablesView.vue';
+import HelpView from './components/help/HelpView.vue';
 import GenView from './components/generators/GenView.vue';
 import KeyListsView from './components/keylists/KeyListsView.vue';
 import MelView from './components/mel/MelView.vue';
 import SymView from './components/symbols/SymView.vue';
+import { LIST_HELP, SECTION_HELP } from './help';
 import { apiGet, lastConflict } from './lib/engine';
 import { useCompare } from './stores/compare';
 import { useDeliverables } from './stores/deliverables';
@@ -44,7 +46,8 @@ const fill = computed(
 			ui.tab === 'symbols' ||
 			(ui.tab === 'generators' && !!gens.draft) ||
 			ui.tab === 'keylists' ||
-			ui.tab === 'deliverables'),
+			ui.tab === 'deliverables') ||
+		ui.tab === 'help',
 );
 const dirty: Partial<Record<string, () => boolean>> = {
 	symbols: () => sym.dirty,
@@ -57,7 +60,13 @@ const sections = computed(() => SECTIONS.filter((s) => s.menu !== false && (s.id
 // Compare tables is opened from the Dashboard, so that tab stays lit while it shows.
 const menuTab = computed(() => (ui.tab === 'compare' ? 'dashboard' : ui.tab));
 // Sections that work without a project: the engine's own page and project administration.
-const noProjectNeeded = computed(() => ui.tab === 'engine' || ui.tab === 'projects');
+const noProjectNeeded = computed(() => ui.tab === 'engine' || ui.tab === 'projects' || ui.tab === 'help');
+
+/** The Help button: the page about what is on screen (in Project lists, about the open list). */
+function helpHere() {
+	if (ui.tab === 'help') return;
+	ui.openHelp(ui.tab === 'keylists' ? LIST_HELP[kl.selected] : SECTION_HELP[ui.tab]);
+}
 
 async function switchProject(event: Event) {
 	const select = event.target as HTMLSelectElement;
@@ -119,6 +128,7 @@ onMounted(() => wb.connect());
 				</select>
 			</label>
 			<span class="spacer" />
+			<button type="button" class="secondary small help-here" title="Help about this screen" @click="helpHere"><Icon name="help" />Help</button>
 			<span class="pill" :class="wb.status" :title="wb.error ?? ''">
 				<span class="dot" />
 				{{ wb.status === 'ready' ? 'Engine ready' : wb.status === 'connecting' ? 'Starting engine…' : 'Engine error' }}
@@ -134,6 +144,7 @@ onMounted(() => wb.connect());
 
 		<main :class="{ fill }">
 			<EnginePanel v-show="ui.tab === 'engine'" />
+			<HelpView v-show="ui.tab === 'help'" />
 			<!-- v-show keeps each section's progress when switching between them -->
 			<ProjectsView v-if="wb.status === 'ready' && ui.tab === 'projects' && projects.isAdmin" />
 			<template v-if="wb.status === 'ready' && projects.current">

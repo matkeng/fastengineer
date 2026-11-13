@@ -55,6 +55,7 @@ Not used any more: **PyMuPDF** (AGPL-3.0); it was removed before release.
 |---|---|
 | vue, @vue/* | MIT |
 | pinia | MIT |
+| marked (renders the Help pages) | MIT |
 | datatables.net, datatables.net-dt, datatables.net-buttons(-dt) | MIT |
 | @tauri-apps/api, @tauri-apps/plugin-dialog | MIT OR Apache-2.0 |
 | @babel/parser, @babel/types, magic-string, nanoid, postcss, csstype, … (Vue's compiler deps) | MIT |
