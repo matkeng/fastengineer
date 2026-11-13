@@ -1225,7 +1225,7 @@ class LoadListStore:
                 "supplied_from": "supplied_from_by"}
 
     def sync(self, live: list[LoadListRow], gone: dict[str, str], areas: dict[str, str | None],
-             types: dict[str, str | None]) -> list[LoadListRow]:
+             types: dict) -> list[LoadListRow]:
         """Bring the remembered rows up to date with the imports and return them all.
 
         `live`: the rows the imports give now (status set: a row its file marks deleted is

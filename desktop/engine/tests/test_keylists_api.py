@@ -213,7 +213,7 @@ def test_load_types_save_rules_and_persistence(data_dir: Path) -> None:
     ]})
     assert bad.status_code == 422
     assert set(bad.json()["fields"]) == {
-        "x1.code", "x1.name", "x1.rating_unit", "x1.voltage", "x1.phases", "x1.from_value", "x1.load_qty",
+        "x1.name", "x1.rating_unit", "x1.voltage", "x1.phases", "x1.from_value", "x1.load_qty",
         "x2.code", "x2.name", "x2.voltage", "x2.to_value"}
 
     # Refused saves kept nothing; the list survives a restart and the other lists are untouched.

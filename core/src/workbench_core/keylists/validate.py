@@ -12,6 +12,7 @@ from ..refdata.models import ColumnDef, RefValidationError, new_id
 from ..refdata.validate import FALSE, TRUE, coerce, name_key
 from pydantic import BaseModel, ValidationError
 
+from .loadlist import load_type_label
 from .models import (
     DISCIPLINES,
     PHASES,
@@ -29,7 +30,7 @@ from .models import (
 _AREA_FIELDS = (("tag", "Tag number", True), ("description", "Description", True), ("wbs", "WBS number", False))
 _PACKAGE_FIELDS = (("number", "Package number", True), ("description", "Description", True))
 _TYPE_FIELDS = (("name", "Name", True),)
-_LOAD_FIELDS = (("code", "Code", True), ("name", "Name", True))
+_LOAD_FIELDS = (("name", "Name", True),)  # the code can repeat: see the range check in check_load_types
 _LOAD_TEXT = ("code", "name", "std_drg", "bucket_type", "load_type", "field_options", "starter_chart")
 _INTEGER = ColumnDef(name="", type="integer")
 _DECIMAL = ColumnDef(name="", type="decimal")
@@ -263,9 +264,11 @@ def _components(raw: object, rid: str, errors: dict[str, str]) -> list:
 def check_load_types(rows: list[dict], columns: dict[str, list[str]] | None = None) -> LoadTypeList:
     """Check the rows of the Load Types list as they were typed in (numbers may be text).
 
-    Code and name are required and unique (ignoring case and extra spaces); kW or Amps,
-    voltage and phases are required; voltage and load quantity are whole numbers, not
-    negative; the from and to values are numbers and from must not exceed to. Row order
+    Code and name are required; the name is unique (ignoring case and extra spaces). The code
+    can repeat: load types with the same code and rating unit must have from-to ranges that
+    don't overlap (both ends included, so 0-7.5 and 7.5-15 overlap; a blank end is open). kW
+    or Amps, voltage and phases are required; voltage and load quantity are whole numbers,
+    not negative; the from and to values are numbers and from must not exceed to. Row order
     is kept."""
     errors: dict[str, str] = {}
     out: list[SimpleNamespace] = []
@@ -312,6 +315,22 @@ def check_load_types(rows: list[dict], columns: dict[str, list[str]] | None = No
         r.components = _components(raw.get("components"), r.id, errors)
         out.append(r)
     _check_unique(out, _LOAD_FIELDS, errors)
+    # Load types can share a code; those that also share a rating unit must have ranges that
+    # don't overlap (both ends included; a blank end is open), so a load's rating picks one.
+    groups: dict[tuple[str, object], list[SimpleNamespace]] = {}
+    for r in out:
+        if not r.code:
+            errors[f"{r.id}.code"] = "Code is required"
+        elif r.rating_unit in RATING_UNITS:
+            groups.setdefault((name_key(r.code), r.rating_unit), []).append(r)
+    for group in groups.values():
+        for i, b in enumerate(group):
+            for a in group[:i]:
+                lo = max(Decimal(x.from_value) if x.from_value is not None else Decimal("-Infinity") for x in (a, b))
+                hi = min(Decimal(x.to_value) if x.to_value is not None else Decimal("Infinity") for x in (a, b))
+                if lo <= hi and f"{b.id}.from_value" not in errors and f"{b.id}.to_value" not in errors:
+                    errors[f"{b.id}.from_value"] = (f"Its range overlaps '{a.name}' ({load_type_label(a)}): load types with the "
+                                                    "same code and unit need ranges that don't overlap or touch")
     if errors:
         raise RefValidationError(f"{len(errors)} problem(s) in the load types.", errors)
     return LoadTypeList(items=[LoadType(**vars(r)) for r in out])

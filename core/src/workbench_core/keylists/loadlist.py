@@ -109,16 +109,92 @@ def auto_match(text: CellValue, index: dict[str, str | None]) -> str | None:
     return index.get(name_key(str(text)))
 
 
-def apply_auto(row: LoadListRow, areas: dict[str, str | None], types: dict[str, str | None]) -> LoadListRow:
+HP_KW = 0.7457
+#: name_key(code) -> the load types of that code: (id, rating unit, from, to); a blank bound is None (open).
+LoadTypeIndex = dict[str, list[tuple[str, str, float | None, float | None]]]
+
+
+def load_type_range(t) -> str:
+    """A load type's range in words: "0.37–11 kW", "≤ 11 kW", "≥ 11 kW", or "any kW"."""
+    lo, hi = t.from_value, t.to_value
+    text = f"{lo}–{hi}" if lo is not None and hi is not None else f"≥ {lo}" if lo is not None else f"≤ {hi}" if hi is not None else "any"
+    return f"{text} {t.rating_unit}"
+
+
+def load_type_label(t) -> str:
+    """How a load type is told from others of its code: "DOL 0.37–11 kW"."""
+    return f"{t.code} {load_type_range(t)}"
+
+
+def load_type_choice(t, types: list) -> str:
+    """A load type in a list of choices: "DOL – Direct on line starter"; with its range when
+    other load types have its code: "DOL 0.37–11 kW – Direct on line starter"."""
+    shared = sum(1 for x in types if name_key(x.code) == name_key(t.code)) > 1
+    return f"{load_type_label(t) if shared else t.code} – {t.name}"
+
+
+def load_type_names(types: list) -> list[tuple[str, str]]:
+    """(id, text) of each load type, as a workbook names it: its code, or "DOL 0.37–11 kW" when
+    other load types have its code."""
+    count: dict[str, int] = {}
+    for t in types:
+        count[name_key(t.code)] = count.get(name_key(t.code), 0) + 1
+    return [(t.id, t.code if count[name_key(t.code)] == 1 else load_type_label(t)) for t in types]
+
+
+def load_type_index(types: list) -> LoadTypeIndex:
+    """The load types by code, for match_load_type."""
+    out: LoadTypeIndex = {}
+    for t in types:
+        k = name_key(t.code)
+        if k:
+            out.setdefault(k, []).append((t.id, t.rating_unit, None if t.from_value is None else float(t.from_value),
+                                          None if t.to_value is None else float(t.to_value)))
+    return out
+
+
+def rating_in_unit(rating: CellValue, units: CellValue) -> tuple[float | None, str | None]:
+    """A load's rating and the load types' unit it is in: kW (blank units too; HP converted,
+    × 0.7457) or Amps (A, Amp, Amps). (None, unit) for no rating; (None, None) for other units."""
+    u = "" if units is None or isinstance(units, bool) else str(units).strip().casefold()
+    unit = "kW" if u in ("", "kw") or u == "hp" else "Amps" if u in ("a", "amp", "amps") else None
+    try:
+        r = None if rating is None or isinstance(rating, bool) or str(rating).strip() == "" else float(str(rating).replace(",", ""))
+    except ValueError:
+        r = None
+    if unit is None or r is None:
+        return None, unit
+    return (r * HP_KW if u == "hp" else r), unit
+
+
+def match_load_type(code: CellValue, rating: CellValue, units: CellValue, index: LoadTypeIndex) -> tuple[str | None, str]:
+    """The load type a load gets: of its code (ignoring case and extra spaces), with the load's
+    unit as its rating unit, and a range (both ends included; a blank end is open) that includes
+    the load's rating. Returns (id, "") or (None, why): "no code" (blank, or no load type has
+    it), "no rating" (the code is known but the rating is blank or its units aren't kW, HP or
+    Amps), "no range" (no load type of that code and unit has a range the rating is in)."""
+    if code is None or isinstance(code, bool) or name_key(str(code)) not in index:
+        return None, "no code"
+    r, unit = rating_in_unit(rating, units)
+    if r is None:
+        return None, "no rating"
+    for type_id, type_unit, lo, hi in index[name_key(str(code))]:
+        if type_unit == unit and (lo is None or lo - 1e-9 <= r) and (hi is None or r <= hi + 1e-9):
+            return type_id, ""
+    return None, "no range"
+
+
+def apply_auto(row: LoadListRow, areas: dict[str, str | None], types: LoadTypeIndex) -> LoadListRow:
     """Fill in (or follow) the automatic plant area, load type and distribution-panel flag of a
-    row; a person's choice is kept. (Supplied from comes after, see apply_auto_supply.)"""
+    row; a person's choice is kept. (Supplied from comes after, see apply_auto_supply.) The load
+    type is matched on the row's load type code, rating and units (match_load_type)."""
     update: dict[str, object] = {}
-    for kind, field, index in (("plant_area", "area", areas), ("load_type", "load_type", types)):
-        if getattr(row, f"{kind}_by") in KEPT:
-            continue
-        found = auto_match(row.values.get(field), index)
-        update[f"{kind}_id"] = found
-        update[f"{kind}_by"] = "auto" if found else None
+    if row.plant_area_by not in KEPT:
+        found = auto_match(row.values.get("area"), areas)
+        update |= {"plant_area_id": found, "plant_area_by": "auto" if found else None}
+    if row.load_type_by not in KEPT:
+        found, _ = match_load_type(row.values.get("load_type"), row.values.get("load_rating"), row.values.get("load_units"), types)
+        update |= {"load_type_id": found, "load_type_by": "auto" if found else None}
     if row.is_panel_by not in KEPT:
         flag = row.values.get("is_a_loadcentre")
         update["is_panel"] = flag is True

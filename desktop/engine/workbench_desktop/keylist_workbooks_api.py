@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from workbench_core.keylists import (EEL_SOURCE, EquipmentCode, EquipmentPackageList, InstrumentCode, PlantAreaList,
                                      check_code_list, check_equipment_packages, check_load_types, check_plant_areas)
 from workbench_core.keylists import workbooks as wbk
+from workbench_core.keylists.loadlist import load_type_names
 from workbench_core.keylists.cable_types import check_cable_types
 from workbench_core.keylists.distribution_panels import check_panels
 from workbench_core.keylists.drawing_list import REGISTERS
@@ -58,7 +59,7 @@ def _eel_names() -> wbk.EelNames:
         equipment_codes=[(c.id, c.code) for c in lists.code_list("equipment-codes").items],
         plant_areas=[(n.id, n.tag) for n in lists.plant_areas().nodes],
         packages=[(p.id, p.number) for p in lists.equipment_packages().items],
-        load_types=[(t.id, t.code) for t in lists.load_types().items], import_panels=[(r.ref(), r.tag()) for r in panels])
+        load_types=load_type_names(lists.load_types().items), import_panels=[(r.ref(), r.tag()) for r in panels])
 
 
 def _sheets(list_id: str) -> wbk.Sheets:
@@ -101,7 +102,7 @@ def _sheets(list_id: str) -> wbk.Sheets:
         used = {k for r in rows for k, v in r.values.items() if v not in (None, "")}
         lf = lists.load_fields()
         return wbk.export_load_list(rows, {n.id: n.tag for n in lists.plant_areas().nodes},
-                                    {t.id: t.code for t in lists.load_types().items}, [f for f in lf.keys() if f in used], lf.labels())
+                                    dict(load_type_names(lists.load_types().items)), [f for f in lf.keys() if f in used], lf.labels())
     return wbk.export_distribution_panels(lists.distribution_panels(), {r.ref(): r for r in rows})
 
 
@@ -233,7 +234,7 @@ def _parse(list_id: str, data: bytes) -> tuple[wbk.Parsed, list[str]]:
         return wbk.import_equipment_packages(sheets, old, lists.master_columns().all()), [p.number for p in old.items]
     if list_id == "load-types":
         old = lists.load_types()
-        return wbk.import_load_types(sheets, old, lists.master_columns().all()), [t.code for t in old.items]
+        return wbk.import_load_types(sheets, old, lists.master_columns().all()), [t.name for t in old.items]
     if list_id in wbk.CODE_HEADS:
         old = lists.code_list(list_id).items
         return wbk.import_code_list(sheets, list_id, old, lists.disciplines()), [c.code for c in old]
@@ -266,7 +267,7 @@ def _parse(list_id: str, data: bytes) -> tuple[wbk.Parsed, list[str]]:
     rows = loadlist_api.current_rows()[0]
     if list_id == "load-list":
         return wbk.import_load_list(sheets, rows, [(n.id, n.tag) for n in lists.plant_areas().nodes],
-                                    [(t.id, t.code) for t in lists.load_types().items]), []
+                                    load_type_names(lists.load_types().items)), []
     old = lists.distribution_panels()
     return wbk.import_distribution_panels(sheets, old, {r.ref(): r for r in rows}), [p.tag for p in old.panels]
 

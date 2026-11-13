@@ -213,7 +213,9 @@ def test_load_type_required_fields_and_uniqueness() -> None:
             {"id": "c", "code": " ", "name": "", "voltage": ""},
         ])
     assert e.value.fields == {
-        "b.code": "Code 'dol' is used twice", "b.name": "Name 'DIRECT  on line' is used twice",
+        "b.from_value": "Its range overlaps 'Direct on line' (DOL any kW): load types with the same code and unit need ranges "
+                        "that don't overlap or touch",
+        "b.name": "Name 'DIRECT  on line' is used twice",
         "c.code": "Code is required", "c.name": "Name is required", "c.rating_unit": "Choose kW or Amps",
         "c.phases": "Choose the phases", "c.voltage": "Voltage is required",
     }
@@ -366,3 +368,44 @@ def test_equipment_types_have_rows_for_the_lists_like_load_types() -> None:
         with pytest.raises(RefValidationError) as exc:
             check_equipment_packages(packages)
         assert text in exc.value.fields[field]
+
+
+def test_load_types_share_a_code_when_their_ranges_dont_overlap() -> None:
+    def t(i: str, lo: object, hi: object, unit: str = "kW", code: str = "DOL") -> dict:
+        return _load(id=i, code=code, name=f"Type {i}", rating_unit=unit, from_value=lo, to_value=hi)
+
+    ok = check_load_types([t("a", "0.37", "7.5"), t("b", "7.51", "15"), t("c", "15.5", None), t("d", None, None, "Amps"),
+                           t("e", "0", "100", code="VSD")])
+    assert [x.code for x in ok.items] == ["DOL", "DOL", "DOL", "DOL", "VSD"]
+    for clash in ([t("a", "0", "7.5"), t("b", "7.5", "15")],  # touching counts: both ends are included
+                  [t("a", "0", "10"), t("b", "5", "6")], [t("a", None, "10"), t("b", "10", None)],
+                  [t("a", None, None), t("b", "5", "6")], [t("a", "1", "2"), t("b", "1", "2", code="dol ")]):
+        with pytest.raises(RefValidationError) as e:
+            check_load_types(clash)
+        assert list(e.value.fields) == ["b.from_value"] and "overlaps 'Type a'" in e.value.fields["b.from_value"]
+
+
+def test_a_load_is_matched_on_code_unit_and_range() -> None:
+    from workbench_core.keylists import LoadListRow, apply_auto
+    from workbench_core.keylists.loadlist import load_type_choice, load_type_index, load_type_label, match_load_type, rating_in_unit
+
+    def t(i: str, lo: object, hi: object, unit: str = "kW", code: str = "DOL") -> dict:
+        return _load(id=i, code=code, name=f"Type {i}", rating_unit=unit, from_value=lo, to_value=hi)
+
+    types = check_load_types([t("small", "0.37", "7.5"), t("big", "7.51", "55"), t("amps", "0", "63", "Amps"), t("vsd", None, None, code="VSD")]).items
+    idx = load_type_index(types)
+    assert match_load_type("dol", 5.5, "kW", idx) == ("small", "") and match_load_type(" DOL ", "7.5", "", idx) == ("small", "")
+    assert match_load_type("DOL", 22, "kW", idx) == ("big", "") and match_load_type("DOL", 32, "A", idx) == ("amps", "")
+    assert match_load_type("DOL", 10, "HP", idx) == ("small", "")  # 7.457 kW
+    assert match_load_type("DOL", 10.1, "hp", idx) == ("big", "")  # 7.53 kW
+    assert match_load_type("DOL", 7.505, "kW", idx) == (None, "no range") and match_load_type("DOL", 90, "kW", idx) == (None, "no range")
+    assert match_load_type("DOL", None, "kW", idx) == (None, "no rating") and match_load_type("DOL", 5, "kVA", idx) == (None, "no rating")
+    assert match_load_type("XYZ", 5, "kW", idx) == (None, "no code") and match_load_type(None, 5, "kW", idx) == (None, "no code")
+    assert match_load_type("VSD", 400, "kW", idx) == ("vsd", "") and match_load_type("VSD", 4, "Amps", idx) == (None, "no range")
+    assert rating_in_unit("1,000", "kw") == (1000.0, "kW")
+    assert load_type_label(types[0]) == "DOL 0.37–7.5 kW" and load_type_choice(types[0], types) == "DOL 0.37–7.5 kW – Type small"
+    assert load_type_choice(types[3], types) == "VSD – Type vsd"
+    row = LoadListRow(recipe_id="r", key="P-1", source="MEL", target="MEL", values={"load_type": "DOL", "load_rating": 22, "load_units": "kW"})
+    assert (apply_auto(row, {}, idx).load_type_id, apply_auto(row, {}, idx).load_type_by) == ("big", "auto")
+    mine = row.model_copy(update={"load_type_id": "small", "load_type_by": "user"})
+    assert apply_auto(mine, {}, idx).load_type_id == "small"  # a person's choice is kept

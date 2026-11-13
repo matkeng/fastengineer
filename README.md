@@ -608,15 +608,22 @@ You don't create or name them: each project has one of each.
     imports.
 - **Load Types**: a flat list shown as a sortable, filterable grid; click a row
   (or **Add load type**) to edit it in a form, which saves straight away.
-  **Code** and **Name** are required and unique; **kW or Amps**, **Voltage**
-  (a whole number) and **Phases** (AC-3-phase, AC-3-phase+N, AC-1-phase-LN,
-  AC-1-phase-LL, DC or DC-mA) are required. Optional: **From value** and
+  **Code** and **Name** are required, and the name is unique; **kW or Amps**,
+  **Voltage** (a whole number) and **Phases** (AC-3-phase, AC-3-phase+N,
+  AC-1-phase-LN, AC-1-phase-LL, DC or DC-mA) are required.
+  **Several load types can share a code** (three "DOL" types for three kW bands)
+  as long as those with the same code and rating unit have **From–To ranges that
+  don't overlap**. Both ends are included, so 0–7.5 and 7.5–15 overlap and are
+  refused; use 0–7.5 and 7.51–15. A blank From or To is an open end, and both
+  blank means any rating. Where a code is shared, dropdowns and workbooks show
+  the range too: "DOL 0.37–11 kW".
+  Optional: **From value** and
   **To value** (decimals, stored exactly; From must not exceed To), **STD Drg**,
   **Bucket type**, **Load type**, **Field options** (text), **Multi load**
   (yes/no) and **Load qty** (a whole number).
   **Clone** in a load type's form opens a new load type with its details, rows
-  (as they are in the form) and PDF, coded `<code>-COPY` (then `-COPY2`…) and
-  named "… (copy)"; it is saved with **Save**. On Equipment Packages, **⧉**
+  (as they are in the form) and PDF, with the same code and named "… (copy)".
+  Give it its own From–To range, then **Save**. On Equipment Packages, **⧉**
   duplicates an equipment type with its rows, as "… (copy)" straight after it
   in the same package; the list's **Save** keeps it.
   A load type can also have a **PDF** attached (one per load type, up to
@@ -799,9 +806,14 @@ You don't create or name them: each project has one of each.
     whose import is deleted, or whose file marks it deleted) stays in the list,
     marked **Deleted**, with its allocations, and gets them back if it returns.
   - **Filled in automatically** (shown in italics): when a row's mapped area
-    text equals exactly one plant area's tag number, or its load type text one
-    load type's code (ignoring case and extra spaces). These follow the import
-    until a person chooses a value, which is then never changed automatically.
+    text equals exactly one plant area's tag number. Its **load type** is the
+    one whose code equals its load type text (ignoring case and extra spaces),
+    whose **rating unit** is its load units, and whose **From–To range includes
+    its load rating**. HP is converted to kW (× 0.7457), blank units count as kW,
+    and A / Amps match Amps types. A load whose code is known but whose rating
+    is blank or outside every range of that code is left unallocated and named
+    in a warning. These follow the import until a person chooses a value, which
+    is then never changed automatically.
   - A plant area or load type that a person allocated can't be deleted from its
     list until those rows are changed.
   - **Distribution panel** (a tick box) and **Supplied from** (Primary Supply,
@@ -834,6 +846,8 @@ You don't create or name them: each project has one of each.
     elsewhere is refused, and the list is left as it was.
   - **Load Types** has a sheet for the list and one for each deliverable list's
     rows; a rows sheet left out of the file leaves those rows as they are.
+    Rows sheets have a **Load type name** column, because codes can repeat; a
+    row without it goes to its code's load type only when one type has that code.
     Attached PDFs are not in the workbook and stay with their load types.
   - **Load List**: its rows come from the imports, so a file never adds or
     removes rows. Rows are matched by Source and Key, and only the plant area,

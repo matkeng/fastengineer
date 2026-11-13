@@ -37,6 +37,8 @@ from workbench_core.keylists.cable_types import CableTypeList, check_cable_types
 from workbench_core.refdata import RefValidationError, name_key
 from workbench_core.symbols.render import PdfError, page_count
 
+from workbench_core.keylists.loadlist import load_type_names
+
 from .refdata_api import invalid
 from .storage import NotFound, get_keylists, get_loadlist
 
@@ -226,7 +228,7 @@ def update_load_types(body: LoadTypesUpdate):
     try:
         loads = check_load_types(body.items, get_keylists().master_columns().all())
         kept = {r.id for r in loads.items}
-        _refuse_in_use("load_type", {r.id: r.code for r in get_keylists().load_types().items if r.id not in kept},
+        _refuse_in_use("load_type", dict((i, n) for i, n in load_type_names(get_keylists().load_types().items) if i not in kept),
                        "load types")
         return get_keylists().save_load_types(loads)
     except RefValidationError as exc:

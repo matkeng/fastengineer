@@ -292,7 +292,6 @@ export function loadTypeProblems(f: LoadTypeForm, others: LoadType[]): Partial<R
 	const key = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 	const out: Partial<Record<LoadTypeField, string>> = {};
 	if (!key(f.code)) out.code = 'Code is required';
-	else if (others.some((o) => key(o.code) === key(f.code))) out.code = 'Code is used by another load type';
 	if (!key(f.name)) out.name = 'Name is required';
 	else if (others.some((o) => key(o.name) === key(f.name))) out.name = 'Name is used by another load type';
 	if (!f.rating_unit) out.rating_unit = 'Choose kW or Amps';
@@ -318,6 +317,18 @@ export function loadTypeProblems(f: LoadTypeForm, others: LoadType[]): Partial<R
 	const from = decimal('from_value');
 	const to = decimal('to_value');
 	if (from !== null && to !== null && from > to) out.to_value = 'Must not be less than the From value';
+	// Load types can share a code: those of the same code and unit need ranges that don't overlap or touch.
+	if (key(f.code) && f.rating_unit && !out.from_value && !out.to_value) {
+		const lo = from ?? -Infinity;
+		const hi = to ?? Infinity;
+		const clash = others.find((o) => key(o.code) === key(f.code) && o.rating_unit === f.rating_unit
+			&& Math.max(lo, o.from_value === null ? -Infinity : Number(o.from_value)) <= Math.min(hi, o.to_value === null ? Infinity : Number(o.to_value)));
+		if (clash) {
+			const range = clash.from_value !== null && clash.to_value !== null ? `${clash.from_value}–${clash.to_value}`
+				: clash.from_value !== null ? `≥ ${clash.from_value}` : clash.to_value !== null ? `≤ ${clash.to_value}` : 'any';
+			out.from_value = `Its range overlaps '${clash.name}' (${clash.code} ${range} ${clash.rating_unit}): give them ranges that don't overlap or touch`;
+		}
+	}
 	return out;
 }
 

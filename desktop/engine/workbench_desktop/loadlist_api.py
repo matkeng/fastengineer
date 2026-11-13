@@ -9,7 +9,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from workbench_core.keylists import EEL_SOURCE, LOAD_LIST_TARGETS, EelList, LoadListRow, match_index
-from workbench_core.keylists.loadlist import CABLE_CONSTRUCTIONS, CABLE_FIELDS, FACTOR_FIELDS
+from workbench_core.keylists.loadlist import (CABLE_CONSTRUCTIONS, CABLE_FIELDS, FACTOR_FIELDS, load_type_choice, load_type_index,
+                                              match_load_type)
 from workbench_core.mel import run_pipeline
 from workbench_core.mel.pipeline import output_list
 from workbench_core.refdata import RefValidationError, name_key
@@ -55,7 +56,7 @@ def _choices() -> tuple[list[Choice], list[Choice]]:
     for n in nodes:
         depth[n.id] = depth[n.parent_id] + 1 if n.parent_id in depth else 0
     areas = [Choice(id=n.id, label=f"{n.tag} – {n.description}", depth=depth[n.id]) for n in nodes]
-    types = [Choice(id=t.id, label=f"{t.code} – {t.name}") for t in lists.load_types().items]
+    types = [Choice(id=t.id, label=load_type_choice(t, lists.load_types().items)) for t in lists.load_types().items]
     return areas, types
 
 
@@ -125,7 +126,7 @@ def eel_rows(eel: EelList) -> list[LoadListRow]:
 def sync_rows(live: list[LoadListRow], gone: dict[str, str]) -> list[LoadListRow]:
     lists = get_keylists()
     area_index = match_index([(n.id, n.tag) for n in lists.plant_areas().nodes])
-    type_index = match_index([(t.id, t.code) for t in lists.load_types().items])
+    type_index = load_type_index(lists.load_types().items)
     return get_loadlist().sync(live, gone, area_index, type_index)
 
 
@@ -182,6 +183,20 @@ def load_list() -> LoadListView:
             tags.setdefault(tag.strip().casefold(), (tag.strip(), []))[1].append(r.source)
     for tag, sources_of in (t for t in tags.values() if len(t[1]) > 1):
         warnings.append(f"Tag {tag} is in more than one row ({', '.join(sorted(set(sources_of)))}).")
+    # loads whose code is a load type's, but with no load type whose unit and range fit their rating
+    type_index = load_type_index(get_keylists().load_types().items)
+    unfit = []
+    for r in rows:
+        if r.status == "active" and r.load_type_id is None and r.load_type_by is None:
+            why = match_load_type(r.values.get("load_type"), r.values.get("load_rating"), r.values.get("load_units"), type_index)[1]
+            if why in ("no rating", "no range"):
+                rating = r.values.get("load_rating")
+                what = "no rating" if rating in (None, "") else f"{rating} {r.values.get('load_units') or 'kW'}"
+                unfit.append(f"{r.tag()} ({r.values.get('load_type')}, {what})")
+    if unfit:
+        warnings.append(f"{len(unfit)} load(s) have a load type code but no load type of that code whose rating unit and range fit: "
+                        + ", ".join(unfit[:10]) + (f" and {len(unfit) - 10} more" if len(unfit) > 10 else "")
+                        + ". Change the load types' ranges, or set the load type by hand.")
     cables = get_keylists().cable_types().items
 
     def sizes(of: list) -> list[str]:

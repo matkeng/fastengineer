@@ -310,6 +310,10 @@ _LT_FIELDS = ("code", "name", "rating_unit", "voltage", "phases", "from_value", 
               "load_type", "field_options", "multi_load", "load_qty", "starter_chart")
 
 
+#: On the rows sheets: which load type of a code a row belongs to (codes can repeat; names can't).
+TYPE_NAME = "Load type name"
+
+
 def _rows_sheet(key: str) -> str:
     return f"{LISTS[key].deliverable_type} rows".replace("/", "-")
 
@@ -320,25 +324,28 @@ def export_load_types(types: LoadTypeList, columns: dict[str, list[str]] | None 
         + [t.pdf.file_name if t.pdf else None] for t in types.items])]
     for key in TEMPLATE_LISTS:  # the rows each load of the type adds to a list, one sheet per list
         heads = _rows_columns(key, columns)
-        out.append((_rows_sheet(key), [["Load type"] + heads] + [
-            [t.code] + [row.get(c) or None for c in heads] for t in types.items for row in t.rows.get(key, [])]))
+        out.append((_rows_sheet(key), [["Load type", TYPE_NAME] + heads] + [
+            [t.code, t.name] + [row.get(c) or None for c in heads] for t in types.items for row in t.rows.get(key, [])]))
     return out
 
 
 def import_load_types(sheets: dict[str, Rows], old: LoadTypeList, columns: dict[str, list[str]] | None = None) -> Parsed:
     rows = _sheet(sheets, "Load Types", ("Code", "Name", "Rating unit", "Voltage", "Phases"))
-    keep = _keep([(t.id, t.code) for t in old.items])
+    keep = _keep([(t.id, t.name) for t in old.items])  # by name: load types can share a code
     before = {t.id: t for t in old.items}
     notes: list[str] = []
     items = []
     for r in rows:
-        item = {"id": keep(_get(r, "Code"))} | {f: _get(r, h) for f, h in zip(_LT_FIELDS, LOAD_TYPE_HEAD)}
+        item = {"id": keep(_get(r, "Name"))} | {f: _get(r, h) for f, h in zip(_LT_FIELDS, LOAD_TYPE_HEAD)}
         item["multi_load"] = "yes" if _yes(item["multi_load"]) else "no"
         item["rows"] = {k: [dict(x) for x in v] for k, v in before[item["id"]].rows.items()} if item["id"] in before else {}
         # component tables aren't in this workbook (they are in a load type's own: export_type_rows)
         item["components"] = [c.model_dump() for c in before[item["id"]].components] if item["id"] in before else []
         items.append(item)
-    by_code = {name_key(i["code"]): i for i in items}
+    by_code: dict[str, list[dict]] = {}
+    for i in items:
+        by_code.setdefault(name_key(i["code"]), []).append(i)
+    by_name = {name_key(i["name"]): i for i in items}
     for key in TEMPLATE_LISTS:
         title = _rows_sheet(key)
         if title.casefold() not in sheets:
@@ -348,17 +355,24 @@ def import_load_types(sheets: dict[str, Rows], old: LoadTypeList, columns: dict[
         for i in items:
             i["rows"][key] = []
         unknown: set[str] = set()
+        unclear: set[str] = set()
         for r in _sheet(sheets, title, ("Load type",)):
-            item = by_code.get(name_key(_get(r, "Load type")))
+            # the row's load type: by its name when the sheet gives one, else by its code when only one has it
+            code, name = _get(r, "Load type"), _get(r, TYPE_NAME)
+            same = by_code.get(name_key(code), [])
+            item = by_name.get(name_key(name)) if name.strip() else (same[0] if len(same) == 1 else None)
             if item is None:
-                unknown.add(_get(r, "Load type"))
+                (unclear if not name.strip() and len(same) > 1 else unknown).add(name.strip() or code)
                 continue
             item["rows"][key].append({c: _get(r, c) for c in heads if _get(r, c)})
         if unknown:
             notes.append(f"{title}: rows of load type(s) not in the Load Types sheet are left out: {', '.join(sorted(unknown))}")
+        if unclear:
+            notes.append(f'{title}: rows left out because several load types have their code and the "{TYPE_NAME}" column is blank: '
+                         + ", ".join(sorted(unclear)))
     if any(before[i["id"]].pdf for i in items if i["id"] in before):
         notes.append("Attached PDFs stay with their load types (they are not in the workbook).")
-    return Parsed({"items": items}, [i["code"] for i in items], notes, {i["id"]: i["code"] for i in items})
+    return Parsed({"items": items}, [i["name"] for i in items], notes, {i["id"]: i["name"] for i in items})
 
 
 # -- one load type's or equipment type's rows -------------------------------------------------------

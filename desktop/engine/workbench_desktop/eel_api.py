@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from workbench_core.keylists import EEL_SOURCE, KEPT, PRIMARY_SUPPLY, EelItem, check_eel, supply_loop
+from workbench_core.keylists.loadlist import load_type_choice
 from workbench_core.refdata import RefValidationError, name_key
 
 from .loadlist_api import EEL_GONE, EEL_NAME, Choice, _choices, eel_rows, import_rows, sync_rows
@@ -54,7 +55,7 @@ def _view(items: list[EelItem], updated_at=None) -> EelView:
         equipment_codes=[Choice(id=c.id, label=f"{c.code} – {c.name}") for c in lists.code_list("equipment-codes").items],
         packages=[Choice(id=p.id, label=f"{p.number} – {p.description}") for p in lists.equipment_packages().items],
         plant_areas=areas,
-        load_types=[LoadTypeChoice(id=t.id, label=f"{t.code} – {t.name}", rating_unit=t.rating_unit, voltage=t.voltage,
+        load_types=[LoadTypeChoice(id=t.id, label=load_type_choice(t, lists.load_types().items), rating_unit=t.rating_unit, voltage=t.voltage,
                                    phases=t.phases) for t in lists.load_types().items],
         supplies=supplies)
     imported: dict[str, set[str]] = {}

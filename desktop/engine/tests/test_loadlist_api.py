@@ -267,3 +267,41 @@ def test_load_factor_overrides_of_a_load() -> None:
     res = client.post("/api/loadlist/reset", json={"parts": ["factors"]}).json()
     assert res["counts"] == {"factors": 2} and "load factor overrides cleared on 2 row(s)" in res["message"]
     assert all(r["lf_max_demand"] is None for r in client.get("/api/loadlist").json()["rows"])
+
+
+def test_load_types_of_one_code_are_picked_by_rating() -> None:
+    client.post("/api/sample-data")
+    types = client.get("/api/keylists/load-types").json()["items"]
+    dol = next(t for t in types if t["code"] == "DOL")
+    rows = {r["values"]["tag"]: r for r in client.get("/api/loadlist").json()["rows"]}
+    dols = [r for r in rows.values() if r["values"].get("load_type") == "DOL" and r["load_type_by"] == "auto"]
+    assert dols and all(r["load_type_id"] == dol["id"] for r in dols)
+    ratings = sorted(float(r["values"]["load_rating"]) for r in dols)
+    split = ratings[0]  # the smallest stays in the first type; the others move to a second one
+
+    def body(items: list[dict]) -> dict:
+        return {"items": [x | {"voltage": str(x["voltage"]), "load_qty": "" if x["load_qty"] is None else str(x["load_qty"]),
+                               "multi_load": "yes" if x["multi_load"] else "no"} for x in items]}
+
+    big = dol | {"id": "dol-big", "name": "Direct on line, large", "from_value": str(split + 0.01), "to_value": "50", "pdf": None}
+    touching = client.put("/api/keylists/load-types", json=body(types + [big | {"from_value": dol["to_value"]}]))
+    assert touching.status_code == 422 and "dol-big.from_value" in touching.json()["fields"]
+    small = dol | {"to_value": str(split)}
+    saved = client.put("/api/keylists/load-types", json=body([small if t["id"] == dol["id"] else t for t in types] + [big]))
+    assert saved.status_code == 200, saved.text
+    view = client.get("/api/loadlist").json()
+    after = {r["values"]["tag"]: r for r in view["rows"]}
+    for r in dols:
+        want = dol["id"] if float(r["values"]["load_rating"]) <= split else "dol-big"
+        assert after[r["values"]["tag"]]["load_type_id"] == want, r["values"]["tag"]
+    labels = {c["id"]: c["label"] for c in view["load_types"]}
+    assert labels["dol-big"] == f"DOL {split + 0.01:g}–50 kW – Direct on line, large" and labels[dol["id"]].startswith(f"DOL {dol['from_value']}–")
+    # a load above every range of its code is left unallocated, with a warning naming it
+    tiny = client.put("/api/keylists/load-types", json=body(
+        [small if t["id"] == dol["id"] else t for t in types] + [big | {"to_value": str(split + 0.02)}]))
+    assert tiny.status_code == 200, tiny.text
+    view = client.get("/api/loadlist").json()
+    after = {r["values"]["tag"]: r for r in view["rows"]}
+    out = [r["values"]["tag"] for r in dols if float(r["values"]["load_rating"]) > split + 0.02]
+    assert out and all(after[t]["load_type_id"] is None for t in out)
+    assert any("no load type of that code whose rating unit and range fit" in w and out[0] in w for w in view["warnings"])

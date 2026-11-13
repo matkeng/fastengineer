@@ -143,7 +143,7 @@ def test_a_file_that_breaks_the_rules_changes_nothing() -> None:
     def bad_type(wb) -> None:
         wb["Load Types"]["C2"].value = "Horsepower"
     res = _import("load-types", _edit(_export("load-types"), bad_type))
-    assert res.status_code == 422 and "DOL: Choose kW or Amps" in res.json()["detail"]
+    assert res.status_code == 422 and "Direct on line motor starter: Choose kW or Amps" in res.json()["detail"]
 
 
 def test_load_types_rows_and_the_load_list_allocations() -> None:
@@ -404,3 +404,23 @@ def test_component_tables_fill_the_master_lists_and_round_trip() -> None:
     assert client.post("/api/list-workbooks/load-types/import", params={"filename": "x.xlsx", "apply": True}, content=data).status_code == 200
     dol = next(t for t in client.get("/api/keylists/load-types").json()["items"] if t["code"] == "DOL")
     assert dol["components"][0]["name"] == "CB"
+
+
+def test_load_types_sharing_a_code_round_trip_through_the_workbook() -> None:
+    client.post("/api/sample-data")
+    url = "/api/keylists/load-types"
+    types = client.get(url).json()["items"]
+    dol = next(t for t in types if t["code"] == "DOL")
+    twin = dol | {"id": "dol2", "name": "Direct on line, large", "from_value": "11.5", "to_value": "55", "pdf": None,
+                  "rows": {k: v[:1] for k, v in dol["rows"].items()}}
+    items = [x | {"voltage": str(x["voltage"]), "load_qty": "" if x["load_qty"] is None else str(x["load_qty"]),
+                  "multi_load": "yes" if x["multi_load"] else "no"} for x in types + [twin]]
+    assert client.put(url, json={"items": items}).status_code == 200
+    before = _state("load-types")
+    data = client.post("/api/list-workbooks/load-types/export", json={}).content
+    book = load_workbook(io.BytesIO(data))
+    sheet = next(s for s in book.sheetnames if s.endswith("rows"))
+    assert [c.value for c in book[sheet][1]][:2] == ["Load type", "Load type name"]
+    back = client.post("/api/list-workbooks/load-types/import", params={"filename": "lt.xlsx", "apply": True}, content=data)
+    assert back.status_code == 200, back.text
+    assert _state("load-types") == before  # each row went back to its own load type, ids kept

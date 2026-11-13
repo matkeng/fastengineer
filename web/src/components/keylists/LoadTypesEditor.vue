@@ -195,8 +195,8 @@ async function clone() {
 	kl.error = null;
 	editing.value = {
 		isNew: true, pdf: null,
-		form: { ...JSON.parse(JSON.stringify(e.form)), id: newId(), code: copyName(e.form.code, items.value.map((r) => r.code), 'code'),
-			name: copyName(e.form.name, items.value.map((r) => r.name), 'name') },
+		// the code is kept (load types can share one): the copy needs its own range before it can be saved
+		form: { ...JSON.parse(JSON.stringify(e.form)), id: newId(), name: copyName(e.form.name, items.value.map((r) => r.name), 'name') },
 	};
 	pdfChange.value = null;
 	tab.value = 'details';
@@ -344,7 +344,8 @@ onBeforeUnmount(() => {
 		<div class="mel-head">
 			<span class="kind tree">Key list</span>
 			<h2 class="key-title">Load Types</h2>
-			<span class="hint small">{{ items.length }} load type(s). Click a row to edit or delete it.</span>
+			<span class="hint small" title="Load types can share a code when their From–To ranges (same unit) don't overlap or touch. A load gets the type of its code whose unit is its Load units (HP counts as kW) and whose range includes its rating.">
+				{{ items.length }} load type(s). Click a row to edit or delete it. A load is matched on <strong>code, rating unit and From–To range</strong>.</span>
 			<span class="spacer" />
 			<HistoryButton entity="load_types" record-id="load-types" label="Load Types" />
 			<ListWorkbook list-id="load-types" name="Load Types" />
