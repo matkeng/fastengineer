@@ -236,3 +236,34 @@ def test_cable_details_of_a_load() -> None:
     assert any("cable size" in str(e) and "P-101" in str(e) for e in entries)
     # the details stay with the load when its import is read again
     assert {r["values"]["tag"]: r for r in client.get("/api/loadlist").json()["rows"]}["P-101"]["cable_length"] == 72.5
+
+
+def test_load_factor_overrides_of_a_load() -> None:
+    client.post("/api/sample-data")
+    rows = {r["values"]["tag"]: r for r in client.get("/api/loadlist").json()["rows"]}
+    pump, fan, mcc = rows["P-101"], rows["F-301"], rows["MCC-1"]
+    f = pump["factors"]
+    assert (f["nameplate_lf"], f["avg_demand"]) == (0.75, 1.0) and f["source"] in ("List", "Default") and f["list"]["avg_demand"] == 1.0
+
+    saved = _alloc([pump], lf_avg_demand=0.4).json()[0]
+    assert saved["lf_avg_demand"] == 0.4 and saved["lf_nameplate"] is None and saved["cable_size"] == pump["cable_size"]
+    assert (saved["factors"]["avg_demand"], saved["factors"]["nameplate_lf"], saved["factors"]["source"]) == (0.4, 0.75, "Override")
+    assert saved["factors"]["list"]["avg_demand"] == 1.0  # what the override replaces
+    out = _alloc([fan, mcc], lf_max_demand=0.6).json()  # several rows; an Electrical Equipment List row too
+    assert [r["factors"]["max_demand"] for r in out] == [0.6, 0.6]
+    bad = _alloc([pump], lf_nameplate=11, lf_optimised=-0.1)
+    assert bad.status_code == 422 and set(bad.json()["fields"]) == {"lf_nameplate", "lf_optimised"}
+
+    # a calculated field follows the override, and it stays when the imports are read again
+    fields = client.get("/api/load-fields").json()["fields"]
+    fields.append({"key": "", "label": "Avg kW", "kind": "calc", "calc": {"formula": "<<rating>> * <<LoadFactor.AvgDemand>>"}})
+    assert client.put("/api/load-fields", json={"fields": fields}).status_code == 200, "load fields"
+    rows = {r["values"]["tag"]: r for r in client.get("/api/loadlist").json()["rows"]}
+    assert rows["P-101"]["values"]["avg_kw"] == float(rows["P-101"]["values"]["load_rating"]) * 0.4
+    assert rows["P-101"]["lf_avg_demand"] == 0.4
+
+    cleared = _alloc([pump], lf_avg_demand=None).json()[0]
+    assert cleared["lf_avg_demand"] is None and cleared["factors"]["source"] != "Override"
+    res = client.post("/api/loadlist/reset", json={"parts": ["factors"]}).json()
+    assert res["counts"] == {"factors": 2} and "load factor overrides cleared on 2 row(s)" in res["message"]
+    assert all(r["lf_max_demand"] is None for r in client.get("/api/loadlist").json()["rows"])

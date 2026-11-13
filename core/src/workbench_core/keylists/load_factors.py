@@ -117,15 +117,37 @@ def load_factor_for(equipment_type: object, rows: list[LoadFactor]) -> tuple[Loa
     return by_name.get(name_key(DEFAULT_NAME)), False
 
 
-def load_factor_fields(row: LoadFactor | None, matched: bool = True) -> dict[str, object]:
+#: Load factor -> the Load List row's field that overrides it (keylists.loadlist.FACTOR_FIELDS).
+OVERRIDE: dict[str, str] = {"nameplate_lf": "lf_nameplate", "optimised_lf": "lf_optimised", "avg_demand": "lf_avg_demand",
+                            "max_demand": "lf_max_demand"}
+
+
+def _tag(field: str) -> str:
+    return {**TEXTS, **NUMBERS}[field][0].replace(" ", "").casefold()
+
+
+def load_factor_fields(row: LoadFactor | None, matched: bool = True, overrides: dict[str, float] | None = None) -> dict[str, object]:
     """A row's values by tag name (lower case, no spaces): equipmenttype, nameplatelf, optimisedlf,
-    avgdemand, maxdemand, notes, and matched (True when the load's type has its own row, False
-    when it got the Default row). Blank when no row."""
-    names = {title.replace(" ", "").casefold(): f for f, (title, _) in {**TEXTS, **NUMBERS}.items()}
-    out: dict[str, object] = {k: ("" if row is None or getattr(row, f) is None else getattr(row, f)) for k, f in names.items()}
+    avgdemand, maxdemand, notes; matched (True when the load's type has its own row, False when it
+    got the Default row); overridden (True when any factor is a load's own, from `overrides`:
+    factor field -> value) and source ("Override", "List", "Default", or blank). Blank when no row
+    and no overrides."""
+    over = {f: v for f, v in (overrides or {}).items() if v is not None}
+    out: dict[str, object] = {_tag(f): ("" if row is None or getattr(row, f) is None else getattr(row, f)) for f in {**TEXTS, **NUMBERS}}
+    out |= {_tag(f): v for f, v in over.items()}
     out["matched"] = "" if row is None else matched
+    out["overridden"] = bool(over) if row is not None or over else ""
+    out["source"] = "Override" if over else "" if row is None else "List" if matched else "Default"
     return out
 
 
+def effective_factors(load: object, equipment_type: object, rows: list[LoadFactor]) -> tuple[dict[str, object], LoadFactor | None]:
+    """A Load List row's factors: its Load Factors row's (load_factor_for), each replaced by the
+    load's own override when it has one (its lf_* fields). Returns (load_factor_fields, the list row)."""
+    row, matched = load_factor_for(equipment_type, rows)
+    overrides = {f: getattr(load, o, None) for f, o in OVERRIDE.items()}
+    return load_factor_fields(row, matched, overrides), row
+
+
 __all__ = ["LoadFactor", "LoadFactorList", "NUMBERS", "TEXTS", "DEFAULT_NAME", "DEFAULT_ROWS", "default_load_factors",
-           "check_load_factors", "load_factor_for", "load_factor_fields"]
+           "check_load_factors", "load_factor_for", "load_factor_fields", "effective_factors", "OVERRIDE"]

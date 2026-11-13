@@ -10,7 +10,7 @@ import { computed, onBeforeUnmount, ref, toRaw, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, type SelectFilter, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
 import {
-	type Allocation, type CableConstruction, type CableDetails, EEL_SOURCE, type LoadListChoice, type LoadListRow, PRIMARY_SUPPLY, cableSummary, rowRef, rowTag,
+	type Allocation, type CableConstruction, type CableDetails, EEL_SOURCE, type FactorKey, type FactorOverrides, type LoadListChoice, type LoadListRow, PRIMARY_SUPPLY, cableSummary, rowRef, rowTag,
 } from '../../lib/keyListTypes';
 import { LOAD_FIELD_LABELS } from '../../lib/melTypes';
 import { useKeyLists } from '../../stores/keylists';
@@ -161,6 +161,12 @@ function build() {
 			render: (t: string, type: string, row: LoadListRow) => (type !== 'display' ? t
 				: `<button type="button" class="link cable-edit${t ? '' : ' none'}" data-cable="${rows.indexOf(row)}" title="Cable length, size, insulation, parallel cables">${escapeHtml(t) || 'Set…'}</button>`),
 		},
+		{
+			// The load factors (Load Factors list, by equipment type), any of them typed in over the list's; click to edit.
+			title: 'Load factors <span class="hint small">NLF / OLF / Avg / Max</span>', data: (row: LoadListRow) => factorsText(row), className: 'alloc-col factors-col',
+			render: (t: string, type: string, row: LoadListRow) => (type !== 'display' ? t
+				: `<button type="button" class="link factors-edit" data-factors="${rows.indexOf(row)}" title="${escapeHtml(factorsTip(row))}">${factorsHtml(row)}</button>`),
+		},
 		...v.fields.filter((f) => f !== 'tag' && f !== 'desc').map((f): ColumnsConfig => ({
 			// The import's own text for what is edited here is marked, so the two can't be mixed up.
 			title: escapeHtml(v.labels[f] ?? LOAD_FIELD_LABELS[f] ?? f) + (FROM_IMPORT.has(f) ? ' (import)' : '')
@@ -284,6 +290,9 @@ function onClick(e: MouseEvent) {
 	const el = (e.target as HTMLElement).closest<HTMLElement>('[data-cable]');
 	const row = el ? toRaw(view.value!.rows)[Number(el.dataset.cable)] : null;
 	if (row) openCable([row], false);
+	const fe = (e.target as HTMLElement).closest<HTMLElement>('[data-factors]');
+	const frow = fe ? toRaw(view.value!.rows)[Number(fe.dataset.factors)] : null;
+	if (frow) openFactors([frow], false);
 }
 
 async function applyCable() {
@@ -311,6 +320,66 @@ async function applyCable() {
 		kl.message = c.bulk ? `Saved ${saved.length} row(s)` : `Saved ${rowTag(c.rows[0])}`;
 		cable.value = null;
 	}
+}
+
+// -- load factor overrides: one row (click its Load factors cell) or every row the filters show --
+const FACTORS: { key: FactorKey; field: keyof FactorOverrides; label: string; short: string }[] = [
+	{ key: 'nameplate_lf', field: 'lf_nameplate', label: 'Plant nameplate load factor', short: 'NLF' },
+	{ key: 'optimised_lf', field: 'lf_optimised', label: 'Plant optimised load factor', short: 'OLF' },
+	{ key: 'avg_demand', field: 'lf_avg_demand', label: 'Average demand factor', short: 'Avg' },
+	{ key: 'max_demand', field: 'lf_max_demand', label: 'Max demand factor', short: 'Max' },
+];
+const fmt = (v: unknown) => (v === null || v === undefined || v === '' ? '–' : Number(v).toFixed(2));
+function factorsText(r: LoadListRow): string {
+	return FACTORS.map((f) => fmt(r.factors?.[f.key])).join(' / ');
+}
+function factorsHtml(r: LoadListRow): string {
+	return FACTORS.map((f) => (r[f.field] != null ? `<strong class="override">${fmt(r[f.field])}✎</strong>` : escapeHtml(fmt(r.factors?.[f.key])))).join(' / ');
+}
+function factorsTip(r: LoadListRow): string {
+	const from = r.factors?.row ? `Load Factors row: ${r.factors.row}` : 'No Load Factors row';
+	const over = FACTORS.filter((f) => r[f.field] != null).map((f) => `${f.label}: ${fmt(r[f.field])} typed in (list: ${fmt(r.factors?.list?.[f.key])})`);
+	return [from, ...over, 'Click to override'].join('\n');
+}
+const factors = ref<{ rows: LoadListRow[]; bulk: boolean; set: Record<string, boolean>; form: Record<string, string> } | null>(null);
+const factorErrors = computed(() => kl.fieldErrors as Partial<Record<string, string>>);
+function openFactors(rows: LoadListRow[], bulk: boolean) {
+	const r = bulk ? null : rows[0];
+	kl.error = null;
+	kl.fieldErrors = {};
+	factors.value = {
+		rows, bulk, set: Object.fromEntries(FACTORS.map((f) => [f.field, !bulk])),
+		form: Object.fromEntries(FACTORS.map((f) => [f.field, r?.[f.field] == null ? '' : String(r[f.field])])),
+	};
+}
+async function applyFactors(clearAll = false) {
+	const c = factors.value;
+	if (!c || !c.rows.length) return;
+	const change: FactorOverrides = {};
+	for (const f of FACTORS) {
+		if (!clearAll && !c.set[f.field]) continue;
+		const t = clearAll ? '' : String(c.form[f.field] ?? '').trim();
+		const n = t === '' ? null : Number(t.replace(',', '.'));
+		if (n !== null && Number.isNaN(n)) {
+			kl.error = `${f.label}: a number, or blank to use the list's`;
+			return;
+		}
+		change[f.field] = n;
+	}
+	if (!Object.keys(change).length) {
+		kl.error = 'Tick what to change.';
+		return;
+	}
+	const saved = await kl.allocate(c.rows, change as Allocation);
+	if (saved) {
+		merge(saved);
+		kl.message = c.bulk ? `Saved ${saved.length} row(s)` : `Saved ${rowTag(c.rows[0])}`;
+		factors.value = null;
+		if (view.value?.calculated?.length) void kl.loadLoadList(); // calculated fields may use the factors
+	}
+}
+function openBulkFactors() {
+	if (table) openFactors(table.api.rows({ search: 'applied' }).data().toArray() as LoadListRow[], true);
 }
 
 function openBulkCable() {
@@ -388,6 +457,7 @@ onBeforeUnmount(() => table?.api.destroy());
 				<button type="button" class="secondary small" :disabled="kl.busy" @click="openBulk('load_type')">Set load type…</button>
 				<button type="button" class="secondary small" :disabled="kl.busy" @click="openBulk('supplied_from')">Set supplied from…</button>
 				<button type="button" class="secondary small" :disabled="kl.busy" @click="openBulkCable">Set cable details…</button>
+				<button type="button" class="secondary small" :disabled="kl.busy" @click="openBulkFactors">Set load factors…</button>
 			</div>
 			<div ref="host" class="result-table" @change="onChange" @click="onClick" />
 		</div>
@@ -465,6 +535,33 @@ onBeforeUnmount(() => table?.api.destroy());
 				<span class="spacer" />
 				<button type="button" class="secondary" @click="cable = null">Cancel</button>
 				<button type="button" :disabled="kl.busy || !cable?.rows.length" @click="applyCable">{{ cable?.bulk ? `Set ${cable.rows.length} row(s)` : 'Save' }}</button>
+			</template>
+		</AppModal>
+		<AppModal class="factors-form" :open="!!factors" :title="factors?.bulk ? 'Set load factors' : `Load factors of ${factors ? rowTag(factors.rows[0]) : ''}`" @close="factors = null">
+			<template v-if="factors">
+				<p v-if="factors.bulk">
+					This sets the ticked factors for the <strong>{{ factors.rows.length }}</strong> row(s) the filters show. Blank goes back to the Load Factors list's.
+				</p>
+				<p v-else class="hint small">
+					From the Load Factors list by Equipment type<template v-if="factors.rows[0].factors?.row">: <strong>{{ factors.rows[0].factors?.row }}</strong> row</template>.
+					Type a value to override it for this row only; leave it blank to use the list's.
+				</p>
+				<form class="form-grid cable-grid" @submit.prevent="applyFactors()">
+					<label v-for="f in FACTORS" :key="f.field" class="field">
+						<span><input v-if="factors.bulk" v-model="factors.set[f.field]" type="checkbox" /> {{ f.label }}</span>
+						<input v-model="factors.form[f.field]" type="text" inputmode="decimal" :disabled="!factors.set[f.field]" :data-factor="f.field"
+							:placeholder="factors.bulk ? 'blank: the list\'s' : `List: ${fmt(factors.rows[0].factors?.list?.[f.key])}`" :class="{ invalid: factorErrors[f.field] }" />
+						<span v-if="factorErrors[f.field]" class="warn small">{{ factorErrors[f.field] }}</span>
+					</label>
+					<button type="submit" hidden />
+				</form>
+				<p v-if="kl.error" class="error">{{ kl.error }}</p>
+			</template>
+			<template #footer>
+				<button type="button" class="secondary" :disabled="kl.busy" title="Every factor back to the Load Factors list's" @click="applyFactors(true)">Clear overrides</button>
+				<span class="spacer" />
+				<button type="button" class="secondary" @click="factors = null">Cancel</button>
+				<button type="button" :disabled="kl.busy || !factors?.rows.length" @click="applyFactors()">{{ factors?.bulk ? `Set ${factors.rows.length} row(s)` : 'Save' }}</button>
 			</template>
 		</AppModal>
 		<LoadFieldsEditor :open="editingFields" @close="editingFields = false" @saved="kl.loadLoadList()" />

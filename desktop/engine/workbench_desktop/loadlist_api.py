@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from workbench_core.keylists import EEL_SOURCE, LOAD_LIST_TARGETS, EelList, LoadListRow, match_index
-from workbench_core.keylists.loadlist import CABLE_CONSTRUCTIONS, CABLE_FIELDS
+from workbench_core.keylists.loadlist import CABLE_CONSTRUCTIONS, CABLE_FIELDS, FACTOR_FIELDS
 from workbench_core.mel import run_pipeline
 from workbench_core.mel.pipeline import output_list
 from workbench_core.refdata import RefValidationError, name_key
@@ -140,7 +140,23 @@ def current_rows() -> tuple[list[LoadListRow], list[Source], list[str]]:
         sources.append(Source(id=EEL_SOURCE, name=EEL_NAME, target="EEL", rows=len(eel.items), has_file=True))
     rows = sync_rows(live, gone)
     with_calcs(rows)
+    with_factors(rows)
     return rows, sources, warnings
+
+
+def with_factors(rows: list[LoadListRow]) -> None:
+    """Give each row its effective load factors (keylists.load_factors.effective_factors), in place:
+    nameplate_lf, optimised_lf, avg_demand, max_demand, source, row (the Load Factors row's name)
+    and list (that row's own values, which an override replaces)."""
+    from workbench_core.keylists.load_factors import OVERRIDE, effective_factors
+
+    lf = get_keylists().load_factors().items
+    for r in rows:
+        fields, row = effective_factors(r, r.values.get("equip_type"), lf)
+        r.factors = {f: fields[k] for f, k in (("nameplate_lf", "nameplatelf"), ("optimised_lf", "optimisedlf"),
+                                               ("avg_demand", "avgdemand"), ("max_demand", "maxdemand"))}
+        r.factors |= {"source": fields["source"], "row": row.equipment_type if row else "",
+                      "list": {f: getattr(row, f) if row else None for f in OVERRIDE}}
 
 
 def with_calcs(rows: list[LoadListRow], fields=None, only: str | None = None) -> None:
@@ -205,6 +221,11 @@ class Allocation(BaseModel):
     cable_insulation: str = ""
     cable_size: str = ""
     earth_size: str = ""
+    # Load factors typed in over the Load Factors list's (null = use the list's). Any row.
+    lf_nameplate: float | None = None
+    lf_optimised: float | None = None
+    lf_avg_demand: float | None = None
+    lf_max_demand: float | None = None
 
 
 def _check_cable(change: dict[str, object]) -> None:
@@ -238,9 +259,19 @@ def _check_cable(change: dict[str, object]) -> None:
         raise RefValidationError("The cable details are not valid: " + "; ".join(f"{k.replace('_', ' ')}: {v}" for k, v in errors.items()) + ".", errors)
 
 
+def _check_factors(change: dict[str, object]) -> None:
+    """Load factor overrides as sent: blank, or a number from 0 to 10."""
+    from workbench_core.keylists.load_factors import MAX_FACTOR
+
+    errors = {f: f"A number from 0 to {MAX_FACTOR:g}, or blank" for f in FACTOR_FIELDS
+              if change.get(f) is not None and not 0 <= float(change[f]) <= MAX_FACTOR}  # type: ignore[arg-type]
+    if errors:
+        raise RefValidationError("The load factors are not valid: each is a number from 0 to 10, or blank.", errors)
+
+
 @router.put("/allocations", response_model=list[LoadListRow])
 def allocate(body: Allocation):
-    change = {f: getattr(body, f) for f in ("plant_area_id", "load_type_id", "is_panel", "supplied_from") + CABLE_FIELDS
+    change = {f: getattr(body, f) for f in ("plant_area_id", "load_type_id", "is_panel", "supplied_from") + CABLE_FIELDS + FACTOR_FIELDS
               if f in body.model_fields_set}
     if not change or not body.rows:
         return invalid(RefValidationError("Choose rows and what to change."))
@@ -253,7 +284,10 @@ def allocate(body: Allocation):
     labels = {c.id: c.label for c in areas + types}
     try:
         _check_cable(change)
-        return get_loadlist().allocate([(r.recipe_id, r.key) for r in body.rows], change, labels)
+        _check_factors(change)
+        rows = get_loadlist().allocate([(r.recipe_id, r.key) for r in body.rows], change, labels)
+        with_factors(rows)
+        return rows
     except RefValidationError as exc:
         return invalid(exc)
     except NotFound as exc:
@@ -331,7 +365,7 @@ def get_mel_list() -> MelList:
 
 class ResetBody(BaseModel):
     """What to reset: "all" (forget every row and read the imports again), or any of
-    "plant_area", "load_type", "supply", "cable", "deleted"."""
+    "plant_area", "load_type", "supply", "cable", "factors", "deleted"."""
     parts: list[str] = Field(default_factory=lambda: ["all"])
 
 
@@ -354,6 +388,7 @@ def reset(body: ResetBody):
     rows = sum(1 for r in current_rows()[0] if r.status == "active")
     said = {"all": "{n} remembered row(s) forgotten", "plant_area": "{n} plant area(s) cleared", "load_type": "{n} load type(s) cleared",
             "supply": "panel and supply choices cleared on {n} row(s)", "cable": "cable details cleared on {n} row(s)",
+            "factors": "load factor overrides cleared on {n} row(s)",
             "deleted": "{n} deleted row(s) removed"}
     done = [said[k].format(n=n) for k, n in counts.items()] or ["Nothing needed resetting"]
     return ResetResult(message="; ".join(done) + f". The imports were read again: {rows} row(s).", counts=counts, rows=rows)

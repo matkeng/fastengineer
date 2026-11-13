@@ -42,6 +42,8 @@ CableConstruction = Literal["Multicore", "Single core"]
 CABLE_CONSTRUCTIONS: tuple[str, ...] = ("Multicore", "Single core")
 #: The cable details a person types in on a row (not allocations: nothing fills them in).
 CABLE_FIELDS = ("cable_length", "cable_construction", "cable_parallel", "cable_insulation", "cable_size", "earth_size")
+#: A person's overrides of the row's Load Factors (keylists.load_factors): blank uses the list's.
+FACTOR_FIELDS = ("lf_nameplate", "lf_optimised", "lf_avg_demand", "lf_max_demand")
 
 
 class LoadListRow(BaseModel):
@@ -68,10 +70,18 @@ class LoadListRow(BaseModel):
     cable_insulation: str = ""  # an Insulation value of the Cable Types list
     cable_size: str = ""  # core size, mm2 (a Diameter value of the Cable Types list)
     earth_size: str = ""  # the separate earth cable of a single-core set, mm2
+    # Load factors typed in by a person, overriding the Load Factors list's for this row (None: the list's).
+    lf_nameplate: float | None = None
+    lf_optimised: float | None = None
+    lf_avg_demand: float | None = None
+    lf_max_demand: float | None = None
     updated_at: datetime | None = None  # when a person last changed its allocations
     #: What is wrong with its calculated fields (keylists.load_calcs): [{field, severity, message}].
     #: Worked out with them each time the Load List is read; not kept.
     calc_issues: list[dict[str, str]] = Field(default_factory=list)
+    #: Its effective load factors (keylists.load_factors.effective_factors), worked out each time
+    #: the Load List is read; not kept. Includes "list" (the list's values) and "source".
+    factors: dict[str, object] = Field(default_factory=dict)
 
     def ref(self) -> str:
         """How other rows refer to this one (import ids have no "/")."""

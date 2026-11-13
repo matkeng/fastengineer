@@ -705,6 +705,23 @@ You don't create or name them: each project has one of each.
   calculated fields and the summary page. For example, a calculated field
   `<<rating>> * <<LoadFactor.NameplateLF>> * <<LoadFactor.AvgDemand>>` gives the
   average kW.
+
+  Any factor can be **overridden on a Load List row**:
+  - **Overriding:** click the row's **Load factors** cell (NLF / OLF / Avg / Max).
+    Each box shows the list's value. Type a value to use instead, or leave it
+    blank to keep the list's.
+  - **Many rows:** use **Set load factors…** to set the ticked factors on every
+    row the filters show.
+  - **Where overrides show:** an overridden value is shown in bold with ✎, and
+    its tooltip gives the list value it replaces. Overrides apply everywhere the
+    factors are used: tags, calculated fields and the summary page.
+  - **Extra tags:** `<<LoadFactor.Source>>` is Override, List or Default, and
+    `<<LoadFactor.Overridden>>` is Yes or No. The typed-in values themselves
+    are `<<lf_nameplate>>`, `<<lf_optimised>>`, `<<lf_avg_demand>>` and
+    `<<lf_max_demand>>`.
+  - **Keeping and clearing:** overrides stay with the row when the imports are
+    read again, are in the row's change log, and are cleared with **Clear
+    overrides** or the Load List's **Reset… → Load factor overrides**.
 - **Electrical Equipment List** (EEL): equipment entered and edited here, in
   addition to any EEL import. A grid of every item; click a row (or **Add
   equipment**) for a form. **Tag number** (required, and unique across this list

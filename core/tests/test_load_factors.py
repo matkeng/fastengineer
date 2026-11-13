@@ -75,3 +75,21 @@ def test_template_rows_and_calculations_reach_the_factors() -> None:
     check_calcs(fields)
     apply_calcs(loads, fields, lt, {}, load_factors=LF)
     assert (loads[0].values["avg_kw"], loads[1].values["avg_kw"]) == (round(10 * 0.75 * 0.05, 3), 7.5)
+
+
+def test_a_rows_own_factors_override_the_list() -> None:
+    from workbench_core.keylists.load_factors import effective_factors
+
+    load = LoadListRow(recipe_id="m", key="H-1", source="MEL", target="MEL", values={"tag": "H-1"}, lf_avg_demand=0.2)
+    f, row = effective_factors(load, "Crane/Hoist", LF)
+    assert row.equipment_type == "Crane/Hoist" and (f["avgdemand"], f["maxdemand"], f["source"], f["overridden"]) == (0.2, 0.5, "Override", True)
+    f, _ = effective_factors(load.model_copy(update={"lf_avg_demand": None}), "nope", LF)
+    assert (f["source"], f["overridden"]) == ("Default", False)
+    f, row = effective_factors(load, "nope", [])  # no list row: the override alone
+    assert row is None and (f["avgdemand"], f["nameplatelf"], f["source"]) == (0.2, "", "Override")
+
+    types = check_load_types([{"id": "t1", "code": "DOL", "name": "DOL", "rating_unit": "kW", "voltage": "415", "phases": "AC-3-phase",
+                               "rows": {"equipment_list": [{"Tag": "<<Tag>>", "Remarks": "<<LoadFactor.AvgDemand>> <<LoadFactor.Source>> <<LfAvgDemand>>"}]}}])
+    loads = [load.model_copy(update={"load_type_id": "t1", "values": {"tag": "H-1", "equip_type": "Crane/Hoist"}})]
+    eq = generate("equipment_list", loads, {t.id: t for t in types.items}, {}, links=Links(load_types=types.items, loads=loads, load_factors=LF))
+    assert dict(zip(LISTS["equipment_list"].columns, eq.rows[0].cells))["Remarks"] == "0.2 Override 0.2"

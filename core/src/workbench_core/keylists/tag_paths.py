@@ -72,6 +72,8 @@ SCHEMA: dict[str, tuple[str, str, list[tuple[str, str]], list[tuple[str, str, st
         ("NameplateLF", "plant nameplate load factor"), ("OptimisedLF", "plant optimised load factor"),
         ("AvgDemand", "average demand factor"), ("MaxDemand", "maximum demand factor"), ("Notes", "notes"),
         ("Matched", "Yes when the load's equipment type has its own row, No when it got the Default row"),
+        ("Overridden", "Yes when any factor is typed in on the load's Load List row"),
+        ("Source", "Override (a factor typed in on the row), List (its type's row) or Default"),
     ], []),
     "starter": ("a Type 2 starter selection", "Chart", [
         ("Chart", "coordination chart (e.g. ECH64.2)"), ("Description", "what the chart is"), ("FaultkA", "fault level Iq (kA)"),
@@ -275,12 +277,15 @@ class Links:
         s = starter_for_load(flat.get("rating"), flat.get("units"), t.starter_chart if t else "", self.starters)
         return None if s is None else Record("starter", dict(starter_fields(s)), name=s.chart)
 
-    def load_factor(self, flat: dict[str, object]):
-        """The Load Factors row a load's Equipment type matches (else the Default row)."""
-        from .load_factors import load_factor_fields, load_factor_for
+    def load_factor(self, load, flat: dict[str, object]):
+        """The Load Factors row a load's Equipment type matches (else the Default row), with the
+        factors typed in on its Load List row in place of the list's."""
+        from .load_factors import effective_factors
 
-        row, matched = load_factor_for(flat.get("equiptype"), self.load_factors)
-        return None if row is None else Record("loadfactor", dict(load_factor_fields(row, matched)), name=row.equipment_type)
+        fields, row = effective_factors(load, flat.get("equiptype"), self.load_factors)
+        if fields["source"] == "":
+            return None
+        return Record("loadfactor", dict(fields), name=row.equipment_type if row else "Override")
 
     def package(self, i):
         p = self.packages.get(i or "")
@@ -338,7 +343,8 @@ class Links:
         fields |= {norm(k): v for k, v in flat.items()}
         fields |= {"ispanel": row.is_panel, "cablelength": row.cable_length, "cablesize": row.cable_size, "earthsize": row.earth_size,
                    "cableinsulation": row.cable_insulation, "cableparallel": row.cable_parallel,
-                   "cableconstruction": row.cable_construction}
+                   "cableconstruction": row.cable_construction, "lfnameplate": row.lf_nameplate, "lfoptimised": row.lf_optimised,
+                   "lfavgdemand": row.lf_avg_demand, "lfmaxdemand": row.lf_max_demand}
         if row.supplied_from == PRIMARY_SUPPLY:
             supply: Callable[[], Record | None] = lambda: Record("load", {"tag": PRIMARY}, name=PRIMARY)  # noqa: E731
         else:
@@ -346,7 +352,7 @@ class Links:
         links = {"loadtype": lambda: self.load_type(row.load_type_id, rec), "plantarea": lambda: self.area(row.plant_area_id),
                  "suppliedfrom": supply, "eel": lambda: self.eel_item(row.key) if row.recipe_id == EEL_SOURCE else None,
                  "cable": lambda: self.cable(cable_code), "motor": lambda: self.motor(flat), "drive": lambda: self.drive(flat),
-                 "starter": lambda: self.starter(row, flat), "loadfactor": lambda: self.load_factor(flat)}
+                 "starter": lambda: self.starter(row, flat), "loadfactor": lambda: self.load_factor(row, flat)}
         rec = Record("load", fields, links, row.tag())
         return rec
 

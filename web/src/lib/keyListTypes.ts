@@ -168,8 +168,17 @@ export interface LoadListRow {
 	/** The load's power cable, typed in (sizing is done elsewhere); the cable schedule finds the cable type from these. */
 	cable_length: number | null; cable_construction: CableConstruction | null; cable_parallel: number | null;
 	cable_insulation: string; cable_size: string; earth_size: string;
+	/** Load factors typed in over the Load Factors list's (null: the list's). */
+	lf_nameplate?: number | null; lf_optimised?: number | null; lf_avg_demand?: number | null; lf_max_demand?: number | null;
+	/** Its effective load factors (worked out each read): the list's, or the row's own where typed in. */
+	factors?: LoadFactorsOf;
 	updated_at: string | null;
 }
+export type FactorKey = 'nameplate_lf' | 'optimised_lf' | 'avg_demand' | 'max_demand';
+export interface LoadFactorsOf extends Partial<Record<FactorKey, number | string | null>> {
+	source?: '' | 'Override' | 'List' | 'Default'; row?: string; list?: Partial<Record<FactorKey, number | null>>;
+}
+export type FactorOverrides = { lf_nameplate?: number | null; lf_optimised?: number | null; lf_avg_demand?: number | null; lf_max_demand?: number | null };
 export const PRIMARY_SUPPLY = 'primary';
 /** How rows refer to each other (import ids have no "/"). */
 export type CableConstruction = 'Multicore' | 'Single core';
@@ -194,7 +203,7 @@ export interface LoadListView {
 	/** The choices for a load's cable, from the Cable Types list. */
 	cable_insulations: string[]; cable_sizes: string[]; earth_sizes: string[];
 }
-export type Allocation = { plant_area_id?: string | null; load_type_id?: string | null; is_panel?: boolean; supplied_from?: string | null } & Partial<CableDetails>;
+export type Allocation = { plant_area_id?: string | null; load_type_id?: string | null; is_panel?: boolean; supplied_from?: string | null } & Partial<CableDetails> & FactorOverrides;
 export interface KeyListOverview {
 	plant_areas: { items: number; depth: number };
 	area_types: string[];

@@ -35,7 +35,7 @@ from ..mel.functions import NotAllowed, make_interpreter, prepare
 from ..mel.load_fields import LoadCalc, LoadFields
 from ..refdata.models import RefValidationError
 from .loadgen import _NUMBER, tags_for
-from .loadlist import CABLE_FIELDS, LoadListRow
+from .loadlist import CABLE_FIELDS, FACTOR_FIELDS, LoadListRow
 from .models import LoadType
 
 REF = re.compile(r"""(["']?)<<\s*(.+?)\s*>>\1""")
@@ -171,7 +171,12 @@ def _load_factor_refs() -> list[tuple[str, str]]:
 
     out = [(f"loadfactor.{t.replace(' ', '').casefold()}", f"the load's {m} (Load Factors, by its Equipment type; else the Default row)")
            for f, (t, m) in {**NUMBERS, **TEXTS}.items()]
-    return out + [("loadfactor.matched", "True when the load's equipment type has its own Load Factors row, False for the Default row")]
+    return out + [("loadfactor.matched", "True when the load's equipment type has its own Load Factors row, False for the Default row"),
+                  ("loadfactor.overridden", "True when any of the load's factors is typed in on its Load List row"),
+                  ("loadfactor.source", "Override (a factor typed in on the row), List (its type's row) or Default"),
+                  ("lf_nameplate", "the nameplate load factor typed in on the row (blank: none)"),
+                  ("lf_optimised", "the optimised load factor typed in on the row"), ("lf_avg_demand", "the average demand factor typed in on the row"),
+                  ("lf_max_demand", "the max demand factor typed in on the row")]
 
 
 MOTOR_REFS: list[tuple[str, str]] = _motor_refs() + _drive_refs() + _starter_refs() + _load_factor_refs()
@@ -282,9 +287,9 @@ def load_cells(row: LoadListRow, load_types: dict[str, LoadType], areas: dict[st
     lt = load_types.get(row.load_type_id or "")
     s = starter_for_load(cells.get("rating"), cells.get("units"), lt.starter_chart if lt else "", starters)
     cells |= {f"starter.{k}": v for k, v in starter_fields(s).items()}
-    from .load_factors import load_factor_fields, load_factor_for
-    lf, matched = load_factor_for(cells.get("equiptype"), load_factors or [])
-    cells |= {f"loadfactor.{k}": v for k, v in load_factor_fields(lf, matched).items()}
+    from .load_factors import effective_factors
+    cells |= {f"loadfactor.{k}": v for k, v in effective_factors(row, cells.get("equiptype"), load_factors or [])[0].items()}
+    cells |= {f: ("" if getattr(row, f) is None else getattr(row, f)) for f in FACTOR_FIELDS}
     return cells
 
 

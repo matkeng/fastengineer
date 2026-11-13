@@ -27,6 +27,7 @@ from workbench_core.keylists.instrument_runsheet import InstrumentRunsheet
 from workbench_core.keylists.drawing_list import DocumentList, DrawingList
 from workbench_core.keylists.enums import ProjectEnums, default_enums
 from workbench_core.keylists.loadgen import LISTS
+from workbench_core.keylists.loadlist import FACTOR_FIELDS
 from workbench_core.mel.load_fields import FieldChange, LoadFields, default_load_fields
 from workbench_core.keylists.master_columns import ColumnChange, MasterColumns, default_master_columns, rename_in, rewrite_rows
 from workbench_core.keylists import (
@@ -1112,10 +1113,10 @@ class LoadListStore:
 
     def _put(self, row: LoadListRow) -> None:
         self._db.execute("INSERT INTO load_list VALUES (?, ?, ?) ON CONFLICT(recipe_id, row_key) DO UPDATE SET "
-                         "data = excluded.data", (row.recipe_id, row.key, row.model_dump_json()))
+                         "data = excluded.data", (row.recipe_id, row.key, row.model_dump_json(exclude={"factors"})))
 
     #: What a reset can clear, besides everything ("all").
-    RESET_PARTS = ("plant_area", "load_type", "supply", "cable", "deleted")
+    RESET_PARTS = ("plant_area", "load_type", "supply", "cable", "factors", "deleted")
 
     def reset(self, parts: set[str] | None = None) -> dict[str, int]:
         """Reset the Load List. With no `parts` (or "all"), every remembered row is forgotten,
@@ -1154,11 +1155,15 @@ class LoadListStore:
                     if "cable" in parts and any(getattr(row, f) != v for f, v in blank_cable.items()):
                         update |= blank_cable
                         counts["cable"] = counts.get("cable", 0) + 1
+                    if "factors" in parts and any(getattr(row, f) is not None for f in FACTOR_FIELDS):
+                        update |= dict.fromkeys(FACTOR_FIELDS)
+                        counts["factors"] = counts.get("factors", 0) + 1
                     if update:
                         self._put(row.model_copy(update=update))
             if counts:
                 names = {"all": "rows forgotten", "plant_area": "plant areas cleared", "load_type": "load types cleared",
-                         "supply": "panels and supplies cleared", "cable": "cable details cleared", "deleted": "deleted rows removed"}
+                         "supply": "panels and supplies cleared", "cable": "cable details cleared", "factors": "load factor overrides cleared",
+                         "deleted": "deleted rows removed"}
                 audit.log(self._db, "load_list", "load-list", None, {names[k]: n for k, n in counts.items()}, label="Load List",
                           note="Reset" + (": every row forgotten, then read again from the imports" if "all" in parts else ""))
         return counts
@@ -1242,7 +1247,9 @@ class LoadListStore:
                         "distribution panel": "yes" if r.is_panel else "no", "supplied from": supply_label(r.supplied_from),
                         "cable length (m)": r.cable_length, "power cable": r.cable_construction,
                         "parallel cables": r.cable_parallel, "cable insulation": r.cable_insulation or None,
-                        "cable size": r.cable_size or None, "earth size": r.earth_size or None}
+                        "cable size": r.cable_size or None, "earth size": r.earth_size or None,
+                        "nameplate LF": r.lf_nameplate, "optimised LF": r.lf_optimised, "avg demand factor": r.lf_avg_demand,
+                        "max demand factor": r.lf_max_demand}
 
             supply = change.get("supplied_from")
             if supply is not None and supply != PRIMARY_SUPPLY:

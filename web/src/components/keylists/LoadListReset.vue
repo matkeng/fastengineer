@@ -16,6 +16,7 @@ const PARTS = [
 	{ id: 'load_type', label: 'Load types people chose', what: 'They go back to what the import\'s load type text gives, or blank.' },
 	{ id: 'supply', label: 'Distribution panels and supplied from', what: 'The panel ticks and supplies people chose go; the import\'s own are filled in again.' },
 	{ id: 'cable', label: 'Cable details', what: 'Length, construction, parallel cables, insulation, size and earth size of every row.' },
+	{ id: 'factors', label: 'Load factor overrides', what: 'The load factors typed in on rows: every row goes back to the Load Factors list\'s.' },
 	{ id: 'deleted', label: 'Rows kept as deleted', what: 'Rows that left their import are forgotten, with what was set on them.' },
 ] as const;
 type Part = (typeof PARTS)[number]['id'];

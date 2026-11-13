@@ -1013,6 +1013,8 @@ main.fill > .gen > .wizard { flex: 1; min-height: 320px; display: flex; flex-dir
 /* Load List: the power cable's details */
 .cable-col .cable-edit { white-space: nowrap; }
 .cable-col .cable-edit.none { color: var(--muted); }
+.factors-col .factors-edit { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.factors-col .factors-edit .override { color: var(--accent, #1a73e8); }
 dialog.modal.cable-form { width: min(620px, calc(100vw - 32px)); }
 .cable-grid { grid-template-columns: 1fr 1fr; column-gap: 16px; align-items: start; }
 .cable-grid .field select, .cable-grid .field input:not([type='checkbox']) { width: 100%; height: 30px; }
