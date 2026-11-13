@@ -116,6 +116,29 @@ def test_flow_into_an_instrument_list(data_dir: Path) -> None:
     mel = client.post("/api/mel/recipes", json={"name": "M", "target": "MEL"}).json()
     assert client.get(f"/api/mel/recipes/{mel['id']}").json()["output_name"] == "Load list"
 
+    # PID Symbols: one row per detection, with its centre in mm, into the master list
+    psl = client.post("/api/mel/recipes", json={"name": "P&ID symbols", "target": "PSL"}).json()
+    rev = client.post(f"/api/mel/recipes/{psl['id']}/revisions/symbols", json={"run_id": run["id"]})
+    assert rev.status_code == 200, rev.text and rev.json()["key_header"] == "Key"
+    detail = client.get(f"/api/mel/recipes/{psl['id']}").json()
+    assert detail["output_name"] == "PID Symbols" and "x_mm" in detail["fields"]
+    mapped = {m["field"]: m["column"] for m in detail["recipe"]["mapping"]}
+    assert mapped["tag"] == "Tag" and mapped["x_mm"] == "X (mm)" and mapped["y_mm"] == "Y (mm)" and mapped["loop"] == "loop"
+    pid = client.get("/api/pid-symbols").json()
+    assert pid["sources"][0]["name"] == "P&ID symbols" and pid["rows"] and {"tag", "x_mm", "y_mm", "drawing", "page"} <= set(pid["fields"])
+    page1 = client.get(f"{API}/drawings/{d['id']}/pages/1/result").json()
+    s0 = page1["symbols"][0]
+    row = next(r for r in pid["rows"] if r["page"] == 1 and r["symbol"] == s0["template_desc"]
+               and abs(r["x_mm"] - (s0["box"][0] + s0["box"][2]) / 2 * 25.4 / 200) < 0.06)
+    assert abs(row["y_mm"] - (s0["box"][1] + s0["box"][3]) / 2 * 25.4 / 200) < 0.06 and row["source"] == "template"
+    assert isinstance(row["x_mm"], float) and row["drawing"] == "pid-sample.pdf"
+    assert len(pid["rows"]) == rev.json()["num_rows"] == client.get("/api/keylists").json()["pid_symbols"]["items"]
+    assert len(pid["rows"]) >= sum(len(client.get(f"{API}/drawings/{d['id']}/pages/{n}/result").json()["symbols"]) for n in (1, 2))
+    book = load_workbook(io.BytesIO(client.post("/api/list-workbooks/pid-symbols/export", json={}).content))
+    assert [c.value for c in book["PID Symbols"][1]][:2] == ["Import", "Tag"]
+    # the Load List and the PIL import are untouched by it
+    assert all(r["source"] != "P&ID symbols" for r in client.get("/api/loadlist").json()["rows"])
+
 
 def test_custom_library_templates_masks_and_overrides(data_dir: Path) -> None:
     example = _example()

@@ -353,6 +353,16 @@ imported only when used). API: `desktop/engine/workbench_desktop/symbols_api.py`
    `.csv`, or **Send to a list import**. For P&IDs that is a `PIL` import mapping onto
    instrument-list fields (`tag`, `loop`, `instrument_type`, `signal_type`, …), whose saved
    rules re-apply after every re-analysis.
+7. **PID Symbols.** Send the run to a **`PSL` → PID Symbols** import (the default for a
+   new import from a run) to keep **every detection**, not one row per tag. Each template
+   symbol (tagged or not) and each tag found by the text scan alone is a row with its
+   drawing, page, tag and the pattern's groups, symbol, how it was found and its score.
+   Each row also gets its **X and Y: the centre in mm from the sheet's top-left corner**
+   (y down), and its width and height. Detection works at 200 DPI, so mm = px × 25.4 / 200.
+   The row's key (drawing, page, tag or symbol and centre to the mm) stays the same in a
+   later run, so the import's rules keep applying. The first file maps the columns onto
+   the PID Symbols fields by itself. The import's rows make the **PID Symbols** master
+   list (Project lists → Instruments).
 
 **Scanned drawings (OCR) — known limit.** Searchable PDFs use their text layer and read
 every tag (11/11 on the sample). On scanned, image-only sheets Windows' built-in OCR reads
@@ -393,7 +403,7 @@ Implements the import recipe described in [`docs/PRD_MEL_IMPORT.md`](docs/PRD_ME
 `core/src/workbench_core/mel/`; API: `desktop/engine/workbench_desktop/mel_api.py`;
 UI: `web/src/components/mel/`.
 
-1. **Create an import** (MEL, ELL, EEL, PIL or LIL) and **upload a file**: a CSV
+1. **Create an import** (MEL, ELL, EEL, PIL, LIL or PSL) and **upload a file**: a CSV
    (UTF-8, or Windows-1252 with a warning; `,` `;` tab or `|` separated), a
    sheet or table from Excel through the import wizard, or the tags list of a
    symbol-detection run. Choose the key column
@@ -974,6 +984,11 @@ You don't create or name them: each project has one of each.
   and Hyperlink, with the same grid and form, the same rules, and the same
   Excel export and import. Its type is picked from the **Document types** enum;
   discipline and status are the ones the drawings use.
+- **PID Symbols** (API `/api/pid-symbols`, under Instruments): the symbols found on the
+  P&IDs, one row per detection, with its X / Y centre in mm from the sheet's top-left and
+  its size. It is made from every `PSL` (PID Symbols) List Import, each one's latest file
+  through its rules and mapping; see [Symbol detection](#symbol-detection), step 7. It is
+  read-only, with filters and Export .xlsx.
 - **Instrument Runsheet** (`keylists/instrument_runsheet.py`, API
   `/api/instrument-runsheet`): what the **Instrument generator** will run from
   (see [Deliverable generators](#deliverable-generators)).

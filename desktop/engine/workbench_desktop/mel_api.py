@@ -27,6 +27,7 @@ from workbench_core.mel import (
     unique_keys,
 )
 from workbench_core.mel.export import combined_csv, combined_xlsx, load_list_csv, load_list_xlsx
+from workbench_core.mel.models import FieldMap, is_load_target
 from workbench_core.mel.ingest import STRIKE_COLUMN, add_blank_strike_column
 from workbench_core.mel.models import RevisionInfo, TargetList
 from workbench_core.mel.pipeline import LoadListResult, Stage
@@ -90,10 +91,16 @@ def create_recipe(body: NewRecipe) -> Recipe:
 def get_recipe(recipe_id: str) -> RecipeDetail:
     recipe = _recipe(recipe_id)
     lf = get_keylists().load_fields()
-    load = recipe.target != "PIL"
+    load = is_load_target(recipe.target)
     return RecipeDetail(recipe=recipe, revisions=get_store().list_revisions(recipe_id),
-                        fields=fields_for(recipe.target, lf.importable()), labels=lf.labels() if load else {},
+                        fields=fields_for(recipe.target, lf.importable()),
+                        labels=lf.labels() if load else _pid_labels() if recipe.target == "PSL" else {},
                         output_name=output_name(recipe.target))
+
+
+def _pid_labels() -> dict[str, str]:
+    from workbench_core.keylists.workbooks import PID_SYMBOL_HEADINGS
+    return dict(PID_SYMBOL_HEADINGS)
 
 
 def _refuse_not_allowed(recipe: Recipe) -> None:
@@ -318,18 +325,39 @@ class SymbolsSource(BaseModel):
     run_id: str
 
 
+#: PID Symbols field -> the detections table's column (symbols.pipeline.detections_table).
+PSL_COLUMNS = {"tag": "Tag", "symbol": "Symbol", "drawing": "Drawing", "page": "Page", "x_mm": "X (mm)", "y_mm": "Y (mm)",
+               "width_mm": "Width (mm)", "height_mm": "Height (mm)", "score": "Score", "source": "Source"}
+
+
 @router.post("/recipes/{recipe_id}/revisions/symbols", response_model=RevisionInfo)
 def upload_symbols(recipe_id: str, body: SymbolsSource) -> RevisionInfo:
-    """Add the tags list from a finished symbol-detection run as a new revision."""
+    """Add a finished symbol-detection run as a new revision: for a PID Symbols (PSL) import, one
+    row per detection with its centre in mm (detections_table), and, while the import maps
+    nothing yet, the matching columns mapped; for the others, the tags list (one row per tag)."""
+    from workbench_core.symbols.pipeline import detections_table
+
     from .symbols_api import run_tags
     run, sheets, table = run_tags(body.run_id)
+    recipe = _recipe(recipe_id)
+    drawings = len({s.file_name for s in sheets})
+    source = f"symbols: {drawings} drawing(s), {len(sheets)} sheet(s)"
+    if recipe.target == "PSL":
+        headers, rows = detections_table(sheets, run.columns)
+        if not rows:
+            raise HTTPException(400, "That run found no symbols or tags, so there is nothing to import.")
+        name = f"Symbols {run.finished_at:%Y-%m-%d %H:%M}" if run.finished_at else "Symbols"
+        info = _add(recipe_id, name, source, "Key", list(headers), list(headers), rows, list(run.warnings[:20]))
+        if not recipe.mapping:
+            cols = {**{c.casefold(): c for c in headers}, **{f: c for f, c in PSL_COLUMNS.items()}}
+            mapping = [FieldMap(field=f, column=cols[f]) for f in fields_for("PSL") if f in cols and cols[f] in headers]
+            get_store().save_recipe(_recipe(recipe_id).model_copy(update={"mapping": mapping}))
+        return info
     if not table.rows:
         raise HTTPException(400, "That run found no tags, so there is nothing to import.")
-    drawings = len({s.file_name for s in sheets})
     name = f"Tags {run.finished_at:%Y-%m-%d %H:%M}" if run.finished_at else "Tags"
     rows = [dict(r) for r in table.rows]
-    return _add(recipe_id, name, f"symbols: {drawings} drawing(s), {len(sheets)} sheet(s)", "Tag",
-                list(table.headers), list(table.headers), rows, list(run.warnings[:20]))
+    return _add(recipe_id, name, source, "Tag", list(table.headers), list(table.headers), rows, list(run.warnings[:20]))
 
 
 @router.delete("/recipes/{recipe_id}/revisions/{revision_id}")

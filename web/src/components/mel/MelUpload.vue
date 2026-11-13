@@ -12,7 +12,7 @@ import ExcelWizard from '../excel/ExcelWizard.vue';
 
 const mel = useMel();
 const excelWiz = useMelExcel();
-const mode = ref<'csv' | 'excel' | 'symbols'>(mel.draft?.target === 'PIL' ? 'symbols' : 'csv');
+const mode = ref<'csv' | 'excel' | 'symbols'>(mel.draft?.target === 'PIL' || mel.draft?.target === 'PSL' ? 'symbols' : 'csv');
 const runs = ref<RunInfo[]>([]);
 const runId = ref('');
 const file = ref<{ blob: Blob; name: string } | null>(null);

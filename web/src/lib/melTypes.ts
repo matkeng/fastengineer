@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Matthew Kelly
 // Mirrors workbench_core.mel (models.py, pipeline.py).
-export type TargetList = 'MEL' | 'ELL' | 'EEL' | 'PIL' | 'LIL';
-export const TARGETS: TargetList[] = ['MEL', 'ELL', 'EEL', 'PIL', 'LIL'];
+export type TargetList = 'MEL' | 'ELL' | 'EEL' | 'PIL' | 'LIL' | 'PSL';
+export const TARGETS: TargetList[] = ['MEL', 'ELL', 'EEL', 'PIL', 'LIL', 'PSL'];
+/** List types with a list of their own (not the load list). */
+export const OWN_LIST_TARGETS: TargetList[] = ['PIL', 'PSL'];
 /** What each list type is turned into (PIL = process instrument list, fed by P&ID analysis). */
 export const TARGET_LABELS: Record<TargetList, string> = {
-	MEL: 'MEL → load list', ELL: 'ELL → load list', EEL: 'EEL → load list', PIL: 'PIL → instrument list', LIL: 'LIL → load list',
+	MEL: 'MEL → load list', ELL: 'ELL → load list', EEL: 'EEL → load list', PIL: 'PIL → instrument list', LIL: 'LIL → load list', PSL: 'PSL → PID Symbols',
 };
 
 /** What each built-in load-list field is called (a project's own names come from the engine: RecipeDetail.labels, LoadListView.labels). */

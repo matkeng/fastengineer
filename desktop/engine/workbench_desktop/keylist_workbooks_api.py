@@ -38,9 +38,10 @@ LISTS = {"plant-areas": ("Plant Areas", "plant area"), "equipment-packages": ("E
          "starters": ("Starter Coordination", "starter row"), "load-factors": ("Load Factors", "load factor row"),
          "eel": ("Electrical Equipment List", "item"), "load-list": ("Load List", "row"),
          "distribution-panels": ("Distribution Panels", "panel"), "instrument-runsheet": ("Instrument Runsheet", "row"),
-         "mel": ("MEL", "row"), "drawing-list": ("Drawing List", "drawing"), "document-list": ("Document List", "document")}
+         "mel": ("MEL", "row"), "drawing-list": ("Drawing List", "drawing"), "document-list": ("Document List", "document"),
+         "pid-symbols": ("PID Symbols", "symbol")}
 #: Lists that are only read here: they can be exported, not imported or reset.
-READ_ONLY = ("mel",)
+READ_ONLY = ("mel", "pid-symbols")
 
 
 def _known(list_id: str) -> str:
@@ -85,6 +86,10 @@ def _sheets(list_id: str) -> wbk.Sheets:
         return wbk.export_register(REGISTERS[list_id], drawing_list_api.view_of(REGISTERS[list_id]).items)
     if list_id == "instrument-runsheet":
         return wbk.export_instrument_runsheet(instrument_runsheet_api.get_runsheet().rows)
+    if list_id == "pid-symbols":
+        from .pid_symbols_api import pid_symbols
+        pid = pid_symbols()
+        return wbk.export_pid_symbols(pid.fields, pid.rows)
     if list_id == "mel":
         mel = loadlist_api.mel_list()
         return wbk.export_mel(mel.headers, mel.rows)

@@ -3,7 +3,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import LoadFieldsEditor from '../keylists/LoadFieldsEditor.vue';
-import { LOAD_FIELD_LABELS } from '../../lib/melTypes';
+import { LOAD_FIELD_LABELS, OWN_LIST_TARGETS } from '../../lib/melTypes';
 import { useStage } from '../../lib/useStage';
 import { useMel } from '../../stores/mel';
 
@@ -12,7 +12,7 @@ const { result } = useStage('auto', (r) => [r.columns, r.hidden_rows, r.text_col
 const MANUAL = '__manual__';
 
 const label = (f: string) => mel.labels[f] ?? LOAD_FIELD_LABELS[f] ?? f;
-const isLoad = computed(() => mel.draft?.target !== 'PIL');
+const isLoad = computed(() => !OWN_LIST_TARGETS.includes(mel.draft?.target ?? 'MEL'));
 const editing = ref(false);
 
 /** The Load List's fields changed: open the import again for its fields (a deleted field's mapping is gone). */
@@ -28,6 +28,9 @@ const GUESS: Record<string, RegExp> = {
 	equip_subtype: /sub.?type/i, equip_qty: /^(qty|quantity|equip.*qty)$/i, standby_qty: /standby|spare/i,
 	load_rating: /(kw|hp|rating|power)/i, load_voltage: /volt/i, phases: /phase/i, starter_type: /starter/i,
 	load_type: /load.?type/i, supplied_from: /(fed|supplied).?from|source.?bus/i,
+	// PID Symbols (from Symbol Detection)
+	symbol: /^symbol$/i, drawing: /^drawings?$/i, page: /^page$/i, x_mm: /^x\b/i, y_mm: /^y\b/i, width_mm: /^width/i, height_mm: /^height/i,
+	score: /^score$/i, source: /^source$/i, function: /^function$/i, loop: /^loop$/i, suffix: /^suffix$/i,
 };
 
 const rows = computed(() => mel.fields.map((f) => {
@@ -49,7 +52,7 @@ function suggest() {
 	for (const f of mel.fields) {
 		if (mel.draft!.mapping.some((m) => m.field === f)) continue;
 		let h: string | undefined;
-		if (f === 'tag') h = result.value?.key_header;
+		if (f === 'tag') h = headers.find((x) => /^tag$/i.test(x)) ?? result.value?.key_header;
 		else if (GUESS[f]) h = headers.find((x) => GUESS[f].test(x) && !used.has(x));
 		if (h) { set(f, h); used.add(h); }
 	}

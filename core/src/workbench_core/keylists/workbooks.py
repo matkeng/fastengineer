@@ -917,6 +917,19 @@ def export_mel(headers: list[str], rows: list) -> Sheets:
     return [("MEL", grid)]
 
 
+PID_SYMBOL_HEADINGS = {"tag": "Tag", "function": "Function", "loop": "Loop", "suffix": "Suffix", "symbol": "Symbol",
+                       "desc": "Description", "drawing": "Drawing", "page": "Page", "x_mm": "X (mm)", "y_mm": "Y (mm)",
+                       "width_mm": "Width (mm)", "height_mm": "Height (mm)", "score": "Score", "source": "Detected by",
+                       "status": "Status", "is_deleted": "Deleted"}
+
+
+def export_pid_symbols(fields: list[str], rows: list[dict]) -> Sheets:
+    """The PID Symbols list (pid_symbols_api), for reading: it is made by its List Imports."""
+    grid: Grid = [["Import"] + [PID_SYMBOL_HEADINGS.get(f, f) for f in fields]]
+    grid += [[r.get("import")] + [None if r.get(f) in ("", None) else r.get(f) for f in fields] for r in rows]
+    return [("PID Symbols", grid)]
+
+
 # -- the Drawing List and the Document List ---------------------------------------------------------
 
 def export_register(spec, rows: list[dict]) -> Sheets:

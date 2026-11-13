@@ -27,7 +27,7 @@ from asteval import Interpreter
 from .functions import NotAllowed, make_interpreter, prepare
 from pydantic import BaseModel, Field
 
-from .models import NUMERIC_FIELDS, TARGET_BOOLEAN, TARGET_NUMERIC, Recipe, Revision, fields_for
+from .models import NUMERIC_FIELDS, TARGET_BOOLEAN, TARGET_NUMERIC, Recipe, Revision, fields_for, is_load_target
 
 Stage = Literal["source", "columns", "rows", "text", "overrides", "custom", "replace", "auto"]
 STAGES: list[Stage] = ["source", "columns", "rows", "text", "overrides", "custom", "replace", "auto"]
@@ -326,7 +326,7 @@ def output_list(result: PipelineResult, recipe: Recipe, load_fields=None) -> Loa
     MEL, the instrument list for PIL. `load_fields`: the project's Load List fields
     (load_fields.LoadFields; default the built-in ones), with which are numbers and yes/no."""
     maps = {m.field: m for m in recipe.mapping if m.column or m.manual is not None}
-    project = load_fields is not None and recipe.target != "PIL"
+    project = load_fields is not None and is_load_target(recipe.target)
     fields = [f for f in fields_for(recipe.target, load_fields.importable() if project else None) if f in maps]
     numeric = load_fields.numeric() if project else TARGET_NUMERIC.get(recipe.target, NUMERIC_FIELDS)
     boolean = load_fields.boolean() if project else TARGET_BOOLEAN.get(recipe.target, {"is_a_loadcentre", "is_deleted"})

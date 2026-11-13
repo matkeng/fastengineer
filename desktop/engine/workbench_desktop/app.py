@@ -25,6 +25,7 @@ from .refdata_api import router as refdata_router
 from .generators_api import router as generators_router
 from .keylists_api import router as keylists_router
 from .loadlist_api import mel_router as mel_list_router
+from .pid_symbols_api import router as pid_symbols_router
 from .loadlist_api import router as loadlist_router
 from .eel_api import router as eel_router
 from .plc_api import router as plc_router
@@ -121,6 +122,7 @@ app.include_router(refdata_router)
 app.include_router(keylists_router)
 app.include_router(loadlist_router)
 app.include_router(mel_list_router)
+app.include_router(pid_symbols_router)
 app.include_router(eel_router)
 app.include_router(plc_router)
 app.include_router(distribution_panels_router)

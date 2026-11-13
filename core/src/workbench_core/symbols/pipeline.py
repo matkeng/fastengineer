@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .match import TemplateImage, _iou, locate_symbols
-from .models import Box, FoundTag, Library, PageOverride, PageResult, PageReview, Rejection, Symbol, Template, TextSource, Word
+from .models import DPI, Box, FoundTag, Library, PageOverride, PageResult, PageReview, Rejection, Symbol, Template, TextSource, Word
 from .ocr import OcrProvider, merge_words
 from .tags import TagRules, apply_exclusion, format_tag, pattern_scan, resolve_points, symbol_tags
 from .templates import erase_words
@@ -124,6 +124,48 @@ def analyse_page(page: int, gray, words: list[Word], text_source: TextSource, te
 class SheetResult:
     file_name: str
     result: PageResult
+
+
+MM_PER_PX = 25.4 / DPI
+DETECTION_HEADERS = ["Symbol", "Source", "Score", "X (mm)", "Y (mm)", "Width (mm)", "Height (mm)"]
+
+
+def _mm(px: float) -> str:
+    return f"{px * MM_PER_PX:.1f}"
+
+
+def detections_table(sheets: list[SheetResult], columns: list[str] | None = None) -> tuple[list[str], list[dict[str, str]]]:
+    """One row per detection: every template symbol of every sheet (its tag may be blank) and
+    every tag found by the text scan alone. X and Y are the centre of what was found, in mm from
+    the sheet's top-left corner (y down); Width and Height its size. `Key` is the same in a later
+    run for the same symbol in the same place (drawing, page, tag or symbol, centre to the mm),
+    so a List Import's row rules keep applying; repeats get _1, _2. `columns`: the tag pattern's
+    group names (e.g. function, loop), after the tag."""
+    from ..mel.ingest import unique_keys
+
+    columns = [c for c in (columns or []) if c not in ("Key", "Drawing", "Page", "Tag", *DETECTION_HEADERS)]
+    rows: list[dict[str, str]] = []
+
+    def add(file_name: str, page: int, tag: str, groups: dict[str, str], symbol: str, source: str, score: str, box: Box) -> None:
+        x1, y1, x2, y2 = box[:4]
+        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+        key = f"{file_name} p{page} {tag or symbol or '?'} @{round(cx * MM_PER_PX)},{round(cy * MM_PER_PX)}"
+        rows.append({"Key": key, "Drawing": file_name, "Page": str(page), "Tag": tag, **{c: groups.get(c, "") or "" for c in columns},
+                     "Symbol": symbol, "Source": source, "Score": score, "X (mm)": _mm(cx), "Y (mm)": _mm(cy),
+                     "Width (mm)": _mm(abs(x2 - x1)), "Height (mm)": _mm(abs(y2 - y1))})
+
+    for sh in sheets:
+        res = sh.result
+        by_box = {tuple(t.box): t for t in res.tags if t.source == "template"}
+        for sym in res.symbols:
+            found = by_box.get(tuple(sym.box))
+            tag = sym.tag or (found.tag if found else "") or ""
+            add(sh.file_name, res.page, tag, found.groups if found else {}, sym.template_desc, "template", f"{sym.score:.3f}", sym.box)
+        for t in res.tags:
+            if t.source == "pattern":
+                add(sh.file_name, res.page, t.tag, t.groups, "", "text scan", "", t.box)
+    unique_keys(rows, "Key")
+    return ["Key", "Drawing", "Page", "Tag", *columns, *DETECTION_HEADERS], rows
 
 
 def tags_table(sheets: list[SheetResult], columns: list[str] | None = None) -> tuple[list[str], list[dict[str, str]]]:

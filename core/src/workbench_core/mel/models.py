@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-TargetList = Literal["MEL", "ELL", "EEL", "PIL", "LIL"]
+TargetList = Literal["MEL", "ELL", "EEL", "PIL", "LIL", "PSL"]
 
 # Load-list fields a recipe maps onto (PRD 5.11). Numeric ones are coerced on output.
 ELEC_LOAD_FIELDS: list[str] = [
@@ -26,17 +26,32 @@ INSTRUMENT_FIELDS: list[str] = [
     "range_min", "range_max", "units", "manufacturer", "model", "status", "is_deleted",
 ]
 
+# PID Symbols fields a PSL recipe maps onto (fed by Symbol Detection: one row per detection,
+# x / y the centre in mm from the sheet's top-left).
+PID_SYMBOL_FIELDS: list[str] = [
+    "tag", "function", "loop", "suffix", "symbol", "desc", "drawing", "page", "x_mm", "y_mm", "width_mm", "height_mm",
+    "score", "source", "status", "is_deleted",
+]
+
 # What each target list maps onto. Targets without their own list use the load list.
-TARGET_FIELDS: dict[str, list[str]] = {"MEL": ELEC_LOAD_FIELDS, "PIL": INSTRUMENT_FIELDS}
-TARGET_NUMERIC: dict[str, set[str]] = {"MEL": NUMERIC_FIELDS, "PIL": {"range_min", "range_max"}}
-TARGET_BOOLEAN: dict[str, set[str]] = {"MEL": {"is_a_loadcentre", "is_deleted"}, "PIL": {"is_deleted"}}
-TARGET_OUTPUT: dict[str, str] = {"MEL": "Load list", "PIL": "Instrument list"}
+TARGET_FIELDS: dict[str, list[str]] = {"MEL": ELEC_LOAD_FIELDS, "PIL": INSTRUMENT_FIELDS, "PSL": PID_SYMBOL_FIELDS}
+TARGET_NUMERIC: dict[str, set[str]] = {"MEL": NUMERIC_FIELDS, "PIL": {"range_min", "range_max"},
+                                       "PSL": {"page", "x_mm", "y_mm", "width_mm", "height_mm", "score"}}
+TARGET_BOOLEAN: dict[str, set[str]] = {"MEL": {"is_a_loadcentre", "is_deleted"}, "PIL": {"is_deleted"}, "PSL": {"is_deleted"}}
+TARGET_OUTPUT: dict[str, str] = {"MEL": "Load list", "PIL": "Instrument list", "PSL": "PID Symbols"}
+#: Targets with their own list (not the load list).
+OWN_LIST_TARGETS = frozenset({"PIL", "PSL"})
+
+
+def is_load_target(target: str) -> bool:
+    """Whether a recipe of `target` maps onto the Load List (MEL, ELL, EEL, LIL), not a list of its own."""
+    return target not in OWN_LIST_TARGETS
 
 
 def fields_for(target: str, load_fields: list[str] | None = None) -> list[str]:
     """What a recipe of `target` maps onto. `load_fields`: the project's Load List fields
     (keys, in order; default the built-in ones), for every target but PIL."""
-    if target in TARGET_FIELDS and target != "MEL":
+    if not is_load_target(target):
         return TARGET_FIELDS[target]
     return list(load_fields) if load_fields is not None else ELEC_LOAD_FIELDS
 

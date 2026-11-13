@@ -33,8 +33,8 @@ let table: FilteredTable<Record<string, string>> | null = null;
 const sending = ref(false);
 const recipes = ref<RecipeSummary[]>([]);
 const target = ref<string>('');
-const newName = ref('Instrument list');
-const newTarget = ref<TargetList>('PIL');
+const newName = ref('PID symbols');
+const newTarget = ref<TargetList>('PSL');
 const sent = ref<{ id: string; name: string } | null>(null);
 
 async function load() {
@@ -87,7 +87,7 @@ async function openSend() {
 	sending.value = true;
 	sent.value = null;
 	recipes.value = await apiGet<RecipeSummary[]>('/api/mel/recipes');
-	target.value = recipes.value.find((r) => r.target === 'PIL')?.id ?? '';
+	target.value = (recipes.value.find((r) => r.target === 'PSL') ?? recipes.value.find((r) => r.target === 'PIL'))?.id ?? '';
 }
 
 async function send() {
@@ -144,7 +144,7 @@ onBeforeUnmount(() => table?.api.destroy());
 		</template>
 
 		<div v-if="sending" class="sym-banner">
-			<span>Add these {{ tags?.rows.length }} tags as the next file revision of</span>
+			<span>Add {{ recipes.find((r) => r.id === target)?.target === 'PSL' || (!target && newTarget === 'PSL') ? 'every detected symbol (with its x / y)' : `these ${tags?.rows.length} tags` }} as the next file revision of</span>
 			<select v-model="target" aria-label="Import">
 				<option v-for="r in recipes" :key="r.id" :value="r.id">{{ r.name }} · {{ TARGET_LABELS[r.target] }} (rev {{ (r.latest_rev ?? 0) + 1 }})</option>
 				<option value="">a new list import…</option>

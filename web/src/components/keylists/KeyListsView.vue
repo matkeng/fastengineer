@@ -21,6 +21,7 @@ import LoadTypesEditor from './LoadTypesEditor.vue';
 import MotorDataEditor from './MotorDataEditor.vue';
 import DriveDataEditor from './DriveDataEditor.vue';
 import StarterDataEditor from './StarterDataEditor.vue';
+import PidSymbolsView from './PidSymbolsView.vue';
 import LoadFactorsEditor from './LoadFactorsEditor.vue';
 import LoadSummaryView from './LoadSummaryView.vue';
 import PlantAreasEditor from './PlantAreasEditor.vue';
@@ -30,10 +31,10 @@ const kl = useKeyLists();
 const ui = useUi();
 const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Project Master Load List', 'load-summary': 'Load List Summary Page',
 	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes', eel: 'Electrical Equipment List', plc: 'PLC List',
-	'cable-types': 'Cable Types', motors: 'Motor Data', drives: 'Drive Data', starters: 'Starter Coordination', 'load-factors': 'Load Factors', 'distribution-panels': 'Distribution Panels', 'instrument-runsheet': 'Instrument Runsheet', mel: 'MEL', master: 'Project Master list', enums: 'Enums', 'drawing-list': 'Drawing List', 'document-list': 'Document List' };
+	'cable-types': 'Cable Types', motors: 'Motor Data', drives: 'Drive Data', starters: 'Starter Coordination', 'load-factors': 'Load Factors', 'distribution-panels': 'Distribution Panels', 'instrument-runsheet': 'Instrument Runsheet', 'pid-symbols': 'PID Symbols', mel: 'MEL', master: 'Project Master list', enums: 'Enums', 'drawing-list': 'Drawing List', 'document-list': 'Document List' };
 const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true, 'load-summary': true,
 	'equipment-codes': kl.codeLists['equipment-codes'], 'instrument-codes': kl.codeLists['instrument-codes'], eel: kl.eel, plc: kl.plcDraft,
-	'cable-types': kl.cableTypes, motors: true, drives: true, starters: true, 'load-factors': true, 'distribution-panels': kl.panelsDraft, 'instrument-runsheet': kl.runsheetView, mel: kl.melList, master: kl.master, enums: kl.enumsDraft, 'drawing-list': kl.registers['drawing-list'], 'document-list': kl.registers['document-list'] }[kl.selected]);
+	'cable-types': kl.cableTypes, motors: true, drives: true, starters: true, 'load-factors': true, 'distribution-panels': kl.panelsDraft, 'instrument-runsheet': kl.runsheetView, 'pid-symbols': true, mel: kl.melList, master: kl.master, enums: kl.enumsDraft, 'drawing-list': kl.registers['drawing-list'], 'document-list': kl.registers['document-list'] }[kl.selected]);
 
 onMounted(() => kl.load());
 
@@ -136,6 +137,10 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 							<span class="name">Instrument Runsheet</span><span v-if="kl.runsheetDirty" class="dirty-dot" title="Unsaved changes">●</span>
 							<span class="count" title="row(s)">{{ kl.overview?.instrument_runsheet?.items ?? 0 }}</span>
 						</li>
+						<li :class="{ current: kl.selected === 'pid-symbols' }" title="The symbols found on the P&IDs, with their x / y (from Symbol Detection through a PID Symbols list import)" @click="kl.select('pid-symbols')">
+							<span class="name">PID Symbols</span>
+							<span class="count" title="symbol(s)">{{ kl.overview?.pid_symbols?.items ?? 0 }}</span>
+						</li>
 					</ul>
 				</section>
 				<section>
@@ -199,6 +204,7 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 			<DriveDataEditor v-if="kl.selected === 'drives'" />
 			<StarterDataEditor v-if="kl.selected === 'starters'" />
 			<LoadFactorsEditor v-if="kl.selected === 'load-factors'" />
+			<PidSymbolsView v-if="kl.selected === 'pid-symbols'" />
 			<EelEditor v-if="kl.eel" v-show="kl.selected === 'eel'" />
 			<PlcEditor v-if="kl.plcDraft" v-show="kl.selected === 'plc'" />
 			<LoadListEditor v-if="kl.selected === 'load-list'" />

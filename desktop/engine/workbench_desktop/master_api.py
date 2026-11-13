@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from workbench_core.generators.models import BuildResult, GeneratorConfig
 from workbench_core.generators.xlsx_export import csv_bytes, xlsx_bytes
 from workbench_core.keylists.loadgen import LISTS, generate, missing_load_types
+from workbench_core.mel.models import is_load_target
 from workbench_core.keylists.master import INSTRUMENT, MASTER_LISTS, MASTER_NAMES, POWER, generator_counts, master_columns, master_list
 
 from .storage import get_keylists
@@ -332,7 +333,7 @@ def save_load_fields(body: LoadFieldsBody, dry_run: bool = False):
     deleted: list[DeletedField] = []
     if change.deletes:
         st = get_store()
-        recipes = [st.get_recipe(r["id"]) for r in st.list_recipes() if r["target"] != "PIL"]
+        recipes = [st.get_recipe(r["id"]) for r in st.list_recipes() if is_load_target(r["target"])]
         rows = current_rows()[0]
         texts = [c for t in [*lists.load_types().items, *lists.equipment_packages().types]
                  for rs in t.rows.values() for r in rs for c in [" ".join(str(v) for v in r.values())]]

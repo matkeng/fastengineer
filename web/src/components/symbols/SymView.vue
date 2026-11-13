@@ -176,8 +176,9 @@ onMounted(() => sym.refresh());
 						custom mask of the parts to compare.</li>
 					<li><strong>Analyse</strong> the ticked drawings: symbols are matched with OpenCV, and tags are read from the PDF
 						text, or with Windows OCR on scanned sheets.</li>
-					<li>Export the <strong>tags list</strong>, or send it to a <strong>List import</strong> (for P&amp;IDs: the
-						instrument list) with saved rules.</li>
+					<li>Export the <strong>tags list</strong>, or send it to a <strong>List import</strong> with saved rules. A
+						<em>PSL → PID Symbols</em> import gets one row per detected symbol, with its x / y centre in mm, and fills the
+						<strong>PID Symbols</strong> list (Project lists → Instruments).</li>
 				</ol>
 				<p v-if="sym.error" class="error">{{ sym.error }}</p>
 				<p v-else-if="sym.message" class="saved">{{ sym.message }}</p>

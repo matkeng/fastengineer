@@ -67,6 +67,7 @@ def overview() -> dict:
             "load_factors": {"items": len(lists.load_factors().items)},
             "distribution_panels": {"items": len(lists.distribution_panels().panels)},
             "instrument_runsheet": {"items": len(lists.instrument_runsheet().rows)},
+            "pid_symbols": {"items": _pid_symbol_count()},
             "mel": {"items": _mel_count()},
             "drawing_list": {"items": len(lists.drawing_list().items)},
             "document_list": {"items": len(lists.document_list().items)},
@@ -368,6 +369,14 @@ def drive_defaults():
 
 
 # -- load factors -------------------------------------------------------------------------------
+
+def _pid_symbol_count() -> int:
+    """Detections in the latest file of every PID Symbols import (from what is stored: no file is read again)."""
+    from .storage import get_store
+    st = get_store()
+    return sum((st.list_revisions(r["id"]) or [None])[0].num_rows for r in st.list_recipes()
+               if r["target"] == "PSL" and r["revisions"])
+
 
 @router.get("/load-factors")
 def get_load_factors():

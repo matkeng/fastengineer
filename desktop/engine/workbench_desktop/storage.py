@@ -48,6 +48,7 @@ from workbench_core.keylists import (
     supply_loop,
 )
 from workbench_core.mel import Recipe, Revision
+from workbench_core.mel.models import is_load_target
 from workbench_core.refdata import EnumList, RefRow, RefTable, RefTree, RefValidationError, name_key
 from workbench_core.mel.models import RevisionInfo
 from workbench_core.symbols import Drawing, Library, PageOverride, PageResult, PageReview, RunInfo, Template, Word
@@ -671,7 +672,7 @@ class KeyListStore:
                 gone = set(change.deletes)
                 for rid, data in self._db.execute("SELECT id, data FROM recipes").fetchall():
                     recipe = Recipe.model_validate_json(data)
-                    if recipe.target == "PIL" or not any(m.field in gone for m in recipe.mapping):
+                    if not is_load_target(recipe.target) or not any(m.field in gone for m in recipe.mapping):
                         continue
                     new = recipe.model_copy(update={"mapping": [m for m in recipe.mapping if m.field not in gone], "updated_at": _now()})
                     self._db.execute("UPDATE recipes SET data = ?, updated_at = ? WHERE id = ?",
