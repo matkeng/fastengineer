@@ -746,6 +746,28 @@ class KeyListStore:
             row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.DRIVES,)).fetchone()
         return DriveList.model_validate_json(row[0]) if row else DriveList(items=default_drives())
 
+    LOAD_FACTORS = "load-factors"
+
+    def load_factors(self):
+        """Load Factors; a project that never saved it has the typical factors (keylists.load_factors)."""
+        from workbench_core.keylists.load_factors import LoadFactorList, default_load_factors
+
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.LOAD_FACTORS,)).fetchone()
+        return LoadFactorList.model_validate_json(row[0]) if row else LoadFactorList(items=default_load_factors())
+
+    def save_load_factors(self, items: list, note: str | None = None):
+        from workbench_core.keylists.load_factors import LoadFactorList, default_load_factors
+
+        lf = LoadFactorList(items=items, updated_at=_now())
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.LOAD_FACTORS,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.LOAD_FACTORS, lf.model_dump_json()))
+            audit.log(self._db, "load_factors", self.LOAD_FACTORS, before or LoadFactorList(items=default_load_factors()).model_dump_json(),
+                      lf.model_dump_json(), label="Load Factors", note=note)
+        return lf
+
     STARTERS = "starters"
 
     def starters(self):

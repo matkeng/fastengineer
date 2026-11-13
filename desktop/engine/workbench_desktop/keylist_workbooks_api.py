@@ -35,7 +35,7 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 LISTS = {"plant-areas": ("Plant Areas", "plant area"), "equipment-packages": ("Equipment Packages", "package"),
          "load-types": ("Load Types", "load type"), "equipment-codes": ("Equipment Codes", "equipment code"),
          "instrument-codes": ("Instrument Codes", "instrument code"), "cable-types": ("Cable Types", "cable type"), "motors": ("Motor Data", "motor"), "drives": ("Drive Data", "drive"),
-         "starters": ("Starter Coordination", "starter row"),
+         "starters": ("Starter Coordination", "starter row"), "load-factors": ("Load Factors", "load factor row"),
          "eel": ("Electrical Equipment List", "item"), "load-list": ("Load List", "row"),
          "distribution-panels": ("Distribution Panels", "panel"), "instrument-runsheet": ("Instrument Runsheet", "row"),
          "mel": ("MEL", "row"), "drawing-list": ("Drawing List", "drawing"), "document-list": ("Document List", "document")}
@@ -77,6 +77,8 @@ def _sheets(list_id: str) -> wbk.Sheets:
         return wbk.export_drives(lists.drives().items)
     if list_id == "starters":
         return wbk.export_starters(lists.starters())
+    if list_id == "load-factors":
+        return wbk.export_load_factors(lists.load_factors().items)
     if list_id == "eel":
         return wbk.export_eel(lists.eel(), _eel_names())
     if list_id in REGISTERS:
@@ -236,6 +238,9 @@ def _parse(list_id: str, data: bytes) -> tuple[wbk.Parsed, list[str]]:
     if list_id == "drives":
         old = lists.drives().items
         return wbk.import_drives(sheets, old), [f"{d.cat_no} {d.voltage}V" for d in old]
+    if list_id == "load-factors":
+        old = lists.load_factors().items
+        return wbk.import_load_factors(sheets, old), [r.equipment_type for r in old]
     if list_id == "starters":
         cur = lists.starters()
         return wbk.import_starters(sheets, cur), [f"{s.chart} {s.kw:g} kW" for s in cur.items]
@@ -291,6 +296,9 @@ def _check(list_id: str, parsed: wbk.Parsed) -> None:
     elif list_id == "starters":
         from workbench_core.keylists.starters import check_starters
         check_starters(p["items"], p["default_chart"])  # type: ignore[index]
+    elif list_id == "load-factors":
+        from workbench_core.keylists.load_factors import check_load_factors
+        check_load_factors(p["items"])  # type: ignore[index]
     elif list_id in REGISTERS:
         drawing_list_api.checked(p["items"], REGISTERS[list_id])  # type: ignore[index]
     elif list_id == "instrument-runsheet":
@@ -327,6 +335,9 @@ def _save(list_id: str, parsed: wbk.Parsed):
     if list_id == "drives":
         from workbench_core.keylists.drives import check_drives
         return lists.save_drives(check_drives(p["items"]), note="Imported from a workbook")  # type: ignore[index]
+    if list_id == "load-factors":
+        from workbench_core.keylists.load_factors import check_load_factors
+        return lists.save_load_factors(check_load_factors(p["items"]), note="Imported from a workbook")  # type: ignore[index]
     if list_id == "starters":
         from workbench_core.keylists.starters import check_starters
         return lists.save_starters(check_starters(p["items"], p["default_chart"]), note="Imported from a workbook")  # type: ignore[index]
@@ -449,6 +460,10 @@ def reset_list(list_id: str):
         from workbench_core.keylists.drives import default_drives
         items = lists.save_drives(default_drives(), note="Reset to the PowerFlex 755TS drives").items
         return ResetResult(message=f"Drive Data is back to the {len(items)} PowerFlex 755TS drives.")
+    if list_id == "load-factors":
+        from workbench_core.keylists.load_factors import default_load_factors
+        items = lists.save_load_factors(default_load_factors(), note="Reset to the typical load factors").items
+        return ResetResult(message=f"Load Factors is back to the {len(items)} typical rows (with Default).")
     if list_id == "starters":
         from workbench_core.keylists.starters import StarterList, default_starters
         items = lists.save_starters(StarterList(items=default_starters()), note="Reset to the NHP Type 2 charts").items

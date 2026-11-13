@@ -150,7 +150,7 @@ def with_calcs(rows: list[LoadListRow], fields=None, only: str | None = None) ->
 
     lists = get_keylists()
     apply_calcs(rows, fields or lists.load_fields(), {t.id: t for t in lists.load_types().items},
-                {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}, only, lists.motors().items, lists.drives().items, lists.starters())
+                {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}, only, lists.motors().items, lists.drives().items, lists.starters(), lists.load_factors().items)
 
 
 @router.get("", response_model=LoadListView)

@@ -166,7 +166,15 @@ def _starter_refs() -> list[tuple[str, str]]:
 
 #: What a calculation can use about a load's matched motor (keylists.motors), drive and starter:
 #: <<Motor.FLC>>, <<Drive.CatNo>>, <<Starter.CB>>…
-MOTOR_REFS: list[tuple[str, str]] = _motor_refs() + _drive_refs() + _starter_refs()
+def _load_factor_refs() -> list[tuple[str, str]]:
+    from .load_factors import NUMBERS, TEXTS
+
+    out = [(f"loadfactor.{t.replace(' ', '').casefold()}", f"the load's {m} (Load Factors, by its Equipment type; else the Default row)")
+           for f, (t, m) in {**NUMBERS, **TEXTS}.items()]
+    return out + [("loadfactor.matched", "True when the load's equipment type has its own Load Factors row, False for the Default row")]
+
+
+MOTOR_REFS: list[tuple[str, str]] = _motor_refs() + _drive_refs() + _starter_refs() + _load_factor_refs()
 
 
 def known_refs(fields: LoadFields) -> set[str]:
@@ -252,7 +260,7 @@ def supply_chain(row: LoadListRow, by_ref: dict[str, LoadListRow]) -> list[str]:
 
 def load_cells(row: LoadListRow, load_types: dict[str, LoadType], areas: dict[str, tuple[str, str]],
                by_ref: dict[str, LoadListRow], motors: list | None = None, drives: list | None = None,
-               starters=None) -> dict[str, object]:
+               starters=None, load_factors: list | None = None) -> dict[str, object]:
     """What an expression about a load can refer to, by lower-case name: the app's tags for it,
     its own values (a number staying a number; a blank one leaves what the app works out), its
     cable, <<supplychain>>: the panels it is fed from, nearest first (see supply_chain), and
@@ -274,12 +282,15 @@ def load_cells(row: LoadListRow, load_types: dict[str, LoadType], areas: dict[st
     lt = load_types.get(row.load_type_id or "")
     s = starter_for_load(cells.get("rating"), cells.get("units"), lt.starter_chart if lt else "", starters)
     cells |= {f"starter.{k}": v for k, v in starter_fields(s).items()}
+    from .load_factors import load_factor_fields, load_factor_for
+    lf, matched = load_factor_for(cells.get("equiptype"), load_factors or [])
+    cells |= {f"loadfactor.{k}": v for k, v in load_factor_fields(lf, matched).items()}
     return cells
 
 
 def apply_calcs(rows: list[LoadListRow], fields: LoadFields, load_types: dict[str, LoadType],
                 areas: dict[str, tuple[str, str]], only: str | None = None, motors: list | None = None,
-                drives: list | None = None, starters=None) -> None:
+                drives: list | None = None, starters=None, load_factors: list | None = None) -> None:
     """Work out the calculated fields for every row, in place: each answer goes in the row's
     values under the field's key (blank when it can't be worked out), and what is wrong goes in
     its calc_issues. `only`: a calculated field's key, to work out just that one (with what it uses)."""
@@ -303,7 +314,7 @@ def apply_calcs(rows: list[LoadListRow], fields: LoadFields, load_types: dict[st
     by_ref = {r.ref(): r for r in rows}
     ai = make_interpreter()
     for row in rows:
-        cells = load_cells(row, load_types, areas, by_ref, motors, drives, starters)
+        cells = load_cells(row, load_types, areas, by_ref, motors, drives, starters, load_factors)
         issues: list[CalcIssue] = []
         for k in keys:
             test, formula, otherwise, checks = compiled[k]

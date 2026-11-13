@@ -686,6 +686,25 @@ You don't create or name them: each project has one of each.
   `<<Starter.Range>>`, `<<Starter.ELSetting>>`, `<<Starter.InstTrip>>`,
   `<<Starter.MinTrip>>`, `<<Starter.Chart>>`, `<<Starter.FaultkA>>`… in template
   rows, calculated fields and the summary page.
+- **Load Factors** (`keylists/load_factors.py`): load and demand factors by
+  equipment type. Each row has the **Equipment Type**, **Plant Nameplate Load
+  Factor**, **Plant Optimised Load Factor**, **Average Demand Factor**, **Max
+  Demand Factor** and notes. Every project starts with the typical factors for 30
+  equipment types (Absorber … Distributor; nameplate 0.75, optimised 0.95, demand
+  1.00 except, for example, Air Conditioner 0.50, Boiler 0.25, Crane/Hoist
+  0.05 / 0.50), plus a **Default** row. More rows are added in the editor or with
+  Import .xlsx. It is edited, exported, imported, reset and topped up (**Add
+  missing typical rows**) like Motor Data.
+
+  A load is matched on its **Equipment type** (the Load List field, e.g. from the
+  MEL): the row of the same name, ignoring case and extra spaces. A type that
+  isn't listed gets the Default row. Reached as `<<LoadFactor.NameplateLF>>`,
+  `<<LoadFactor.OptimisedLF>>`, `<<LoadFactor.AvgDemand>>`,
+  `<<LoadFactor.MaxDemand>>`, `<<LoadFactor.EquipmentType>>` and
+  `<<LoadFactor.Matched>>` (No when the Default row was used) in template rows,
+  calculated fields and the summary page. For example, a calculated field
+  `<<rating>> * <<LoadFactor.NameplateLF>> * <<LoadFactor.AvgDemand>>` gives the
+  average kW.
 - **Electrical Equipment List** (EEL): equipment entered and edited here, in
   addition to any EEL import. A grid of every item; click a row (or **Add
   equipment**) for a form. **Tag number** (required, and unique across this list

@@ -576,6 +576,28 @@ def import_drives(sheets: dict[str, Rows], old) -> Parsed:
     return Parsed({"items": items}, [f"{i['cat_no']} {i['voltage']}V" for i in items], labels={i["id"]: i["cat_no"] for i in items})
 
 
+# -- Load Factors --------------------------------------------------------------------------------
+
+def _load_factor_head() -> list[tuple[str, str]]:
+    from .load_factors import NUMBERS, TEXTS
+
+    return [("equipment_type", TEXTS["equipment_type"][0])] + [(f, t) for f, (t, _) in NUMBERS.items()] + [("notes", "Notes")]
+
+
+def export_load_factors(items) -> Sheets:
+    head = _load_factor_head()
+    return [("Load Factors", [[t for _, t in head]] + [[None if getattr(r, f) in ("", None) else getattr(r, f) for f, _ in head]
+                                                       for r in items])]
+
+
+def import_load_factors(sheets: dict[str, Rows], old) -> Parsed:
+    head = _load_factor_head()
+    keep = _keep([(r.id, r.equipment_type) for r in old])
+    items = [{"id": keep(_get(r, "Equipment Type"))} | {f: _get(r, t) for f, t in head}
+             for r in _sheet(sheets, "Load Factors", ("Equipment Type",))]
+    return Parsed({"items": items}, [i["equipment_type"] for i in items], labels={i["id"]: i["equipment_type"] for i in items})
+
+
 # -- Starter Coordination --------------------------------------------------------------------------
 
 def _starter_head() -> list[tuple[str, str]]:

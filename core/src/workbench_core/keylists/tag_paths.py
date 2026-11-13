@@ -65,7 +65,14 @@ SCHEMA: dict[str, tuple[str, str, list[tuple[str, str]], list[tuple[str, str, st
         ("Motor", "motor", "motor (Motor Data, matched by its rating and Poles)"),
         ("Drive", "drive", "drive (Drive Data, matched by voltage, Drive enclosure, Drive duty and the motor's FLC)"),
         ("Starter", "starter", "Type 2 starter (Starter Coordination, its load type's chart, matched by its rating)"),
+        ("LoadFactor", "loadfactor", "load and demand factors (Load Factors, matched by its Equipment type; else the Default row)"),
     ]),
+    "loadfactor": ("a Load Factors row", "EquipmentType", [
+        ("EquipmentType", "equipment type (Default when the load's type isn't listed)"),
+        ("NameplateLF", "plant nameplate load factor"), ("OptimisedLF", "plant optimised load factor"),
+        ("AvgDemand", "average demand factor"), ("MaxDemand", "maximum demand factor"), ("Notes", "notes"),
+        ("Matched", "Yes when the load's equipment type has its own row, No when it got the Default row"),
+    ], []),
     "starter": ("a Type 2 starter selection", "Chart", [
         ("Chart", "coordination chart (e.g. ECH64.2)"), ("Description", "what the chart is"), ("FaultkA", "fault level Iq (kA)"),
         ("Manufacturer", "manufacturer"), ("kW", "the row's motor kW"), ("FLC", "the row's motor FLC @ 400 V (A)"),
@@ -190,9 +197,11 @@ class Links:
     link to a list that isn't given is blank."""
 
     def __init__(self, load_types=None, areas=None, loads=None, eel=None, codes=None, packages=None, equipment_types=None,
-                 cables=None, plc=None, load_labels: dict[str, str] | None = None, motors=None, drives=None, starters=None):
+                 cables=None, plc=None, load_labels: dict[str, str] | None = None, motors=None, drives=None, starters=None,
+                 load_factors=None):
         self.motors = list(motors or [])
         self.starters = starters  # keylists.starters.StarterList
+        self.load_factors = list(load_factors or [])
         self.drives = list(drives or [])
         self.load_types = {t.id: t for t in load_types or []}
         self.areas = {a.id: a for a in areas or []}
@@ -266,6 +275,13 @@ class Links:
         s = starter_for_load(flat.get("rating"), flat.get("units"), t.starter_chart if t else "", self.starters)
         return None if s is None else Record("starter", dict(starter_fields(s)), name=s.chart)
 
+    def load_factor(self, flat: dict[str, object]):
+        """The Load Factors row a load's Equipment type matches (else the Default row)."""
+        from .load_factors import load_factor_fields, load_factor_for
+
+        row, matched = load_factor_for(flat.get("equiptype"), self.load_factors)
+        return None if row is None else Record("loadfactor", dict(load_factor_fields(row, matched)), name=row.equipment_type)
+
     def package(self, i):
         p = self.packages.get(i or "")
         return None if p is None else Record("package", {"number": p.number, "description": p.description, "vendor": p.vendor,
@@ -330,7 +346,7 @@ class Links:
         links = {"loadtype": lambda: self.load_type(row.load_type_id, rec), "plantarea": lambda: self.area(row.plant_area_id),
                  "suppliedfrom": supply, "eel": lambda: self.eel_item(row.key) if row.recipe_id == EEL_SOURCE else None,
                  "cable": lambda: self.cable(cable_code), "motor": lambda: self.motor(flat), "drive": lambda: self.drive(flat),
-                 "starter": lambda: self.starter(row, flat)}
+                 "starter": lambda: self.starter(row, flat), "loadfactor": lambda: self.load_factor(flat)}
         rec = Record("load", fields, links, row.tag())
         return rec
 

@@ -57,7 +57,7 @@ def _work_out(page: SummaryPage) -> list[SummaryOutTable]:
 
     lists = get_keylists()
     return work_out(page, current_rows()[0], {t.id: t for t in lists.load_types().items},
-                    {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}, lists.motors().items, lists.drives().items, lists.starters())
+                    {n.id: (n.tag, n.description) for n in lists.plant_areas().nodes}, lists.motors().items, lists.drives().items, lists.starters(), lists.load_factors().items)
 
 
 def _view(page: SummaryPage) -> SummaryView:

@@ -470,3 +470,25 @@ def test_starter_coordination_starts_with_the_nhp_charts() -> None:
     assert client.post("/api/list-workbooks/starters/reset").status_code == 200
     reset = client.get("/api/keylists/starters").json()
     assert len(reset["items"]) == 126 and reset["default_chart"] == "ECH64.2"
+
+
+def test_load_factors_start_with_the_typical_factors() -> None:
+    import io as _io
+
+    from openpyxl import load_workbook as _load
+
+    items = client.get("/api/keylists/load-factors").json()["items"]
+    assert len(items) == 31 and items[0]["equipment_type"] == "Default" and client.get("/api/keylists").json()["load_factors"]["items"] == 31
+    mine = items[1:] + [{"equipment_type": "Pump", "nameplate_lf": 0.8, "optimised_lf": 0.9, "avg_demand": 0.7, "max_demand": 1}]
+    assert client.put("/api/keylists/load-factors", json={"items": mine}).status_code == 200
+    bad = client.put("/api/keylists/load-factors", json={"items": mine + [{"equipment_type": "PUMP"}]})
+    assert bad.status_code == 422
+    added = client.post("/api/keylists/load-factors/defaults").json()["items"]
+    assert len(added) == 32 and added[-1]["equipment_type"] == "Default"
+    data = client.post("/api/list-workbooks/load-factors/export", json={}).content
+    assert [c.value for c in _load(_io.BytesIO(data))["Load Factors"][1]][:3] == ["Equipment Type", "Nameplate LF", "Optimised LF"]
+    back = client.post("/api/list-workbooks/load-factors/import", params={"filename": "lf.xlsx", "apply": True}, content=data)
+    assert back.status_code == 200, back.text
+    assert client.get("/api/keylists/load-factors").json()["items"] == added
+    assert client.post("/api/list-workbooks/load-factors/reset").status_code == 200
+    assert len(client.get("/api/keylists/load-factors").json()["items"]) == 31

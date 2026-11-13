@@ -64,6 +64,7 @@ def overview() -> dict:
             "motors": {"items": len(lists.motors().items)},
             "drives": {"items": len(lists.drives().items)},
             "starters": {"items": len(lists.starters().items)},
+            "load_factors": {"items": len(lists.load_factors().items)},
             "distribution_panels": {"items": len(lists.distribution_panels().panels)},
             "instrument_runsheet": {"items": len(lists.instrument_runsheet().rows)},
             "mel": {"items": _mel_count()},
@@ -364,6 +365,35 @@ def drive_defaults():
     if not missing:
         return lists.drives()
     return lists.save_drives(items + missing, note=f"{len(missing)} PowerFlex 755TS drive(s) added")
+
+
+# -- load factors -------------------------------------------------------------------------------
+
+@router.get("/load-factors")
+def get_load_factors():
+    return get_keylists().load_factors()
+
+
+@router.put("/load-factors")
+def update_load_factors(body: CodeListUpdate):
+    from workbench_core.keylists.load_factors import check_load_factors
+    try:
+        return get_keylists().save_load_factors(check_load_factors(body.items))
+    except RefValidationError as exc:
+        return invalid(exc)
+
+
+@router.post("/load-factors/defaults")
+def load_factor_defaults():
+    """Add the typical rows (and Default) that are missing, by equipment type; the rest is kept."""
+    from workbench_core.keylists.load_factors import default_load_factors
+    lists = get_keylists()
+    items = lists.load_factors().items
+    have = {name_key(r.equipment_type) for r in items}
+    missing = [r for r in default_load_factors() if name_key(r.equipment_type) not in have]
+    if not missing:
+        return lists.load_factors()
+    return lists.save_load_factors(items + missing, note=f"{len(missing)} typical load factor row(s) added")
 
 
 # -- starter coordination -----------------------------------------------------------------------
