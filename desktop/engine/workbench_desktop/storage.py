@@ -880,6 +880,8 @@ class KeyListStore:
         enums = ProjectEnums.model_validate_json(row[0])
         if '"document_types"' not in row[0]:  # saved before the Document List: it starts with the default document types
             enums.document_types = default_enums().document_types
+        if '"x_proper"' not in row[0]:  # saved before xProper: it starts with the default words
+            enums.x_proper = default_enums().x_proper
         return enums
 
     def disciplines(self) -> dict[str, str]:

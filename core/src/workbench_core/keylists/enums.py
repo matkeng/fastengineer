@@ -7,6 +7,8 @@
 - **Drawing types**: used by the Drawing List. **Document types**: used by the Document List.
 - **Drawing statuses**: used by both the Drawing List and the Document List. A code is optional
   (a status is usually known by its code, IFC; a drawing type by its name).
+- **xProper**: words (MCC, PLC, I/O…) that keep their capitals, as written, when text is put
+  into proper case (text_case.proper_case: <<…|title>>, .title(), proper()). Words only, no codes.
 
 A project starts with a default set and can change it: add, rename, reorder and remove items.
 Within an enum, codes are unique and names are unique (ignoring case and extra spaces). An
@@ -22,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from ..refdata.models import RefValidationError, new_id
 from ..refdata.validate import name_key
+from ..text_case import DEFAULT_PROPER_WORDS
 from .models import DISCIPLINES
 
 #: enum key -> (what it is called, what one item is called, whether every item needs a code)
@@ -30,7 +33,10 @@ ENUMS: dict[str, tuple[str, str, bool]] = {
     "drawing_types": ("Drawing types", "drawing type", False),
     "document_types": ("Document types", "document type", False),
     "drawing_statuses": ("Drawing statuses", "drawing status", False),
+    "x_proper": ("xProper", "word", False),
 }
+#: Enums that are plain lists of words: their items have a name and no code.
+WORD_LISTS: frozenset[str] = frozenset({"x_proper"})
 DRAWING_TYPES: tuple[str, ...] = (
     "Single Line Diagram", "Schematic", "Termination Diagram", "Loop Diagram", "Block Diagram", "Cable Block Diagram", "Layout",
     "General Arrangement", "P&ID", "Hook-up", "Panel Schedule", "Schedule", "Index", "Standard Detail", "Datasheet", "Other")
@@ -57,6 +63,7 @@ class ProjectEnums(BaseModel):
     drawing_types: list[EnumItem] = Field(default_factory=list)
     document_types: list[EnumItem] = Field(default_factory=list)
     drawing_statuses: list[EnumItem] = Field(default_factory=list)
+    x_proper: list[EnumItem] = Field(default_factory=list)
     updated_at: datetime | None = None
 
 
@@ -67,7 +74,8 @@ def default_enums() -> ProjectEnums:
         disciplines=[EnumItem(id=f"d-{c.lower()}", code=c, name=n) for c, n in DISCIPLINES.items()],
         drawing_types=[EnumItem(id=f"dt{i}", name=n) for i, n in enumerate(DRAWING_TYPES, start=1)],
         document_types=[EnumItem(id=f"doc{i}", name=n) for i, n in enumerate(DOCUMENT_TYPES, start=1)],
-        drawing_statuses=[EnumItem(id=f"ds{i}", code=c, name=n) for i, (c, n) in enumerate(DRAWING_STATUSES, start=1)])
+        drawing_statuses=[EnumItem(id=f"ds{i}", code=c, name=n) for i, (c, n) in enumerate(DRAWING_STATUSES, start=1)],
+        x_proper=[EnumItem(id=f"xp{i}", name=w) for i, w in enumerate(DEFAULT_PROPER_WORDS, start=1)])
 
 
 def check_enums(enums: ProjectEnums) -> ProjectEnums:
@@ -80,7 +88,7 @@ def check_enums(enums: ProjectEnums) -> ProjectEnums:
         items = []
         seen: dict[str, set[str]] = {"code": set(), "name": set()}
         for raw in getattr(enums, key):
-            item = raw.model_copy(update={"code": raw.code.strip(), "name": " ".join(raw.name.split())})
+            item = raw.model_copy(update={"code": "" if key in WORD_LISTS else raw.code.strip(), "name": " ".join(raw.name.split())})
             if item.id in ids:
                 raise RefValidationError("Two items have the same id.", {f"{item.id}.name": "Duplicate item"})
             ids.add(item.id)

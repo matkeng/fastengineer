@@ -20,6 +20,8 @@ import os
 import socket
 from dataclasses import dataclass
 
+from workbench_core.text_case import PROPER_WORDS, use_proper_words
+
 USER_HEADER = "x-workbench-user"
 MACHINE_HEADER = "x-workbench-machine"
 BASE_TIME_HEADER = "x-workbench-base-time"
@@ -70,12 +72,15 @@ def current() -> RequestContext:
 def carry(fn):
     """Wrap a background job so its changes are logged under the user who started it."""
     ctx = current()
+    words = PROPER_WORDS.get()
 
     def run(*args, **kwargs):
         token = _current.set(RequestContext(ctx.user, ctx.machine, ctx.project))
+        wtoken = PROPER_WORDS.set(words)
         try:
             return fn(*args, **kwargs)
         finally:
+            PROPER_WORDS.reset(wtoken)
             _current.reset(token)
 
     return run
@@ -105,8 +110,10 @@ class IdentityMiddleware:
     the storage layer see, including from the sync-route thread pool.)
     """
 
-    def __init__(self, app, record_of=None, version_of=None, resolve_project=None):
+    def __init__(self, app, record_of=None, version_of=None, resolve_project=None, proper_words=None):
         self.app = app
+        #: () -> the request's project's xProper words, read on first use (text_case.proper_case)
+        self.proper_words = proper_words
         #: (context, path, requested project id) -> sets context.project, or raises
         #: an exception with ``status`` and ``message`` when the user may not use it.
         self.resolve_project = resolve_project
@@ -149,6 +156,7 @@ class IdentityMiddleware:
                 await refuse(exc.status, exc.message)
                 return
         token = _current.set(ctx)
+        words = use_proper_words(self.proper_words) if self.proper_words else None
 
         async def send_with_etag(message):
             if message["type"] == "http.response.start" and 200 <= message["status"] < 300:
@@ -163,4 +171,6 @@ class IdentityMiddleware:
         try:
             await self.app(scope, receive, send_with_etag)
         finally:
+            if words is not None:
+                PROPER_WORDS.reset(words)
             _current.reset(token)

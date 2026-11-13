@@ -27,7 +27,8 @@ def data_dir(tmp_path: Path):
 def test_a_project_starts_with_the_default_enums_and_no_drawings() -> None:
     view = client.get(ENUMS).json()
     assert view["titles"] == {"disciplines": "Disciplines", "drawing_types": "Drawing types", "document_types": "Document types",
-                              "drawing_statuses": "Drawing statuses"}
+                              "drawing_statuses": "Drawing statuses", "x_proper": "xProper"}
+    assert [w["name"] for w in view["enums"]["x_proper"]][:3] == ["MCC", "PLC", "VSD"] and view["word_lists"] == ["x_proper"]
     assert [t["name"] for t in view["enums"]["document_types"]][:3] == ["List", "Schedule", "Datasheet"]
     assert [d["code"] for d in view["enums"]["disciplines"]] == ["E", "I", "M", "P", "C", "S", "H", "PR", "G"]
     assert len(view["enums"]["drawing_types"]) == 16 and view["enums"]["drawing_statuses"][4] == {"id": "ds5", "code": "IFC", "name": "Issued for Construction"}
@@ -36,7 +37,7 @@ def test_a_project_starts_with_the_default_enums_and_no_drawings() -> None:
     assert drawings["items"] == [] and [c["heading"] for c in drawings["columns"]][:2] == ["Drawing number", "Project name"]
     assert [i["name"] for i in drawings["choices"]["drawing_type"]][:2] == ["Single Line Diagram", "Schematic"]
     ov = client.get("/api/keylists").json()
-    assert ov["drawing_list"] == {"items": 0} and ov["enums"] == {"items": 42} and ov["document_list"] == {"items": 0} and ov["disciplines"][-1] == {"code": "G", "name": "General"}
+    assert ov["drawing_list"] == {"items": 0} and ov["enums"] == {"items": 67} and ov["document_list"] == {"items": 0} and ov["disciplines"][-1] == {"code": "G", "name": "General"}
 
 
 def test_drawings_fixed_choices_and_equipment_warnings() -> None:
@@ -179,3 +180,23 @@ def test_the_document_list_is_the_same_register_with_one_title(tmp_path: Path) -
     before = client.get(DOCS).json()["items"]
     done = client.post("/api/list-workbooks/document-list/import", params={"filename": "d.xlsx", "apply": True}, content=data)
     assert done.status_code == 200 and " 0 new" in done.json()["summary"] and client.get(DOCS).json()["items"] == before
+
+
+def test_xproper_words_apply_to_proper_case_in_the_project() -> None:
+    from workbench_core.text_case import proper_case
+
+    view = client.get(ENUMS).json()
+    enums = view["enums"] | {"x_proper": view["enums"]["x_proper"] + [{"id": "w-vfd", "code": "", "name": "VFD"}]}
+    assert client.put(ENUMS, json=enums).status_code == 200
+    from workbench_desktop.app import app
+
+    @app.get("/api/_test/proper")
+    def _proper(text: str):
+        return {"text": proper_case(text)}
+
+    try:
+        assert client.get("/api/_test/proper", params={"text": "vfd for plc"}).json() == {"text": "VFD For PLC"}
+    finally:
+        app.router.routes.pop()
+        enums["x_proper"] = view["enums"]["x_proper"]
+        client.put(ENUMS, json=enums)

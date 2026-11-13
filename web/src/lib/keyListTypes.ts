@@ -317,9 +317,9 @@ export function fileSize(bytes: number): string {
 
 /** The project's Enums: the choice lists other lists pick from (mirrors keylists.enums). */
 export interface EnumItem { id: string; code: string; name: string }
-export type EnumKey = 'disciplines' | 'drawing_types' | 'document_types' | 'drawing_statuses';
-export interface ProjectEnums { disciplines: EnumItem[]; drawing_types: EnumItem[]; document_types: EnumItem[]; drawing_statuses: EnumItem[]; updated_at: string | null }
-export interface EnumsView { enums: ProjectEnums; titles: Record<EnumKey, string>; need_code: EnumKey[]; in_use: Record<string, number> }
+export type EnumKey = 'disciplines' | 'drawing_types' | 'document_types' | 'drawing_statuses' | 'x_proper';
+export interface ProjectEnums { disciplines: EnumItem[]; drawing_types: EnumItem[]; document_types: EnumItem[]; drawing_statuses: EnumItem[]; x_proper: EnumItem[]; updated_at: string | null }
+export interface EnumsView { enums: ProjectEnums; titles: Record<EnumKey, string>; need_code: EnumKey[]; in_use: Record<string, number>; word_lists?: EnumKey[] }
 export const enumLabel = (i: EnumItem) => i.code || i.name;
 
 /** A register: the Drawing List or the Document List (mirrors drawing_list_api.RegisterView). */

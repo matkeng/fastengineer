@@ -31,11 +31,21 @@ import re
 
 from asteval import Interpreter
 
+from ..text_case import proper_case
+
+
+def _proper(value: object) -> str:
+    """proper(text): Title Case, keeping the project's xProper words (MCC, PLC…) as written."""
+    if not isinstance(value, str):
+        raise TypeError("proper() works on text: use str(…) first")
+    return proper_case(value)
+
+
 #: The functions an expression can call: name -> what it is.
 FUNCTIONS = {
     "round": round, "abs": abs, "min": min, "max": max, "int": int, "float": float, "str": str, "len": len,
     "ceil": math.ceil, "floor": math.floor, "trunc": math.trunc, "sqrt": math.sqrt, "log": math.log, "log10": math.log10,
-    "exp": math.exp, "sin": math.sin, "cos": math.cos, "tan": math.tan, "radians": math.radians, "degrees": math.degrees,
+    "proper": _proper, "exp": math.exp, "sin": math.sin, "cos": math.cos, "tan": math.tan, "radians": math.radians, "degrees": math.degrees,
 }
 #: Text functions, written after a text value: <<Tag>>.upper().
 METHODS = ("strip", "lstrip", "rstrip", "upper", "lower", "title", "capitalize", "replace", "startswith", "endswith",
@@ -210,6 +220,8 @@ def _text(value: object, name: str, *args: object) -> object:
         times = value.count(args[0]) if args[0] else len(value) + 1
         if len(value) + times * len(args[1]) > MAX_RESULT:
             raise ValueError("the result would be too long")
+    if name == "title":
+        return proper_case(value)
     return getattr(value, name)(*args)
 
 
@@ -276,6 +288,7 @@ FUNCTION_HELP: list[tuple[str, str, list[tuple[str, str, str]]]] = [
      [("<<Tag>> + '-M'", "P-101-M", "+ joins text"),
       ("<<Desc>>.strip()", "Feed pump A", "remove spaces at both ends (lstrip: the start, rstrip: the end)"),
       ("<<Desc>>.upper()", " FEED PUMP A ", "capitals (lower: small letters, title: Each Word, capitalize: First letter)"),
+      ("proper('mcc feeder')", "MCC Feeder", "Each Word, keeping the xProper words (Enums) as written; .title() does the same"),
       ("<<Tag>>.replace('-', '')", "P101", "replace every occurrence"),
       ("<<Tag>>.startswith('P')", "TRUE", "begins with (endswith(…): ends with)"),
       ("<<Tag>>.split('-')[0]", "P", "the part before a separator ([1]: after it)"),

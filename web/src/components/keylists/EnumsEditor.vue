@@ -14,13 +14,16 @@ import HistoryButton from '../audit/HistoryButton.vue';
 const kl = useKeyLists();
 const view = computed(() => kl.enumsView!);
 const d = computed(() => kl.enumsDraft!);
-const KEYS: EnumKey[] = ['disciplines', 'drawing_types', 'document_types', 'drawing_statuses'];
+const KEYS: EnumKey[] = ['disciplines', 'drawing_types', 'document_types', 'drawing_statuses', 'x_proper'];
 const USED_BY: Record<EnumKey, string> = {
 	disciplines: 'Used by Equipment Codes, the Drawing List and the Document List. Every discipline needs a code.',
 	drawing_types: 'Used by the Drawing List. A code is optional.',
 	document_types: 'Used by the Document List. A code is optional.',
 	drawing_statuses: 'Used by the Drawing List and the Document List. A status with a code is shown by its code.',
+	x_proper: 'Words that keep their capitals, exactly as written, when text is put into proper case: <<…|title>>, <<…|proper>>, .title() and proper(). One word per row: MCC, PLC, I/O, kW…',
 };
+// enums that are plain lists of words (no code column)
+const isWords = (k: EnumKey) => (view.value.word_lists ?? ['x_proper']).includes(k);
 const key = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 const uses = (i: EnumItem) => view.value.in_use[i.id] ?? 0;
 
@@ -72,10 +75,10 @@ function move(k: EnumKey, i: number, by: -1 | 1) {
 				<h3>{{ view.titles[k] }} <span class="count">{{ d[k].length }}</span></h3>
 				<p class="hint small">{{ USED_BY[k] }}</p>
 				<table class="grid simple enum-items">
-					<thead><tr><th class="code">Code</th><th>Name</th><th /></tr></thead>
+					<thead><tr><th v-if="!isWords(k)" class="code">Code</th><th>{{ isWords(k) ? 'Word' : 'Name' }}</th><th /></tr></thead>
 					<tbody>
 						<tr v-for="(item, i) in d[k]" :key="item.id">
-							<td class="code">
+							<td v-if="!isWords(k)" class="code">
 								<input v-model="item.code" class="mono" :aria-label="`${view.titles[k]} code`" :class="{ invalid: problems[`${item.id}.code`] }"
 									:title="problems[`${item.id}.code`] ?? ''" />
 							</td>

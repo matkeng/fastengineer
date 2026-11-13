@@ -860,7 +860,7 @@ You don't create or name them: each project has one of each.
   - It can't be undone; the change log records the reset and how many rows it
     changed.
 - **Enums** (`keylists/enums.py`, API `/api/enums`): the choice lists other
-  lists pick from, edited per project in the **Enums** section. There are four,
+  lists pick from, edited per project in the **Enums** section. There are five,
   edited together and saved with Save:
 
   | Enum | A project starts with | Used by |
@@ -869,6 +869,7 @@ You don't create or name them: each project has one of each.
   | Drawing types | Single Line Diagram, Schematic, Termination Diagram, Loop Diagram, Block Diagram, Cable Block Diagram, Layout, General Arrangement, P&ID, Hook-up, Panel Schedule, Schedule, Index, Standard Detail, Datasheet, Other | Drawing List |
   | Document types | List, Schedule, Datasheet, Index, Register, Calculation, Specification, Report, Other | Document List |
   | Drawing statuses | Draft, IFR, IFA, IFT, IFC, AB, Superseded, Cancelled | Drawing List, Document List |
+  | xProper | MCC, PLC, VSD, DOL, HMI, UPS, SCADA, RTD, I/O, P&ID, LV, MV, HV, AC, DC, MCB, MCCB, RCD, ELCB, CT, VT, ESD, JB, LCS, IP | Proper case: `<<…\|title>>`, `<<…\|proper>>`, `.title()`, `proper()` |
 
   - An item has a **code** and a **name**. A discipline needs a code; for the
     others it is optional, and an item is shown by its code when it has one.
@@ -878,6 +879,15 @@ You don't create or name them: each project has one of each.
     count is shown beside it); renaming it is fine, and the lists follow.
     A discipline that equipment codes use keeps its code.
   - **Equipment Codes** tick their disciplines from this Disciplines enum.
+  - **xProper** is a plain list of words (no codes). When text is put into
+    proper case (`text_case.proper_case`), each word gets a capital first letter
+    and the rest small. Then each xProper word is put back **exactly as written**
+    wherever it appears with no letter either side, whatever its case: "mcc-01
+    feed to plc i/o" becomes "MCC-01 Feed To PLC I/O". Digits next to a word are
+    fine, so adding "kW" makes "7.5KW" into "7.5kW". This applies to the
+    `title` / `proper` tag modifiers, `.title()` and `proper()` in expressions
+    (MEL import rules, calculated fields, the summary page), using the
+    project's own list.
 - **Drawing List** (`keylists/drawing_list.py`, API `/api/drawing-list`): the
   project's register of drawings, as a sortable, filterable grid; click a row
   (or **Add drawing**) to edit it in a form, which saves straight away.
@@ -1134,7 +1144,8 @@ A cell of a load type's or an equipment type's rows can hold
   A load's fields are every Load List field (by tag or name, calculated ones
   too), its tags and its cable details; the other records' fields are listed in
   the editor's **All tags ⓘ** panel.
-- **modifiers**, left to right: `upper`, `lower`, `title`, `trim`, `nohyphen`,
+- **modifiers**, left to right: `upper`, `lower`, `title` (or `proper`: Each
+  Word, keeping the Enums' xProper words such as MCC and PLC), `trim`, `nohyphen`,
   `int` (cut off), `round:n`, `dec:n` (always n decimals, kept as text),
   `pad:n` (zero-pad, kept as text), `left:n`, `right:n`, `replace:a:b` (`\:`
   for a colon), `prefix:x` / `suffix:x` (only when not blank), `default:x`

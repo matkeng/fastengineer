@@ -70,7 +70,7 @@ def overview() -> dict:
             "drawing_list": {"items": len(lists.drawing_list().items)},
             "document_list": {"items": len(lists.document_list().items)},
             "enums": {"items": sum(len(getattr(lists.enums(), k))
-                                   for k in ("disciplines", "drawing_types", "document_types", "drawing_statuses"))}}
+                                   for k in ("disciplines", "drawing_types", "document_types", "drawing_statuses", "x_proper"))}}
 
 
 def _mel_count() -> int:

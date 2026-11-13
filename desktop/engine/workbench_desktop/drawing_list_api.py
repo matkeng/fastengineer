@@ -10,7 +10,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from workbench_core.keylists.drawing_list import DOCUMENTS, DRAWINGS, RegisterSpec, as_typed, check_drawings, equipment_warnings
-from workbench_core.keylists.enums import ENUMS, EnumItem, ProjectEnums, check_enums
+from workbench_core.keylists.enums import ENUMS, WORD_LISTS, EnumItem, ProjectEnums, check_enums
 from workbench_core.refdata import RefValidationError, name_key
 
 from .loadlist_api import mel_tags
@@ -29,6 +29,7 @@ class EnumsView(BaseModel):
     titles: dict[str, str]  # enum key -> what it is called
     need_code: list[str]  # the enums whose items must have a code
     in_use: dict[str, int]  # item id -> how many drawings, documents or equipment codes use it
+    word_lists: list[str] = []  # the enums that are plain lists of words (no codes): xProper
 
 
 def _uses() -> dict[str, int]:
@@ -51,7 +52,7 @@ def _uses() -> dict[str, int]:
 
 def _enums_view(enums: ProjectEnums) -> EnumsView:
     return EnumsView(enums=enums, titles={k: v[0] for k, v in ENUMS.items()}, need_code=[k for k, v in ENUMS.items() if v[2]],
-                     in_use=_uses())
+                     in_use=_uses(), word_lists=sorted(WORD_LISTS))
 
 
 @enums_router.get("", response_model=EnumsView)

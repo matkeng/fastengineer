@@ -29,6 +29,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..refdata.validate import name_key
+from ..text_case import proper_case
 
 
 def norm(name: str) -> str:
@@ -348,7 +349,8 @@ _NUM = re.compile(r"^\s*-?\d+(\.\d+)?\s*$")
 MODIFIERS: dict[str, tuple[int, str, str]] = {
     "upper": (0, "UPPER CASE", "<<LoadType.Name|upper>>"),
     "lower": (0, "lower case", "<<Tag|lower>>"),
-    "title": (0, "Title Case", "<<Description|title>>"),
+    "title": (0, "Title Case, keeping the xProper words (MCC, PLC…) as written", "<<Description|title>>"),
+    "proper": (0, "the same as title", "<<Description|proper>>"),
     "trim": (0, "remove outer spaces and repeated inner ones", "<<Description|trim>>"),
     "nohyphen": (0, "remove hyphens (P-101 → P101)", "<<Tag|nohyphen>>"),
     "int": (0, "whole number, cut off (7.9 → 7)", "<<Rating|int>>"),
@@ -419,8 +421,8 @@ def apply(text: str, mods: list[tuple[str, list[str]]]) -> str:
             text = text.upper()
         elif name == "lower":
             text = text.lower()
-        elif name == "title":
-            text = text.title()
+        elif name in ("title", "proper"):
+            text = proper_case(text)
         elif name == "trim":
             text = " ".join(text.split())
         elif name == "nohyphen":

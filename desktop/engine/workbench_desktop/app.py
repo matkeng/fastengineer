@@ -37,7 +37,7 @@ from .keylist_workbooks_api import router as keylist_workbooks_router
 from .deliverables_api import router as deliverables_router
 from .projects_api import router as projects_router
 from .sample_api import router as sample_router
-from .storage import get_store
+from .storage import get_keylists, get_store
 
 app = FastAPI(title="Drawing Workbench engine", version=workbench_core.__version__)
 
@@ -87,7 +87,8 @@ def record_of(path: str) -> tuple[str, str] | None:
 
 # Added first so it sits inside CORS: its 401 then still carries the CORS headers.
 app.add_middleware(identity.IdentityMiddleware, record_of=record_of, resolve_project=projects.resolve,
-                   version_of=lambda entity, record_id: get_store().version_of(entity, record_id))
+                   version_of=lambda entity, record_id: get_store().version_of(entity, record_id),
+                   proper_words=lambda: [w.name for w in get_keylists().enums().x_proper])
 
 # The Tauri WebView origin differs by OS (http://tauri.localhost on Windows,
 # tauri://localhost on macOS/Linux); Vite dev server runs on localhost:5173.
