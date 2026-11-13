@@ -748,6 +748,57 @@ class KeyListStore:
             row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.DRIVES,)).fetchone()
         return DriveList.model_validate_json(row[0]) if row else DriveList(items=default_drives())
 
+    INSTRUMENT_TYPES = "instrument-types"
+
+    def instrument_types(self):
+        """Instrument Types; a project that never saved it has the common ISA types (keylists.instrument_types)."""
+        from workbench_core.keylists.instrument_types import InstrumentTypeList, default_instrument_types
+
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.INSTRUMENT_TYPES,)).fetchone()
+        return InstrumentTypeList.model_validate_json(row[0]) if row else InstrumentTypeList(items=default_instrument_types())
+
+    def save_instrument_types(self, items: list, note: str | None = None):
+        from workbench_core.keylists.instrument_types import InstrumentTypeList, default_instrument_types
+
+        it = InstrumentTypeList(items=items, updated_at=_now())
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.INSTRUMENT_TYPES,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.INSTRUMENT_TYPES, it.model_dump_json()))
+            audit.log(self._db, "instrument_types", self.INSTRUMENT_TYPES,
+                      before or InstrumentTypeList(items=default_instrument_types()).model_dump_json(), it.model_dump_json(),
+                      label="Instrument Types", note=note)
+        return it
+
+    PID_LOOPS = "pid-loops"
+
+    def pid_loops(self):
+        """What people decided about the PID Symbols' loops: instrument type and verified (keylists.pid_loops)."""
+        from workbench_core.keylists.pid_loops import PidLoopStates
+
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.PID_LOOPS,)).fetchone()
+        return PidLoopStates.model_validate_json(row[0]) if row else PidLoopStates()
+
+    def save_pid_loop(self, loop: str, state, label: str = ""):
+        """Save one loop's state (an empty one is removed); logged under the loop number."""
+        from workbench_core.keylists.pid_loops import PidLoopState, PidLoopStates
+
+        with self._lock, self._db:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.PID_LOOPS,)).fetchone()
+            states = PidLoopStates.model_validate_json(row[0]) if row else PidLoopStates()
+            before = states.loops.get(loop, PidLoopState())
+            if state == PidLoopState():
+                states.loops.pop(loop, None)
+            else:
+                states.loops[loop] = state
+            states.updated_at = _now()
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.PID_LOOPS, states.model_dump_json()))
+            audit.log(self._db, "pid_loops", loop, before.model_dump_json(), state.model_dump_json(), label=label or f"Loop {loop}")
+        return states
+
     LOAD_FACTORS = "load-factors"
 
     def load_factors(self):

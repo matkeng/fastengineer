@@ -62,6 +62,8 @@ ENTITIES = {
     "drives": "drive data list",
     "starters": "starter coordination list",
     "load_factors": "load factors list",
+    "instrument_types": "instrument types list",
+    "pid_loops": "PID symbols loop",
     "equipment_codes": "equipment codes list",
     "instrument_codes": "instrument codes list",
     "load_list_row": "load list row",

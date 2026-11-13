@@ -576,6 +576,22 @@ def import_drives(sheets: dict[str, Rows], old) -> Parsed:
     return Parsed({"items": items}, [f"{i['cat_no']} {i['voltage']}V" for i in items], labels={i["id"]: i["cat_no"] for i in items})
 
 
+# -- Instrument Types ----------------------------------------------------------------------------
+
+INSTRUMENT_TYPE_HEAD = ["Name", "Functions", "Description"]
+
+
+def export_instrument_types(items) -> Sheets:
+    return [("Instrument Types", [INSTRUMENT_TYPE_HEAD] + [[t.name, ", ".join(t.functions) or None, t.description or None] for t in items])]
+
+
+def import_instrument_types(sheets: dict[str, Rows], old) -> Parsed:
+    keep = _keep([(t.id, t.name) for t in old])
+    items = [{"id": keep(_get(r, "Name")), "name": _get(r, "Name"), "functions": _get(r, "Functions"), "description": _get(r, "Description")}
+             for r in _sheet(sheets, "Instrument Types", ("Name", "Functions"))]
+    return Parsed({"items": items}, [i["name"] for i in items], labels={i["id"]: i["name"] for i in items})
+
+
 # -- Load Factors --------------------------------------------------------------------------------
 
 def _load_factor_head() -> list[tuple[str, str]]:

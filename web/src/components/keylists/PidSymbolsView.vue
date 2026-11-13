@@ -12,6 +12,7 @@ import { apiGet } from '../../lib/engine';
 import { useKeyLists } from '../../stores/keylists';
 import { useUi } from '../../stores/ui';
 import ListWorkbook from './ListWorkbook.vue';
+import PidLoopsView from './PidLoopsView.vue';
 
 type Row = Record<string, string | number | boolean | null>;
 interface PidView { fields: string[]; rows: Row[]; sources: { id: string; name: string; rows: number; has_file: boolean }[]; warnings: string[] }
@@ -29,6 +30,8 @@ const host = ref<HTMLDivElement | null>(null);
 const view = ref<PidView | null>(null);
 const error = ref('');
 const busy = ref(false);
+const tab = ref<'detections' | 'loops'>('detections');
+const loopsView = ref<InstanceType<typeof PidLoopsView> | null>(null);
 let table: FilteredTable<Row> | null = null;
 
 async function load() {
@@ -97,7 +100,7 @@ onBeforeUnmount(() => table?.api.destroy());
 			<span v-if="view" class="hint small">{{ view.rows.length }} symbol(s) from {{ view.sources.length }} import(s)</span>
 			<span class="spacer" />
 			<ListWorkbook list-id="pid-symbols" name="PID Symbols" export-only />
-			<button type="button" class="secondary" :disabled="busy" title="Read the imports again" @click="load">Refresh</button>
+			<button type="button" class="secondary" :disabled="busy" title="Read the imports again" @click="load(); loopsView?.load()">Refresh</button>
 			<button type="button" class="secondary" @click="ui.go('mel')">Open List import</button>
 		</div>
 		<p v-if="error" class="error">{{ error }}</p>
@@ -105,9 +108,17 @@ onBeforeUnmount(() => table?.api.destroy());
 			The symbols found on the P&amp;IDs, one row per detection, with where each is: <strong>X</strong> and <strong>Y</strong> are its centre in
 			<strong>mm from the sheet's top-left corner</strong> (Y down), with its width and height. It is made from every <strong>PID Symbols</strong>
 			List Import: in <strong>Symbol Detection</strong>, analyse the drawings and <em>Send to List import</em>; the import's rules and mapping
-			apply. It can't be edited here: it changes when a run is sent again or an import's rules change.
+			apply. It can't be edited here: it changes when a run is sent again or an import's rules change. <strong>Loops</strong> groups the
+			detections by loop number, where each loop is given its <strong>instrument type</strong> (Instrument Types) and ticked as verified.
 		</p>
-		<p v-for="w in view?.warnings ?? []" :key="w" class="warn small">{{ w }}</p>
-		<div class="results mel-grid"><div ref="host" class="result-table" /></div>
+		<div class="sym-tabs" role="tablist">
+			<button type="button" role="tab" :aria-selected="tab === 'detections'" :class="{ on: tab === 'detections' }" @click="tab = 'detections'">Detections</button>
+			<button type="button" role="tab" :aria-selected="tab === 'loops'" :class="{ on: tab === 'loops' }" @click="tab = 'loops'">Loops</button>
+		</div>
+		<template v-if="tab === 'detections'">
+			<p v-for="w in view?.warnings ?? []" :key="w" class="warn small">{{ w }}</p>
+		</template>
+		<div v-show="tab === 'detections'" class="results mel-grid"><div ref="host" class="result-table" /></div>
+		<PidLoopsView v-if="tab === 'loops'" ref="loopsView" />
 	</section>
 </template>

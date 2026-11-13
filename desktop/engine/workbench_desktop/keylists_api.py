@@ -65,6 +65,7 @@ def overview() -> dict:
             "drives": {"items": len(lists.drives().items)},
             "starters": {"items": len(lists.starters().items)},
             "load_factors": {"items": len(lists.load_factors().items)},
+            "instrument_types": {"items": len(lists.instrument_types().items)},
             "distribution_panels": {"items": len(lists.distribution_panels().panels)},
             "instrument_runsheet": {"items": len(lists.instrument_runsheet().rows)},
             "pid_symbols": {"items": _pid_symbol_count()},
@@ -366,6 +367,42 @@ def drive_defaults():
     if not missing:
         return lists.drives()
     return lists.save_drives(items + missing, note=f"{len(missing)} PowerFlex 755TS drive(s) added")
+
+
+# -- instrument types -----------------------------------------------------------------------------
+
+@router.get("/instrument-types")
+def get_instrument_types():
+    return get_keylists().instrument_types()
+
+
+@router.put("/instrument-types")
+def update_instrument_types(body: CodeListUpdate):
+    from workbench_core.keylists.instrument_types import check_instrument_types
+    try:
+        return get_keylists().save_instrument_types(check_instrument_types(body.items))
+    except RefValidationError as exc:
+        return invalid(exc)
+
+
+@router.post("/instrument-types/defaults")
+def instrument_type_defaults():
+    """Add the common types that are missing, by name; the rest is kept. A default whose function
+    codes another type already has is added without them."""
+    from workbench_core.keylists.instrument_types import default_instrument_types
+    lists = get_keylists()
+    items = lists.instrument_types().items
+    have = {name_key(t.name) for t in items}
+    taken = {f for t in items for f in t.functions}
+    missing = []
+    for t in default_instrument_types():
+        if name_key(t.name) in have:
+            continue
+        missing.append(t.model_copy(update={"functions": [f for f in t.functions if f not in taken]}))
+        taken |= set(t.functions)
+    if not missing:
+        return lists.instrument_types()
+    return lists.save_instrument_types(items + missing, note=f"{len(missing)} common instrument type(s) added")
 
 
 # -- load factors -------------------------------------------------------------------------------

@@ -492,3 +492,23 @@ def test_load_factors_start_with_the_typical_factors() -> None:
     assert client.get("/api/keylists/load-factors").json()["items"] == added
     assert client.post("/api/list-workbooks/load-factors/reset").status_code == 200
     assert len(client.get("/api/keylists/load-factors").json()["items"]) == 31
+
+
+def test_instrument_types_list() -> None:
+    items = client.get("/api/keylists/instrument-types").json()["items"]
+    assert items[1] == {"id": "it-density-transmitter", "name": "Density Transmitter", "functions": ["DE", "DX", "DIT"], "description": ""}
+    assert client.get("/api/keylists").json()["instrument_types"]["items"] == len(items)
+    mine = items[2:] + [{"name": "2 x Conveyor Drift Switch 2", "functions": "ZSA ZSB"}]
+    assert client.put("/api/keylists/instrument-types", json={"items": mine}).status_code == 200
+    assert client.put("/api/keylists/instrument-types", json={"items": mine + [{"name": "X", "functions": "ZSA"}]}).status_code == 422
+    added = client.post("/api/keylists/instrument-types/defaults").json()["items"]
+    assert [t["name"] for t in added[-2:]] == ["Level Transmitter", "Density Transmitter"]
+    import io as _io
+
+    from openpyxl import load_workbook as _load
+    data = client.post("/api/list-workbooks/instrument-types/export", json={}).content
+    assert [c.value for c in _load(_io.BytesIO(data))["Instrument Types"][2]][:2] == ["Flow Transmitter", "FE, FT, FIT"]
+    back = client.post("/api/list-workbooks/instrument-types/import", params={"filename": "t.xlsx", "apply": True}, content=data)
+    assert back.status_code == 200, back.text
+    assert client.get("/api/keylists/instrument-types").json()["items"] == added
+    assert client.post("/api/list-workbooks/instrument-types/reset").status_code == 200

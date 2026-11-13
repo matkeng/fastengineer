@@ -989,6 +989,22 @@ You don't create or name them: each project has one of each.
   its size. It is made from every `PSL` (PID Symbols) List Import, each one's latest file
   through its rules and mapping; see [Symbol detection](#symbol-detection), step 7. It is
   read-only, with filters and Export .xlsx.
+
+  Its **Loops** tab groups the detections by **loop number**, in natural order, so
+  99 comes before 1023. For each loop it lists its function tags (FT-1023,
+  FV-1023), their function codes, the drawings and pages it was found on, and how
+  many detections it has. Each loop has an **Instrument type** dropdown. Until you
+  choose one, it shows the type sharing the most function codes with the loop:
+  *Suggested: Flow Transmitter*. Each loop also has a **Verified** tick, which
+  records who ticked it and when. Both are saved as soon as they change, kept by
+  loop number (so a re-analysis keeps them), and recorded in the change log.
+  Detections with no loop number are counted but left out.
+- **Instrument Types** (`keylists/instrument_types.py`, under Instruments): the
+  types of instrument loop: Level Transmitter, Density Transmitter, 2 x Conveyor
+  Drift Switch and so on. Each has its **P&ID function codes**: a Density
+  Transmitter is `DE, DX, DIT` (element, source, transmitter). A code belongs to one
+  type only. A project starts with common ISA types; it is edited, exported,
+  imported, reset and topped up (**Add missing common types**) like the other lists.
 - **Instrument Runsheet** (`keylists/instrument_runsheet.py`, API
   `/api/instrument-runsheet`): what the **Instrument generator** will run from
   (see [Deliverable generators](#deliverable-generators)).

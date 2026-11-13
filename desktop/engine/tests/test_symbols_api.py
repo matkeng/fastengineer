@@ -136,6 +136,24 @@ def test_flow_into_an_instrument_list(data_dir: Path) -> None:
     assert len(pid["rows"]) >= sum(len(client.get(f"{API}/drawings/{d['id']}/pages/{n}/result").json()["symbols"]) for n in (1, 2))
     book = load_workbook(io.BytesIO(client.post("/api/list-workbooks/pid-symbols/export", json={}).content))
     assert [c.value for c in book["PID Symbols"][1]][:2] == ["Import", "Tag"]
+    # the Loops view: by loop number, with its tags, functions and drawings, a suggested type, chosen and verified
+    loops = client.get("/api/pid-symbols/loops").json()
+    by_loop = {x["loop"]: x for x in loops["loops"]}
+    assert [x["loop"] for x in loops["loops"]] == sorted(by_loop, key=int)
+    l1023 = by_loop["1023"]
+    assert {"FT-1023", "FV-1023"} <= set(l1023["tags"]) and {"FT", "FV"} <= set(l1023["functions"])
+    assert "pid-sample.pdf p1" in l1023["drawings"] and l1023["type_name"] == "Flow Transmitter" and l1023["type_by"] == "auto"
+    valve = next(t for t in loops["types"] if t["name"] == "Flow Control Valve")
+    changed = client.put("/api/pid-symbols/loops/1023", json={"type_id": valve["id"], "verified": True}).json()
+    assert (changed["type_name"], changed["type_by"], changed["verified"]) == ("Flow Control Valve", "user", True) and changed["verified_by"]
+    assert client.put("/api/pid-symbols/loops/1023", json={"verified": False}).json()["type_name"] == "Flow Control Valve"
+    back = client.put("/api/pid-symbols/loops/1023", json={"type_id": None}).json()
+    assert (back["type_name"], back["type_by"], back["verified"]) == ("Flow Transmitter", "auto", False)
+    assert client.put("/api/pid-symbols/loops/1023", json={"type_id": ""}).json()["type_id"] is None
+    assert client.put("/api/pid-symbols/loops/1023", json={"type_id": "nope"}).status_code == 422
+    assert client.put("/api/pid-symbols/loops/424242", json={"verified": True}).status_code == 404
+    log = client.get("/api/audit", params={"entity": "pid_loops", "record_id": "1023"}).json()
+    assert len(log["entries"] if isinstance(log, dict) else log) >= 4
     # the Load List and the PIL import are untouched by it
     assert all(r["source"] != "P&ID symbols" for r in client.get("/api/loadlist").json()["rows"])
 
