@@ -31,6 +31,7 @@ const props = withDefaults(defineProps<{
 	cells: string[][]; // display text per row and column
 	rowLabels?: string[];
 	cellClass?: (r: number, c: number) => string;
+	cellTitle?: (r: number, c: number) => string | undefined; // a cell's tooltip, in place of its long text
 	tagSuggestions?: string[]; // offered after typing "<<"
 	modifierSuggestions?: string[]; // offered after a "|" inside a tag, e.g. "upper", "left:3"
 	canEditRows?: boolean;
@@ -439,7 +440,54 @@ function select(r: number, c = 0) {
 	focusGrid();
 }
 
-defineExpose({ select, addRow });
+/** `text` put into `value` where the cursor is (`from`..`to` is replaced): [the new value, the cursor after it].
+ * A modifier ("|upper") goes inside the tag the cursor is in or after (else the cell's last tag); null when there is none. */
+function placed(value: string, from: number, to: number, text: string): [string, number] | null {
+	if (!text.startsWith('|')) return [value.slice(0, from) + text + value.slice(to), from + text.length];
+	let at = -1;
+	if (/<<[^<>]*$/.test(value.slice(0, from)) && !/^[^<>]*>>/.test(value.slice(from))) at = from; // a tag still being typed
+	else {
+		let last = -1;
+		for (const m of value.matchAll(/<<[^<>]*>>/g)) {
+			const end = m.index + m[0].length - 2; // just before its >>
+			if (m.index <= from && from <= end + 2) { at = end; break; }
+			if (end + 2 <= from || last < 0) last = end;
+		}
+		if (at < 0) at = last;
+	}
+	return at < 0 ? null : [value.slice(0, at) + text + value.slice(at), at + text.length];
+}
+
+/** Put a tag, or a "|modifier", where the user is: at the cursor of the cell being edited, else at the end of
+ * the current cell (a first row is added to an empty grid). False when a modifier has no tag to go on. */
+function insertText(text: string): boolean {
+	const el = editor.value;
+	if (editing.value && el) {
+		const got = placed(el.value, el.selectionStart ?? el.value.length, el.selectionEnd ?? el.value.length, text);
+		if (!got) return false;
+		editing.value.value = got[0];
+		tagQuery.value = null;
+		void nextTick(() => {
+			el.focus();
+			el.setSelectionRange(got[1], got[1]);
+		});
+		return true;
+	}
+	const { r, c } = head.value;
+	if (props.columns[c]?.readonly) return false;
+	const value = props.cells[r]?.[c] ?? '';
+	const got = placed(value, value.length, value.length, text);
+	if (!got) return false;
+	if (!nRows.value) {
+		if (!props.canEditRows) return false;
+		change('insert', 0, 1);
+		void nextTick(() => emit('set', [{ r: 0, c, value: got[0] }]));
+	} else change('set', [{ r, c, value: got[0] }]);
+	focusGrid();
+	return true;
+}
+
+defineExpose({ select, addRow, insertText });
 
 watch(nRows, (n) => {
 	if (head.value.r >= n) moveTo(n - 1, head.value.c);
@@ -503,7 +551,7 @@ const boolOn = (v: string | undefined) => /^(true|yes|y|1|x|locked)$/i.test(v ??
 							v-for="(col, c) in columns"
 							:key="c"
 							:class="[cellClass?.(r, c) ?? '', { sel: inSel(r, c), cur: isHead(r, c), ro: col.readonly, bool: col.type === 'bool' }]"
-							:title="cells[r]?.[c] && cells[r][c].length > 18 ? cells[r][c] : undefined"
+							:title="cellTitle?.(r, c) ?? (cells[r]?.[c] && cells[r][c].length > 18 ? cells[r][c] : undefined)"
 							@mousedown="cellDown($event, r, c)"
 							@mouseover="cellOver(r, c)"
 							@dblclick="startEdit()"

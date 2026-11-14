@@ -114,6 +114,35 @@ _CABLE_TAGS = ("cableno", "phase", "cablecode", "cabledesc", "cablecores", "cabl
                "cablelength", "cableparallel", "cableconstruction")
 
 _TAG = re.compile(r"<<\s*([^<>]+?)\s*>>")
+
+
+def tag_names(load_fields=None) -> set[str]:
+    """Every name a load answers to in a tag, as tag_paths.norm gives it: TAGS, the cable tags,
+    and the project's Load List fields by key and by name (`load_fields`: mel.load_fields.LoadFields)."""
+    from .tag_paths import norm
+
+    out = {norm(t) for t, _ in TAGS} | set(_CABLE_TAGS) | {norm(f) for f in ELEC_LOAD_FIELDS}
+    out |= {"row", "ispanel", "earthsize", "lfnameplate", "lfoptimised", "lfavgdemand", "lfmaxdemand"}
+    for f in (load_fields.fields if load_fields is not None else []):
+        out |= {norm(f.key), norm(f.label)}
+    return out
+
+
+def check_rows(rows: dict[str, list[dict[str, str]]], kind: str, names: dict[str, set[str]],
+               tables: dict[str, set[str]] | None = None) -> dict[str, list[dict]]:
+    """What is wrong with the tags in a type's predefined rows, as they are written: list key ->
+    [{row, column, tag, problem}] (`row` counts from 0). See tag_paths.check."""
+    from .tag_paths import check
+
+    out: dict[str, list[dict]] = {}
+    for key, list_rows in rows.items():
+        for i, row in enumerate(list_rows):
+            for column, text in row.items():
+                for m in _TAG.finditer(str(text)):
+                    problem = check(m.group(1), kind, names, tables)
+                    if problem:
+                        out.setdefault(key, []).append({"row": i, "column": column, "tag": m.group(0), "problem": problem})
+    return out
 _NUMBER = re.compile(r"^-?\d+(\.\d+)?$")
 
 
@@ -290,7 +319,8 @@ def _value(x: object) -> Scalar:
 
 def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, LoadType],
              areas: dict[str, tuple[str, str]], cables: list[CableType] | None = None,
-             notes: list[str] | None = None, columns: list[str] | None = None, load_fields=None, links=None) -> BuildResult:
+             notes: list[str] | None = None, columns: list[str] | None = None, load_fields=None, links=None,
+             only: set[str] | None = None) -> BuildResult:
     """The rows of one list for the active loads. `load_types` by id; `areas`: plant area id ->
     (tag, description). Loads without a load type produce nothing in a templated list (the
     caller reports them: see missing_load_types). `cables`: the Cable Types list, for rows
@@ -298,7 +328,7 @@ def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, Load
     `columns`: the project's columns for a templated list (default: the built-in ones).
     `load_fields`: the project's Load List fields, for the Load List's own (see load_list_columns).
     `links`: the project's lists (tag_paths.Links) for dot notation in the rows' tags (default:
-    only what is given here)."""
+    only what is given here). `only`: the refs of the loads to write rows for (default: all)."""
     spec = LISTS[list_key]
     cols = tuple(columns) if columns is not None and spec.templated else spec.columns
     if not spec.templated:
@@ -313,6 +343,8 @@ def generate(list_key: str, loads: list[LoadListRow], load_types: dict[str, Load
         from .tag_paths import Links
         links = Links(load_types=load_types.values(), loads=loads, cables=cables)
     for load in ordered(loads):
+        if only is not None and load.ref() not in only:
+            continue
         tags = tags_for(load, load_types, areas, by_ref)
         lt = load_types.get(load.load_type_id or "")
         if not spec.templated:

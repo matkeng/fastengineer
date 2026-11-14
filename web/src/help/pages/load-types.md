@@ -9,7 +9,7 @@ For a walk-through see [Set up Load Types and their template rows](help:howto-lo
 
 ![Load Types](img/load-types.png)
 
-Click a row, or **Add load type**, to open the form. **Save** in the form saves straight away.
+Click a row, or **Add load type**, to open the load type on a page of its own. **Save** on the page saves straight away; **‹ Load Types** goes back to the list, and asks first if there are changes that are not saved. While the page has unsaved changes, **Load Types** in the sidebar shows a dot, and you can look at another list and come back without losing them.
 
 ## Details
 
@@ -47,7 +47,9 @@ The tabs **Cable Schedule**, **Equipment List**, **Instrument List** and **PLC I
 Every load of this type adds these rows, with the `<<tags>>` replaced by that load's data. In the picture, a DOL load adds a power cable numbered `<<Tag>>-P…` from what it is supplied from to itself, and a control cable `<<Tag>>-C1`.
 
 - The grid works like a spreadsheet and takes rows pasted from Excel.
-- Type `<<` in a cell to pick a tag. **All tags ⓘ** lists everything a cell can use. See [Template tags](help:template-tags).
+- Type `<<` in a cell to pick a tag, or click one in the **Tags** list on the right: it goes in at the cursor of the cell you are editing, or at the end of the selected cell. The list can be searched, and its groups (the load, each linked record, this type's component tables, the modifiers) open on a click. A modifier is added to the tag the cursor is in. See [Template tags](help:template-tags).
+- **Check**, below the grid, reads the tags as you type. A tag that is misspelt, follows a link that isn't there, or uses a modifier that doesn't exist turns its cell red and is listed with what is wrong; click it in the list to go to its cell. A tab shows ⚠ and how many of its tags match nothing.
+- **Fill in from** chooses a load, and the rows are shown under the grid as they will be written for it: its tag, its panel, its cables. The loads of this type come first; any other load can be chosen and is filled in as if it were of this type. A row that repeats per cable shows a line for each cable (1.1, 1.2…). Nothing has to be saved first.
 - On the Cable Schedule, the **Repeat** column set to *Per power cable* writes the row once for each of the load's power cables. See [Produce a cable schedule](help:howto-cable-schedule).
 - **Export rows .xlsx** and **Import rows…** save and read this type's rows as a workbook.
 

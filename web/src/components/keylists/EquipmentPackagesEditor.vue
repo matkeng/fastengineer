@@ -9,7 +9,6 @@ import {
 } from '../../lib/keyListTypes';
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
-import AppModal from '../common/AppModal.vue';
 import TemplateRows from './TemplateRows.vue';
 
 // Equipment packages, each with its equipment types as child rows. The types are one flat
@@ -99,21 +98,29 @@ function removeType(t: EquipmentType) {
 	d.value.types.splice(d.value.types.indexOf(t), 1);
 }
 
-// An equipment type's predefined rows for the deliverable lists (as a load type has), edited
-// in a dialog. They are part of the draft: Save on the list saves them.
-const listsOf = ref<EquipmentType | null>(null);
+// An equipment type's predefined rows for the deliverable lists (as a load type has), edited on
+// a page of their own in place of the packages. They are part of the draft: Save saves them.
+// The type is kept by its id: the draft is a new copy after Save or Discard.
+const listsId = ref<string | null>(null);
+const listsOf = computed(() => d.value.types.find((t) => t.id === listsId.value) ?? null);
+const lists = computed(() => kl.templateLists?.lists ?? []);
+const listTab = ref('');
+const tagProblems = ref<Record<string, number>>({});
 const rowCount = (t: EquipmentType) => Object.values(t.rows ?? {}).reduce((n, r) => n + r.length, 0);
 const rowErrors = computed(() => (listsOf.value
 	? Object.entries(problems.value).filter(([k]) => k.startsWith(`${listsOf.value!.id}.rows`)).map(([, m]) => m) : []));
-function openLists(t: EquipmentType) {
+async function openLists(t: EquipmentType) {
 	t.rows ??= {};
-	listsOf.value = t;
+	tagProblems.value = {};
+	listsId.value = t.id;
+	await kl.loadTemplateLists();
+	if (!lists.value.some((l) => l.key === listTab.value)) listTab.value = lists.value[0]?.key ?? '';
 }
 function closeLists() {
 	const t = listsOf.value;
 	// rows left wholly blank, and lists left with none, are not kept
 	if (t) t.rows = Object.fromEntries(Object.entries(t.rows).map(([k, v]) => [k, v.filter((r) => Object.keys(r).length)] as const).filter(([, v]) => v.length));
-	listsOf.value = null;
+	listsId.value = null;
 }
 
 const label = (p: EquipmentPackage) => [p.number, p.description].filter(Boolean).join(' – ') || '(new package)';
@@ -135,14 +142,14 @@ const label = (p: EquipmentPackage) => [p.number, p.description].filter(Boolean)
 		</div>
 		<p v-if="kl.error" class="error">{{ kl.error }}</p>
 
-		<div class="row tree-toolbar">
+		<div v-show="!listsOf" class="row tree-toolbar">
 			<input v-model="filter" type="search" class="tree-filter" placeholder="Filter packages and equipment types…" aria-label="Filter" />
 			<button type="button" class="secondary small" @click="collapsed = new Set()">Expand all</button>
 			<button type="button" class="secondary small" @click="collapsed = new Set(d.items.map((p) => p.id))">Collapse all</button>
 			<span class="hint small">{{ d.items.length }} package(s) · {{ d.types.length }} equipment type(s)<template v-if="filtering"> · {{ rows.length }} package(s) shown</template></span>
 		</div>
 
-		<div ref="host" class="grid-wrap">
+		<div v-show="!listsOf" ref="host" class="grid-wrap">
 			<table class="grid simple enum-items">
 				<thead><tr><th class="num" /><th>Package number</th><th>Description</th><th>Vendor name</th><th>Package type</th><th /></tr></thead>
 				<tbody>
@@ -214,27 +221,32 @@ const label = (p: EquipmentPackage) => [p.number, p.description].filter(Boolean)
 				</tbody>
 			</table>
 		</div>
-		<div class="nav">
+		<div v-show="!listsOf" class="nav">
 			<button type="button" @click="add">Add package</button>
 			<span class="hint">Package numbers and descriptions are required and unique. Equipment type names are required and unique across all
 				packages. A package with equipment types can't be deleted. <strong>Lists</strong> on an equipment type holds the rows the
 				Instrument generator adds to the Project Master lists for each Instrument Runsheet row of that type.</span>
 		</div>
 
-		<AppModal class="type-lists" :open="!!listsOf" :title="`Lists of ${listsOf?.name || 'the equipment type'}`" @close="closeLists">
-			<TemplateRows v-if="listsOf" :key="listsOf.id" :rows="listsOf.rows" :errors="rowErrors" :tags="kl.templateLists?.instrument_tags" :paths="kl.templateLists?.instrument_paths"
-				:name="listsOf.name" kind="equipment">
+		<div v-if="listsOf" class="type-page">
+			<div class="mel-head type-head">
+				<button type="button" class="link back" @click="closeLists">‹ Equipment Packages</button>
+				<h3 class="key-title">Lists of {{ listsOf.name || 'the equipment type' }}</h3>
+				<span class="hint small">Kept with the list: <strong>Save</strong> above saves them.</span>
+			</div>
+			<nav class="subtabs">
+				<button v-for="l in lists" :key="l.key" type="button" :class="{ active: listTab === l.key }" @click="listTab = l.key">
+					{{ l.name }}<span class="count">{{ listsOf.rows[l.key]?.length ?? 0 }}</span>
+					<span v-if="tagProblems[l.key]" class="count bad" :title="`${tagProblems[l.key]} tag(s) in these rows match nothing`">⚠ {{ tagProblems[l.key] }}</span>
+				</button>
+			</nav>
+			<TemplateRows :id="listsOf.id" :key="listsOf.id" :rows="listsOf.rows" kind="equipment" :name="listsOf.name" :list="listTab" :errors="rowErrors"
+				:tags="kl.templateLists?.instrument_tags" :paths="kl.templateLists?.instrument_paths" @problems="tagProblems = $event">
 				<template #default="{ list }">
-					The rows this equipment type has for the <strong>{{ list.name }}</strong>, set out as a load type's are.
-					The tags are the columns of the <strong>Instrument Runsheet</strong>: the <strong>Instrument generator</strong> adds these rows
-					to the Project Master {{ list.name }} once for each runsheet row that names this equipment type, filled in from that row.
+					The <strong>Instrument generator</strong> adds these rows to the Project Master <strong>{{ list?.name }}</strong> once for each
+					<strong>Instrument Runsheet</strong> row that names this equipment type, with each tag replaced by that row's columns.
 				</template>
 			</TemplateRows>
-			<template #footer>
-				<span class="hint small">Kept with the list: press Save on Equipment Packages to save them.</span>
-				<span class="spacer" />
-				<button type="button" @click="closeLists">Done</button>
-			</template>
-		</AppModal>
+		</div>
 	</section>
 </template>

@@ -76,7 +76,7 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 							<span class="count" :title="`package(s), with ${kl.overview?.equipment_packages.types ?? 0} equipment type(s)`">{{ kl.overview?.equipment_packages.items ?? 0 }}</span>
 						</li>
 						<li :class="{ current: kl.selected === 'load-types' }" @click="kl.select('load-types')">
-							<span class="name">Load Types</span>
+							<span class="name">Load Types</span><span v-if="kl.loadTypeDirty" class="dirty-dot" title="Unsaved changes to the load type that is open">●</span>
 							<span class="count" title="load type(s)">{{ kl.overview?.load_types.items ?? 0 }}</span>
 						</li>
 						<li :class="{ current: kl.selected === 'equipment-codes' }" @click="kl.select('equipment-codes')">

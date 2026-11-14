@@ -512,3 +512,55 @@ def test_instrument_types_list() -> None:
     assert back.status_code == 200, back.text
     assert client.get("/api/keylists/instrument-types").json()["items"] == added
     assert client.post("/api/list-workbooks/instrument-types/reset").status_code == 200
+
+
+def test_template_rows_are_checked_and_previewed_without_saving() -> None:
+    assert client.post("/api/sample-data").status_code == 200
+    CHECK, types = "/api/keylists/template-rows/check", client.get("/api/keylists/load-types").json()["items"]
+    samples = client.get("/api/keylists/template-rows/samples", params={"kind": "load", "id": types[0]["id"]}).json()["items"]
+    assert len(samples) == 12 and samples[0]["own"] and [s["own"] for s in samples] == sorted((s["own"] for s in samples), reverse=True)
+    t = next(t for t in types if any(s["own"] for s in client.get(
+        "/api/keylists/template-rows/samples", params={"kind": "load", "id": t["id"]}).json()["items"]) and t["rows"].get("cable_schedule"))
+    mine = [s for s in client.get("/api/keylists/template-rows/samples", params={"kind": "load", "id": t["id"]}).json()["items"] if s["own"]]
+
+    # as saved: nothing wrong, and no preview until a load is chosen
+    body = {"kind": "load", "id": t["id"], "rows": t["rows"], "components": t.get("components", [])}
+    got = client.post(CHECK, json=body).json()
+    assert got["problems"] == {} and got["preview"] is None
+
+    # edited, not saved: the problems name their cells (a blank row above still counts), the preview is of the edit
+    rows = {**t["rows"], "equipment_list": [{}, {"Tag": "<<Tag>>-X", "Description": "<<LoadTyp.Name>> <<Tagg>> <<Tag|uper>>",
+                                                   "Model": "<<LoadType.Name|upper>>"}]}
+    got = client.post(CHECK, json=body | {"rows": rows, "sample": mine[0]["ref"]}).json()
+    assert [(p["row"], p["column"], p["tag"]) for p in got["problems"]["equipment_list"]] == [
+        (1, "Description", "<<LoadTyp.Name>>"), (1, "Description", "<<Tagg>>"), (1, "Description", "<<Tag|uper>>")]
+    assert "not a link of a load" in got["problems"]["equipment_list"][0]["problem"]
+    eq = got["preview"]["equipment_list"]
+    assert [r["template_row"] for r in eq["rows"]] == [1]
+    cells = dict(zip(eq["header"], eq["rows"][0]["cells"]))
+    assert cells["Tag"] == f"{mine[0]['tag']}-X" and cells["Model"] == t["name"].upper() and "<<Tagg>>" in cells["Description"]
+    assert any(u.startswith("<<Tagg>>") for u in got["unresolved"])
+    assert got["preview"]["cable_schedule"]["rows"]  # its cables, from the saved rows
+    assert client.get("/api/keylists/load-types").json()["items"] == types  # nothing was saved
+
+    # a load of another type is filled in as if it were of this one; a new load type previews once its details are in
+    other = next(s for s in client.get("/api/keylists/template-rows/samples", params={"kind": "load", "id": t["id"]}).json()["items"] if not s["own"])
+    got = client.post(CHECK, json=body | {"sample": other["ref"]}).json()
+    assert got["preview"]["equipment_list"]["rows"] and "as if it were" in got["notes"][-1]
+    new = {"kind": "load", "id": "new1", "rows": {"equipment_list": [{"Tag": "<<Tag>>/<<LoadType.Code>>"}]}, "sample": other["ref"]}
+    assert client.post(CHECK, json=new).json()["preview"] is None
+    item = {"code": "ZZ", "name": "Brand new", "rating_unit": "kW", "voltage": "415", "phases": "AC-3-phase"}
+    got = client.post(CHECK, json=new | {"item": item}).json()
+    assert got["preview"]["equipment_list"]["rows"][0]["cells"][0] == f"{other['tag']}/ZZ"
+
+    # an equipment type's rows, from a runsheet row
+    et = next(x for x in client.get(PKG_URL).json()["types"] if x["rows"])
+    rs = client.get("/api/keylists/template-rows/samples", params={"kind": "equipment", "id": et["id"]}).json()["items"]
+    assert rs and rs[0]["own"]
+    key = next(iter(et["rows"]))
+    first = next(iter(et["rows"][key][0]))
+    rows = {key: [{**et["rows"][key][0], first: "<<Parent>>|<<EquipmentType.Name>>|<<Nope>>"}]}
+    got = client.post(CHECK, json={"kind": "equipment", "id": et["id"], "rows": rows, "sample": rs[0]["ref"]}).json()
+    assert [p["tag"] for p in got["problems"][key]] == ["<<Nope>>"]
+    assert str(got["preview"][key]["rows"][0]["cells"][got["preview"][key]["header"].index(first)]).endswith(f"|{et['name']}|<<Nope>>")
+    assert client.post(CHECK, json={"kind": "x", "id": "1"}).status_code == 422

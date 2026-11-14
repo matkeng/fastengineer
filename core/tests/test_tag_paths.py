@@ -113,3 +113,38 @@ def test_help_lists_the_paths() -> None:
     assert paths["<<LoadType.Name>>"] == "the load type's name" and "<<PlantArea.Parent.Tag>>" in paths
     assert paths["<<SuppliedFrom.LoadType.Code>>"] == "the panel it is supplied from's load type's code"
     assert "<<Parent.LoadType.Code>>" in dict(help_paths("runsheet")) and "<<Rack.System.Tag>>" in dict(help_paths("runsheet"))
+
+
+def test_check_says_what_is_wrong_with_a_tag_as_written() -> None:
+    from workbench_core.keylists.loadgen import check_rows, tag_names
+    from workbench_core.keylists.tag_paths import check
+
+    names = {"load": tag_names(), "runsheet": {"parent", "suf", "row"}}
+    ok = lambda t, kind="load", tables=None: check(t, kind, names, tables)  # noqa: E731
+    for good in ("Tag", "load type name", "CableNo|pad:2", "LoadType.Name|upper", "PlantArea.Parent.Tag", "SuppliedFrom.LoadType.Code",
+                 "Motor.FLC|round:1", "LoadType", "load_rating", "SuppliedFrom.Description"):
+        assert ok(good) is None, good
+    assert ok("Tagg") == "'Tagg' is not a tag of a load (a Load List row)"
+    assert ok("Tag|uper") == "no modifier 'uper'" and "whole number" in ok("Rating|round:x") and "needs 2" in ok("Tag|replace:a")
+    assert "'LoadTyp' is not a link of a load" in ok("LoadTyp.Name") and "not a field of a load type" in ok("LoadType.Nmae", tables={})
+    assert ok("SuppliedFrom.Nope") == "'Nope' is not a field of a load (a Load List row)"
+    # this load type's component tables, when they are known
+    tables = {"cb": {"partnumber", "frame"}}
+    assert ok("LoadType.CB.PartNumber", tables=tables) is None and ok("LoadType.CB.Max", tables=tables) is None
+    assert ok("LoadType.CB", tables=tables) is None and ok("LoadType.Fuse.Size") is None  # not known: not checked
+    assert "its tables: cb" in ok("LoadType.Fuse.Size", tables=tables) and "its columns: frame, partnumber" in ok("LoadType.CB.Amps", tables=tables)
+    assert ok("SuppliedFrom.LoadType.Fuse.Size", tables=tables) is None  # another load type's
+    # a runsheet row's
+    assert ok("#12|pad:3", "runsheet") is None and ok("Parent.LoadType.Code", "runsheet") is None and ok("SUF", "runsheet") is None
+    assert ok("Sufx", "runsheet") == "'Sufx' is not a tag of an Instrument Runsheet row"
+
+    found = check_rows({"equipment_list": [{"Tag": "<<Tag>>"}, {}, {"Tag": "<<Tagg>>-<<Row>>", "Model": "x <<LoadType.Nmae>>"}]}, "load", names, {})
+    assert [(p["row"], p["column"], p["tag"]) for p in found["equipment_list"]] == [(2, "Tag", "<<Tagg>>"), (2, "Model", "<<LoadType.Nmae>>")]
+
+
+def test_generate_for_only_some_loads_keeps_the_others_as_links() -> None:
+    loads = [MCC, _load("P-1"), _load("P-2")]
+    links = Links(load_types=TYPES, areas=AREAS, loads=loads, eel=EEL, codes=CODES, cables=CABLES)
+    out = generate("equipment_list", loads, {t.id: t for t in TYPES}, {a.id: (a.tag, a.description) for a in AREAS}, CABLES,
+                   links=links, only={"m/P-2"})
+    assert [r.cells[0] for r in out.rows] == ["P-2"] and out.rows[0].cells[out.header.index("Supplied From")] == "DOL"

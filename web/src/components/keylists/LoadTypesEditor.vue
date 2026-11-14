@@ -4,27 +4,19 @@
 import ListWorkbook from './ListWorkbook.vue';
 import type { ColumnsConfig } from 'datatables.net';
 import { invoke } from '@tauri-apps/api/core';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { escapeHtml } from '../../lib/cells';
 import { type FilteredTable, type SelectFilter, TOOLBAR_LAYOUT, createFilteredTable } from '../../lib/dataTable';
 import { apiGet, runningInTauri } from '../../lib/engine';
-import {
-	PHASES, RATING_UNITS, type AttachedFile, type LoadType, type LoadTypeField, type LoadTypeForm, copyName, fileSize, loadTypeProblems, modifierText,
-} from '../../lib/keyListTypes';
-import { newId } from '../../lib/refTypes';
+import { PHASES, RATING_UNITS, type LoadType, type LoadTypeField } from '../../lib/keyListTypes';
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
 import ListUndoButtons from './ListUndoButtons.vue';
 import AppModal from '../common/AppModal.vue';
-import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
-import { useUndo } from '../../lib/history';
-import TagHelp from './TagHelp.vue';
-import TypeRowsWorkbook from './TypeRowsWorkbook.vue';
-import ComponentTablesEditor from './ComponentTablesEditor.vue';
+import LoadTypePage from './LoadTypePage.vue';
 
-// Load types: a grid of every row; a row is added or edited in a form and saved from there.
-// Each load type also holds predefined rows for the deliverable lists (one tab per list): every
-// load of that type in the Load List produces those rows, with the <<tags>> filled in from it.
+// Load types: a grid of every row; a row opens on a page of its own (LoadTypePage), where its
+// details, its predefined rows for the deliverable lists and its component tables are edited.
 const kl = useKeyLists();
 const host = ref<HTMLDivElement | null>(null);
 let table: FilteredTable<LoadType> | null = null;
@@ -118,101 +110,21 @@ function build() {
 	}, selects);
 }
 
-// -- the form ---------------------------------------------------------------------------
-const editing = ref<{ isNew: boolean; form: LoadTypeForm; pdf: AttachedFile | null } | null>(null);
-// Undo for the rows grid of the load type being edited; it starts again when the form is opened.
-const hist = useUndo({ get: () => editing.value?.form.rows, resetOn: () => editing.value });
-// The dialog's tab: 'details' or the key of a deliverable list.
-const tab = ref('details');
+// -- the page of one load type ----------------------------------------------------------
+// The load type open on its page, in place of the grid (which stays as it was underneath: its
+// filters and page are there on the way back). `n` makes a new page each time one is opened.
+const page = ref<{ row: LoadType | null; n: number } | null>(null);
 const lists = computed(() => kl.templateLists?.lists ?? []);
-// this load type's own component tables are offered as tags too: <<LoadType.CB.PartNumber>>
-const tableTags = computed(() => (editing.value?.form.components ?? []).filter((t) => t.name.trim()).flatMap((t) => {
-	const n = t.name.replace(/\s+/g, '');
-	return [`<<LoadType.${n}>>`, ...t.columns.map((c) => `<<LoadType.${n}.${c.replace(/\s+/g, '')}>>`), `<<LoadType.${n}.Min>>`, `<<LoadType.${n}.Max>>`];
-}));
-const tagNames = computed(() => [...(kl.templateLists?.tags ?? []).map((t) => t.tag), ...tableTags.value, ...(kl.templateLists?.paths ?? []).map((t) => t.tag)]);
-const modifierNames = computed(() => (kl.templateLists?.modifiers ?? []).map(modifierText));
 const rowCount = (rows: LoadType['rows'] | undefined) => Object.values(rows ?? {}).reduce((n, r) => n + r.length, 0);
-const list = computed(() => lists.value.find((l) => l.key === tab.value) ?? null);
-const listRows = computed(() => (list.value && editing.value ? (editing.value.form.rows[list.value.key] ??= []) : []));
-// A list's row settings (the cable schedule's "Repeat") come first, then its columns.
-const settings = computed(() => list.value?.settings ?? []);
-const fields = computed(() => [...settings.value.map((s) => s.name), ...(list.value?.columns ?? [])]);
-const gridCols = computed((): GridColumn[] => [
-	...settings.value.map((s): GridColumn => ({ label: s.name, options: s.values, width: 130, badge: 'setting',
-		title: `Blank: one row. ${s.values.join(' / ')}: one row for each of the load's power cables (parallel cables; single cores and their earth).` })),
-	...(list.value?.columns ?? []).map((c): GridColumn => ({ label: c, width: /Description|Remarks|Code/.test(c) ? 200 : 130 })),
-]);
-const gridCells = computed(() => listRows.value.map((r) => fields.value.map((c) => r[c] ?? '')));
-const tagClass = (r: number, c: number) => (/<<[^<>]+>>/.test(gridCells.value[r]?.[c] ?? '') ? 'has-tag' : '');
-
-function setCells(edits: CellEdit[]) {
-	const cols = fields.value;
-	for (const e of edits) {
-		const row = listRows.value[e.r];
-		if (!row || !cols[e.c]) continue;
-		if (e.value.trim()) row[cols[e.c]] = e.value;
-		else delete row[cols[e.c]];
-	}
-}
-const insertRows = (at: number, count: number) => listRows.value.splice(at, 0, ...Array.from({ length: count }, () => ({})));
-function removeRows(idx: number[]) {
-	if (!list.value || !editing.value) return;
-	const drop = new Set(idx);
-	editing.value.form.rows[list.value.key] = listRows.value.filter((_, i) => !drop.has(i));
-}
-// A PDF chosen in the form, or 'remove': applied when the form is saved.
-const pdfChange = ref<File | 'remove' | null>(null);
-const pdfInput = ref<HTMLInputElement | null>(null);
-const newPdf = computed(() => (pdfChange.value instanceof File ? pdfChange.value : null));
-const MAX_PDF = 50 * 1024 * 1024;
-const formErrors = ref<Partial<Record<LoadTypeField | 'pdf', string>>>({});
-const text = (v: string | number | null | undefined) => (v === null || v === undefined ? '' : String(v));
-
+let opened = 0;
 function open(row: LoadType | null) {
-	formErrors.value = {};
 	kl.error = null;
-	pdfChange.value = null;
-	tab.value = 'details';
-	editing.value = {
-		isNew: !row,
-		pdf: row?.pdf ?? null,
-		form: {
-			id: row?.id ?? newId(), code: row?.code ?? '', name: row?.name ?? '', rating_unit: row?.rating_unit ?? '',
-			voltage: text(row?.voltage), phases: row?.phases ?? '', from_value: text(row?.from_value), to_value: text(row?.to_value),
-			std_drg: row?.std_drg ?? '', bucket_type: row?.bucket_type ?? '', load_type: row?.load_type ?? '',
-			field_options: row?.field_options ?? '', multi_load: row?.multi_load ?? false, load_qty: text(row?.load_qty),
-			starter_chart: row?.starter_chart ?? '',
-			rows: JSON.parse(JSON.stringify(row?.rows ?? {})),
-			components: JSON.parse(JSON.stringify(row?.components ?? [])),
-		},
-	};
+	page.value = { row, n: ++opened };
 }
-
-/** A new load type with this one's details, rows (as they are in the form) and PDF: saved with Save. */
-async function clone() {
-	const e = editing.value;
-	if (!e) return;
-	const from = e.form.id;
-	const pdf = pdfChange.value === 'remove' ? null : pdfChange.value instanceof File ? pdfChange.value : e.pdf;
-	formErrors.value = {};
+function closePage() {
+	page.value = null;
 	kl.error = null;
-	editing.value = {
-		isNew: true, pdf: null,
-		// the code is kept (load types can share one): the copy needs its own range before it can be saved
-		form: { ...JSON.parse(JSON.stringify(e.form)), id: newId(), name: copyName(e.form.name, items.value.map((r) => r.name), 'name') },
-	};
-	pdfChange.value = null;
-	tab.value = 'details';
-	if (pdf instanceof File) pdfChange.value = pdf;
-	else if (pdf) {
-		const blob = await kl.loadTypePdf(from);
-		if (blob && editing.value) pdfChange.value = new File([blob], pdf.file_name, { type: 'application/pdf' });
-	}
-	await nextTick();
-	const code = document.querySelector<HTMLInputElement>('dialog[open] .form-grid input[type="text"]');
-	code?.focus();
-	code?.select();
+	kl.fieldErrors = {};
 }
 
 function onClick(e: MouseEvent) {
@@ -226,68 +138,6 @@ function onClick(e: MouseEvent) {
 	if (!tr || !table) return;
 	const row = table.api.row(tr as HTMLTableRowElement).data() as LoadType | undefined;
 	if (row) open(row);
-}
-
-async function save(addAnother = false) {
-	const e = editing.value;
-	if (!e) return;
-	formErrors.value = loadTypeProblems(e.form, items.value.filter((r) => r.id !== e.form.id));
-	if (Object.keys(formErrors.value).length) {
-		tab.value = 'details';
-		return;
-	}
-	if (pdfChange.value instanceof File) {
-		const f = pdfChange.value;
-		if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') formErrors.value.pdf = 'Choose a PDF file';
-		else if (f.size > MAX_PDF) formErrors.value.pdf = 'The file is larger than 50 MB';
-		if (formErrors.value.pdf) return;
-	}
-	if (!(await kl.saveLoadType(e.form))) {
-		// The engine names problems as "<row id>.<field>"; show this row's beside its inputs.
-		const mine: Partial<Record<LoadTypeField, string>> = {};
-		for (const [k, msg] of Object.entries(kl.fieldErrors)) {
-			if (k.startsWith(`${e.form.id}.`)) mine[k.slice(e.form.id.length + 1) as LoadTypeField] = msg;
-		}
-		formErrors.value = mine;
-		if (Object.keys(mine).some((k) => !k.startsWith('rows'))) tab.value = 'details';
-		return;
-	}
-	// The row is saved now; then the PDF (it can only be attached to a saved row).
-	e.isNew = false;
-	const change = pdfChange.value;
-	if (change instanceof File ? !(await kl.attachLoadTypePdf(e.form.id, change)) : change === 'remove' && !(await kl.removeLoadTypePdf(e.form.id))) {
-		formErrors.value = { pdf: `The load type was saved, but not the PDF change: ${kl.error}` };
-		kl.error = null;
-		return;
-	}
-	pdfChange.value = null;
-	if (addAnother) {
-		open(null);
-		await nextTick();
-		(document.querySelector('dialog.modal[open] input') as HTMLElement | null)?.focus();
-	} else editing.value = null;
-}
-
-function choosePdf(ev: Event) {
-	const input = ev.target as HTMLInputElement;
-	const f = input.files?.[0];
-	input.value = ''; // choosing the same file again still counts
-	if (!f) return;
-	pdfChange.value = f;
-	delete formErrors.value.pdf;
-}
-
-function close() {
-	pdfChange.value = null;
-	editing.value = null;
-	formErrors.value = {};
-	kl.error = null;
-}
-
-async function remove() {
-	const e = editing.value;
-	if (!e || e.isNew || !confirm(`Delete the load type "${e.form.code}"?`)) return;
-	if (await kl.deleteLoadType(e.form.id)) editing.value = null;
 }
 
 // -- viewing and saving a copy of a PDF --------------------------------------------------
@@ -345,114 +195,25 @@ onBeforeUnmount(() => {
 
 <template>
 	<section class="card wizard ref-editor rows-mode key-loads">
-		<div class="mel-head">
-			<span class="kind tree">Key list</span>
-			<h2 class="key-title">Load Types</h2>
-			<span class="hint small" title="Load types can share a code when their From–To ranges (same unit) don't overlap or touch. A load gets the type of its code whose unit is its Load units (HP counts as kW) and whose range includes its rating.">
-				{{ items.length }} load type(s). Click a row to edit or delete it. A load is matched on <strong>code, rating unit and From–To range</strong>.</span>
-			<span class="spacer" />
-			<ListUndoButtons list="load-types" />
-			<HistoryButton entity="load_types" record-id="load-types" label="Load Types" />
-			<ListWorkbook list-id="load-types" name="Load Types" />
-			<button type="button" @click="open(null)">Add load type</button>
-		</div>
-		<p v-if="kl.error && !editing" class="error">{{ kl.error }}</p>
-		<div class="results mel-grid">
-			<div ref="host" class="result-table ref-rows" @click="onClick" />
+		<div v-show="!page" class="key-loads-list">
+			<div class="mel-head">
+				<span class="kind tree">Key list</span>
+				<h2 class="key-title">Load Types</h2>
+				<span class="hint small" title="Load types can share a code when their From–To ranges (same unit) don't overlap or touch. A load gets the type of its code whose unit is its Load units (HP counts as kW) and whose range includes its rating.">
+					{{ items.length }} load type(s). Click a row to open it. A load is matched on <strong>code, rating unit and From–To range</strong>.</span>
+				<span class="spacer" />
+				<ListUndoButtons list="load-types" />
+				<HistoryButton entity="load_types" record-id="load-types" label="Load Types" />
+				<ListWorkbook list-id="load-types" name="Load Types" />
+				<button type="button" @click="open(null)">Add load type</button>
+			</div>
+			<p v-if="kl.error && !page" class="error">{{ kl.error }}</p>
+			<div class="results mel-grid">
+				<div ref="host" class="result-table ref-rows" @click="onClick" />
+			</div>
 		</div>
 
-		<AppModal :open="!!editing" :title="editing?.isNew ? 'Add load type' : 'Edit load type'" @close="close">
-			<nav v-if="editing" class="subtabs small">
-				<button type="button" :class="{ active: tab === 'details' }" @click="tab = 'details'">Details</button>
-				<button v-for="l in lists" :key="l.key" type="button" :class="{ active: tab === l.key }" @click="tab = l.key">
-					{{ l.name }}<span class="count">{{ editing.form.rows[l.key]?.length ?? 0 }}</span>
-				</button>
-				<button type="button" :class="{ active: tab === 'components' }" title="Parts per range of the load's rating, for <<LoadType.CB.PartNumber>>"
-					@click="tab = 'components'">Components<span class="count">{{ editing.form.components.length }}</span></button>
-			</nav>
-			<ComponentTablesEditor v-if="editing && tab === 'components'" :tables="editing.form.components" :errors="kl.fieldErrors" :form-id="editing.form.id" />
-			<div v-if="editing && list" class="tpl-rows">
-				<div class="row tight tpl-workbook"><span class="spacer" />
-					<TypeRowsWorkbook :name="editing.form.code" kind="load" :rows="editing.form.rows" :components="editing.form.components"
-						@replace="(rows, comps) => { for (const [k, v] of Object.entries(rows)) editing!.form.rows[k] = v; if (comps) editing!.form.components = comps; }" /></div>
-				<p class="hint small">
-					Every load of this type in the Load List adds these rows to the <strong>{{ list.name }}</strong>. Type <code>&lt;&lt;</code> in a cell
-					to pick a tag; it is replaced with that load's data.
-					<template v-if="settings.length">A row with <strong>Repeat</strong> = <em>{{ settings[0].values[0] }}</em> is written once for each of the load's power cables, looked up in Cable Types from its Cable Type and Cores cells.</template>
-					Follow a link with <code>.</code> (<code>&lt;&lt;LoadType.Name&gt;&gt;</code>), change it with <code>|</code> (<code>&lt;&lt;Tag|upper&gt;&gt;</code>).
-					<TagHelp :tags="kl.templateLists?.tags ?? []" :paths="kl.templateLists?.paths ?? []" :modifiers="kl.templateLists?.modifiers ?? []" />
-				</p>
-				<EditGrid :columns="gridCols" :cells="gridCells" :history="hist" :tag-suggestions="tagNames" :modifier-suggestions="modifierNames" :cell-class="tagClass"
-					:height="Math.min(360, 96 + 26 * Math.max(4, listRows.length))" @set="setCells" @insert="insertRows" @remove="removeRows" />
-				<p v-if="!listRows.length" class="hint small">No rows yet: loads of this type add nothing to the {{ list.name }}. Use “+ Row”.</p>
-				<p v-for="(msg, k) in kl.fieldErrors" v-show="String(k).startsWith(`${editing.form.id}.rows`)" :key="k" class="warn small">{{ msg }}</p>
-			</div>
-			<form v-if="editing" v-show="tab === 'details'" class="form-grid two-col" @submit.prevent="save()">
-				<label v-for="c in COLS" :key="c.field" class="field" :class="{ check: c.kind === 'yesno' }">
-					<template v-if="c.kind === 'yesno'">
-						<input v-model="editing.form.multi_load" type="checkbox" /><span>{{ c.label }}</span>
-					</template>
-					<template v-else>
-						<span>{{ c.label }}<span v-if="c.required" class="req"> *</span></span>
-						<select v-if="c.kind === 'starter'" v-model="editing.form.starter_chart" :class="{ invalid: formErrors[c.field] }"
-							title="Starter Coordination chart for this type's loads: <<Starter.CB>>, <<Starter.Contactor>>…">
-							<option value="">Project default{{ starters.default_chart ? ` (${starters.default_chart})` : '' }}</option>
-							<option v-for="o in starters.charts" :key="o" :value="o">{{ o }}</option>
-							<option value="None">None (no starter)</option>
-							<option v-if="editing.form.starter_chart && editing.form.starter_chart !== 'None' && !starters.charts.includes(editing.form.starter_chart)"
-								:value="editing.form.starter_chart">{{ editing.form.starter_chart }} (not in the list)</option>
-						</select>
-						<select v-else-if="c.kind === 'choice'" v-model="editing.form[c.field]" :class="{ invalid: formErrors[c.field] }">
-							<option value="">—</option>
-							<option v-for="o in c.options" :key="o" :value="o">{{ o }}</option>
-						</select>
-						<input v-else v-model="(editing.form[c.field] as string)" type="text" :placeholder="c.hint"
-							:inputmode="c.kind === 'whole' ? 'numeric' : c.kind === 'decimal' ? 'decimal' : undefined"
-							:class="{ invalid: formErrors[c.field] }" />
-					</template>
-					<span v-if="formErrors[c.field]" class="warn small">{{ formErrors[c.field] }}</span>
-				</label>
-				<div class="field pdf-field">
-					<span>PDF</span>
-					<div class="pdf-box" :class="{ invalid: formErrors.pdf }">
-						<template v-if="newPdf">
-							<span class="pdf-name">📄 {{ newPdf.name }}</span>
-							<span class="hint small">{{ fileSize(newPdf.size) }} · attached when you save</span>
-							<span class="spacer" />
-							<button type="button" class="secondary small" @click="pdfInput?.click()">Choose another…</button>
-							<button type="button" class="secondary small" @click="pdfChange = null; delete formErrors.pdf">Undo</button>
-						</template>
-						<template v-else-if="editing.pdf && pdfChange !== 'remove'">
-							<button type="button" class="link pdf-name" title="Open" @click="view(editing.form.id, editing.pdf.file_name)">📄 {{ editing.pdf.file_name }}</button>
-							<span class="hint small">{{ fileSize(editing.pdf.size) }} · {{ editing.pdf.pages }} page(s)</span>
-							<span class="spacer" />
-							<button type="button" class="secondary small" @click="saveCopy(editing.form.id, editing.pdf.file_name)">Save a copy</button>
-							<button type="button" class="secondary small" @click="pdfInput?.click()">Replace…</button>
-							<button type="button" class="secondary small" @click="pdfChange = 'remove'">Remove</button>
-						</template>
-						<template v-else>
-							<span class="hint small">{{ pdfChange === 'remove' ? 'The PDF is removed when you save.' : 'No PDF attached.' }}</span>
-							<span class="spacer" />
-							<button v-if="pdfChange === 'remove'" type="button" class="secondary small" @click="pdfChange = null">Undo</button>
-							<button type="button" class="secondary small" @click="pdfInput?.click()">Attach PDF…</button>
-						</template>
-						<input ref="pdfInput" type="file" accept="application/pdf,.pdf" hidden @change="choosePdf" />
-					</div>
-					<span v-if="formErrors.pdf" class="warn small">{{ formErrors.pdf }}</span>
-				</div>
-				<button type="submit" hidden />
-			</form>
-			<p v-if="kl.error" class="error">{{ kl.error }}</p>
-			<template #footer>
-				<button v-if="editing && !editing.isNew" type="button" class="secondary" :disabled="kl.busy" @click="remove">Delete</button>
-				<button v-if="editing && !editing.isNew" type="button" class="secondary" :disabled="kl.busy"
-					title="A new load type with this one's details, rows and PDF (saved when you Save)" @click="clone">Clone</button>
-				<span class="spacer" />
-				<button type="button" class="secondary" @click="close">Cancel</button>
-				<button v-if="editing?.isNew" type="button" class="secondary" :disabled="kl.busy" @click="save(true)">Save and add another</button>
-				<button type="button" :disabled="kl.busy" @click="save()">Save</button>
-			</template>
-		</AppModal>
+		<LoadTypePage v-if="page" :key="page.n" :row="page.row" :starters="starters" @close="closePage" @view="view" @copy="saveCopy" />
 
 		<AppModal class="pdf-viewer" :open="!!viewer" :title="viewer?.name ?? ''" @close="closeViewer">
 			<iframe v-if="viewer" :src="viewer.url" :title="viewer.name" />

@@ -223,6 +223,144 @@ def load_type_lists() -> dict:
             "modifiers": [{"name": n, "meaning": m, "example": e, "args": a} for n, (a, m, e) in MODIFIERS.items()]}
 
 
+# -- checking and previewing a type's predefined rows ------------------------------------
+
+class TemplateRowsCheck(BaseModel):
+    kind: str  # "load": a load type's rows; "equipment": an equipment type's
+    id: str
+    rows: dict = {}
+    components: list = []  # a load type's component tables, as typed in
+    item: dict | None = None  # the load type as it is in the form (so a new one can be previewed)
+    name: str = ""  # an equipment type's name
+    sample: str | None = None  # the load's ref / the runsheet row's id to fill the rows in from
+
+
+def _runsheet_names() -> set[str]:
+    from workbench_core.keylists.instrument_runsheet import FIXED
+    from workbench_core.keylists.tag_paths import norm
+    return {norm(c[2][2:-2]) for c in FIXED} | {"row"}
+
+
+@router.post("/template-rows/check")
+def check_template_rows(body: TemplateRowsCheck) -> dict:
+    """What is wrong with the tags of a load type's or an equipment type's rows as they are in
+    the editor (not saved), and, with `sample`, the rows filled in from that load or runsheet
+    row. Nothing is written."""
+    from workbench_core.keylists.loadgen import TEMPLATE_LISTS, check_rows, generate, tag_names
+    from workbench_core.keylists.master import instrument_rows
+    from workbench_core.keylists.models import ComponentTable
+    from workbench_core.keylists.tag_paths import norm
+    from workbench_core.keylists.validate import _components, _template_rows
+
+    if body.kind not in ("load", "equipment"):
+        raise HTTPException(status_code=422, detail="kind is load or equipment")
+    lists = get_keylists()
+    columns = lists.master_columns().all()
+    ignored: dict[str, str] = {}
+    rows = _template_rows(body.rows, body.id, ignored, columns=columns)
+    # the cells as typed (blank rows kept), so a problem's row is the editor's row
+    typed = {k: [{c: str(v) for c, v in r.items() if v is not None} if isinstance(r, dict) else {} for r in v]
+             for k, v in body.rows.items() if k in TEMPLATE_LISTS and isinstance(v, list)}
+    names = {"load": tag_names(lists.load_fields()), "runsheet": _runsheet_names()}
+    components: list[ComponentTable] = []
+    tables = None
+    if body.kind == "load":
+        components = _components(body.components, body.id, ignored)
+        tables = {norm(t.name): {norm(c) for c in t.columns} for t in components}
+    out: dict = {"problems": check_rows(typed, "load" if body.kind == "load" else "runsheet", names, tables),
+                 "preview": None, "unresolved": [], "notes": []}
+    if not body.sample:
+        return out
+
+    from .master_api import inputs
+    src = inputs()
+    # a template row's place among the rows as typed: a save drops the blank ones
+    kept = {k: [i for i, r in enumerate(v) if any(str(x).strip() for c, x in r.items() if c in columns.get(k, []))]
+            for k, v in typed.items()}
+    preview: dict = {}
+    unresolved: dict[str, int] = {}
+
+    def place(key: str, seq: int | None) -> int:
+        at = kept.get(key, [])
+        return at[seq - 1] if seq and seq <= len(at) else (seq or 1) - 1
+
+    if body.kind == "load":
+        load = next((r for r in src.loads if r.ref() == body.sample and r.status == "active"), None)
+        if load is None:
+            out["notes"].append("That load is no longer in the Load List.")
+            return out
+        saved = src.load_types.get(body.id)
+        draft = None
+        if body.item is not None:
+            try:  # as it is in the form, when it would save by itself
+                draft = check_load_types([body.item | {"id": body.id, "rows": body.rows, "components": body.components}], columns).items[0]
+                draft = draft.model_copy(update={"rows": rows, "components": components})
+            except RefValidationError:
+                draft = None
+        if draft is None and saved is not None:
+            draft = saved.model_copy(update={"rows": rows, "components": components})
+        if draft is None:
+            out["notes"].append("Fill in the load type's details (code, name, unit, voltage, phases) to see its rows filled in.")
+            return out
+        loads = [r if r is not load else load.model_copy(update={"load_type_id": body.id}) for r in src.loads]
+        types = src.load_types | {body.id: draft}
+        src.links.load_types[body.id] = draft  # type: ignore[attr-defined]
+        for key in TEMPLATE_LISTS:
+            result = generate(key, loads, types, src.areas, src.cables, out["notes"], src.columns[key], links=src.links,
+                              only={body.sample})
+            preview[key] = {"header": result.header,
+                            "rows": [{"template_row": place(key, r.template_seq), "cells": r.cells} for r in result.rows]}
+            for token in result.unresolved_tokens:
+                unresolved[token] = 1
+        if load.load_type_id != body.id:
+            out["notes"].append(f"{load.tag()} is not of this load type: it is filled in as if it were.")
+    else:
+        row = next((r for r in src.runsheet.rows if r.id == body.sample), None)  # type: ignore[attr-defined]
+        if row is None:
+            out["notes"].append("That row is no longer in the Instrument Runsheet.")
+            return out
+        saved_type = src.equipment_types.get(body.id)
+        draft_type = (saved_type.model_copy(update={"rows": rows}) if saved_type is not None
+                      else EquipmentType(id=body.id, package_id="", name=body.name.strip() or "New equipment type", rows=rows))
+        if body.name.strip():
+            draft_type = draft_type.model_copy(update={"name": body.name.strip()})
+        src.links.equipment_types[body.id] = draft_type  # type: ignore[attr-defined]
+        one = src.runsheet.model_copy(update={"rows": [row.model_copy(update={"equipment_type_id": body.id})]})  # type: ignore[attr-defined]
+        for key in TEMPLATE_LISTS:
+            made = instrument_rows(key, one, {body.id: draft_type}, {i: a[0] for i, a in src.areas.items()}, unresolved,
+                                   src.columns[key], src.links)
+            preview[key] = {"header": list(src.columns[key]),
+                            "rows": [{"template_row": place(key, r.template_seq), "cells": r.cells} for r, _ in made]}
+        if row.equipment_type_id != body.id:
+            out["notes"].append("That runsheet row is not of this equipment type: it is filled in as if it were.")
+    out["preview"] = preview
+    out["unresolved"] = sorted(unresolved)
+    return out
+
+
+@router.get("/template-rows/samples")
+def template_row_samples(kind: str = Query(...), id: str = Query("")) -> dict:
+    """The loads (kind=load) or Instrument Runsheet rows (kind=equipment) a type's rows can be
+    filled in from, to preview them: those of the type first."""
+    from workbench_core.keylists.loadgen import ordered
+
+    lists = get_keylists()
+    items: list[dict] = []
+    if kind == "load":
+        from .loadlist_api import current_rows
+        for r in ordered(current_rows()[0]):
+            items.append({"ref": r.ref(), "tag": r.tag(), "description": str(r.values.get("desc") or ""), "own": r.load_type_id == id})
+    elif kind == "equipment":
+        types = {t.id: t.name for t in lists.equipment_packages().types}
+        for r in lists.instrument_runsheet().rows:
+            items.append({"ref": r.id, "tag": f"{r.parent_tag}{r.suffix}".strip() or "(no parent tag)",
+                          "description": types.get(r.equipment_type_id, ""), "own": r.equipment_type_id == id})
+    else:
+        raise HTTPException(status_code=422, detail="kind is load or equipment")
+    items.sort(key=lambda x: not x["own"])  # stable: the list's order within each
+    return {"items": items}
+
+
 @router.put("/load-types", response_model=LoadTypeList)
 def update_load_types(body: LoadTypesUpdate):
     try:

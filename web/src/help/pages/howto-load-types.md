@@ -11,15 +11,16 @@ Load types carry your standards: what a DOL starter, a VSD or a feeder needs in 
 2. Fill in the **Code** (DOL), the **Name** (Direct on line motor starter), **kW or Amps**, **Voltage** and **Phases**.
 3. If you have different standards for different sizes, give this one a **From value** and **To value**, for example 0.37 to 11, and make another type with the same code for the next band.
 4. Choose a **Starter chart**, or *None* for a type with no starter.
-5. Press **Save**.
+5. Press **Save**. The load type stays open on its page.
 
 ![A load type's details](img/load-type-details.png)
 
 ## 2. Add its cable rows
 
-1. Click the load type to open it, and choose the **Cable Schedule** tab.
+1. Click the load type to open its page (if it is not open already), and choose the **Cable Schedule** tab.
 2. Add a row for each cable a load of this type needs. For a DOL starter: a power cable and a control cable.
-3. Type the cells, using tags for anything that differs from load to load. Type `<<` to pick a tag.
+3. Type the cells, using tags for anything that differs from load to load. Type `<<` to pick a tag, or click one in the **Tags** list on the right.
+4. Under the grid, choose a load in **Fill in from** to see the rows as they will be written for it, and watch **Check** for a tag that matches nothing.
 
 | Column | Power cable | Control cable |
 |---|---|---|
@@ -62,6 +63,6 @@ Open the load type and press **Clone**. The copy has the same code, rows and tab
 
 ## Sharing templates
 
-**Export rows .xlsx** in a load type's form saves its rows as a workbook, with a **Tags** sheet listing what a cell can use. Edit it in Excel and bring it back with **Import rows…**, or use it in another project.
+**Export rows .xlsx** on a load type's list tabs saves its rows as a workbook, with a **Tags** sheet listing what a cell can use. Edit it in Excel and bring it back with **Import rows…**, or use it in another project.
 
 Reference: [Load Types](help:load-types), [Template tags](help:template-tags).

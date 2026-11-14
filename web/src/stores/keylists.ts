@@ -10,7 +10,7 @@ import {
 import type { Catalogue } from '../lib/genTypes';
 import type {
 	EnumsView, ProjectEnums, RegisterKind, RegisterRow, RegisterView,
-	Allocation, CableTypeForm, CableTypeList, CodeList, EelForm, EelView, PlcImportPreview, PlcList, PlcView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList, TemplateLists,
+	Allocation, CableTypeForm, CableTypeList, CodeList, EelForm, EelView, PlcImportPreview, PlcList, PlcView, CodeListId, CodeRow, EquipmentPackageList, KeyListId, KeyListOverview, LoadListRow, LoadListView, LoadTypeForm, LoadTypeList, PlantAreaList, RowsCheck, RowsSample, TemplateLists,
 } from '../lib/keyListTypes';
 import type { DistributionPanelList, PanelsView } from '../lib/panelTypes';
 import type { MasterSummary, MasterView, MelList, RunsheetView, TypedRow } from '../lib/runsheetTypes';
@@ -241,6 +241,17 @@ export const useKeyLists = defineStore('keylists', () => {
 	async function loadTemplateLists() {
 		if (!templateLists.value) templateLists.value = (await run(() => apiGet<TemplateLists>(`${LOAD_TYPES}/lists`))) ?? null;
 	}
+
+	/** A type's rows as they are in the editor: what is wrong with their tags and, with `sample`, the rows filled in. Nothing is saved. */
+	function checkTemplateRows(body: { kind: 'load' | 'equipment'; id: string; rows: unknown; components?: unknown; item?: unknown; name?: string; sample?: string | null }): Promise<RowsCheck | null> {
+		return apiPostJson<RowsCheck>('/api/keylists/template-rows/check', body).catch(() => null);
+	}
+	/** The loads (or runsheet rows) a type's rows can be filled in from, those of the type first. */
+	async function templateSamples(kind: 'load' | 'equipment', id: string): Promise<RowsSample[]> {
+		return (await apiGet<{ items: RowsSample[] }>('/api/keylists/template-rows/samples', { kind, id }).catch(() => ({ items: [] }))).items;
+	}
+	/** The load type open on its page has changes that are not saved (the sidebar shows it). */
+	const loadTypeDirty = ref(false);
 
 	function saveLoadType(row: LoadTypeForm): Promise<boolean> {
 		const items: unknown[] = [...(loadTypes.value?.items ?? [])];
@@ -625,7 +636,7 @@ export const useKeyLists = defineStore('keylists', () => {
 		canUndoList, canRedoList, stepList, canUndoAllocation, canRedoAllocation, stepAllocation,
 		overview, selected, busy, error, fieldErrors, message, areasSaved, areasDraft, packagesSaved, packagesDraft,
 		loadTypes, areasDirty, packagesDirty, dirty, refresh, select, load, saveAreas, savePackages, discard,
-		saveLoadType, deleteLoadType, templateLists, loadTemplateLists, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem, cableTypes, saveCableType, deleteCableType, addDefaultCableTypes,
+		saveLoadType, deleteLoadType, checkTemplateRows, templateSamples, loadTypeDirty, templateLists, loadTemplateLists, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem, cableTypes, saveCableType, deleteCableType, addDefaultCableTypes,
 		plcSaved, plcDraft, plcView, catSaved, catDraft, plcDirty, catDirty, loadPlc, savePlc, checkPlc, saveCatalogue,
 		addDefaultTypes, exportPlc, importPlc,
 		enumsView, enumsDraft, enumsDirty, loadEnums, saveEnums, registers, loadRegister, saveRegisterItem, deleteRegisterItem,

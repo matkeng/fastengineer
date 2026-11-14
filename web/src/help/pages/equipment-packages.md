@@ -34,13 +34,13 @@ A package that has equipment types cannot be deleted until they are moved or del
 
 ## The Lists of an equipment type
 
-**Lists** on an equipment type opens its predefined rows for the four master lists: **Cable Schedule**, **Equipment List**, **Instrument List** and **PLC I/O List**. The button shows how many rows it has.
+**Lists** on an equipment type opens its predefined rows for the four master lists, on a page in place of the packages, with a tab for each: **Cable Schedule**, **Equipment List**, **Instrument List** and **PLC I/O List**. The button shows how many rows it has. **‹ Equipment Packages** goes back; the rows are kept with the list, and **Save** at the top saves them.
 
 ![The Lists of an equipment type](img/equipment-type-lists.png)
 
 These are the rows the **Instrument generator** adds to the master lists: once for each row of the [Instrument Runsheet](help:instrument-runsheet) that names this equipment type, with the `<<tags>>` filled in from that row.
 
-The tags offered are the columns of the runsheet: `<<STD>>`, `<<Area>>`, `<<MECH>>`, `<<SUF>>`, `<<PID>>`, `<<VIA_MB>>`, `<<CONF>>`, `<<Rack>>`, and `<<#1>>`, `<<#2>>`… Type `<<` in a cell to pick one. See [Template tags](help:template-tags).
+The tags offered are the columns of the runsheet: `<<STD>>`, `<<Area>>`, `<<MECH>>`, `<<SUF>>`, `<<PID>>`, `<<VIA_MB>>`, `<<CONF>>`, `<<Rack>>`, and `<<#1>>`, `<<#2>>`… Type `<<` in a cell to pick one, or click it in the **Tags** list on the right. **Check** under the grid lists the tags that match nothing, and **Fill in from** shows the rows filled in for a runsheet row you choose (those of this equipment type come first). See [Template tags](help:template-tags).
 
 **Export rows .xlsx** and **Import rows…** save and read one type's rows as a workbook, with a sheet for each list.
 

@@ -561,6 +561,51 @@ def resolve(inner: str, flat: dict[str, str], root: Record | None) -> tuple[str 
     return text, any(m in AS_TEXT for m, _ in mods), None
 
 
+def check(inner: str, kind: str, names: dict[str, set[str]] | None = None, tables: dict[str, set[str]] | None = None) -> str | None:
+    """What is wrong with a tag as it is written, the data aside (None: nothing). `inner` is
+    what is between << and >>; `kind`: the kind of record the row is filled in from (load,
+    runsheet). `names`: kind -> the names a record of that kind answers to besides SCHEMA's
+    links (a load's tags and Load List fields, a runsheet row's columns), each as norm() gives
+    it; a kind left out isn't checked. `tables`: the component tables of the load type the rows
+    belong to (norm(name) -> its columns, norm()ed), for <<LoadType.CB.PartNumber>>; None: not checked."""
+    path, mods = parse(inner)
+    try:
+        apply("", mods)
+    except ValueError as exc:
+        return str(exc)
+
+    def known(k: str, seg: str) -> bool:
+        have = (names or {}).get(k)
+        return have is None or norm(seg) in have or norm(seg) in _LINKS[k] or (k == "runsheet" and re.fullmatch(r"#\d+", seg.strip()) is not None)
+
+    if len(path) == 1:
+        if not norm(path[0]):
+            return "the tag is empty"
+        return None if known(kind, path[0]) else f"'{path[0]}' is not a tag of {SCHEMA[kind][0]}"
+    problem = _check_path(kind, path)
+    if problem:
+        return problem
+    own = tables is not None and kind == "load" and norm(path[0]) == "loadtype"  # this load type's tables are known
+    cur = kind
+    for i, seg in enumerate(path):
+        n, last = norm(seg), i == len(path) - 1
+        if cur == "component":
+            if own and i == 2 and n not in tables[norm(path[1])] and n not in ("min", "max"):  # type: ignore[index]
+                cols = ", ".join(sorted(tables[norm(path[1])]))  # type: ignore[index]
+                return f"'{seg}' is not a column of the component table (its columns: {cols}, min, max)"
+        elif n in _LINKS[cur]:
+            cur = _LINKS[cur][n]
+        elif cur in DYNAMIC_LINKS and n not in _FIELDS[cur]:
+            if own and i == 1 and n not in tables:  # type: ignore[operator]
+                have = ", ".join(sorted(tables)) or "none"  # type: ignore[arg-type]
+                fields = ", ".join(x for x, _ in SCHEMA[cur][2])
+                return f"'{seg}' is not a field of {SCHEMA[cur][0]} (its fields: {fields}; its tables: {have})"
+            cur = DYNAMIC_LINKS[cur]
+        elif last and cur in ("load", "runsheet") and not known(cur, seg):
+            return f"'{seg}' is not a field of {SCHEMA[cur][0]}"
+    return None
+
+
 def help_paths(root: str, depth: int = 2) -> list[tuple[str, str]]:
     """The dotted tags from a record of kind `root`, following links up to `depth` deep:
     [(<<Link.Field>>, what it is)]."""
@@ -583,4 +628,4 @@ def help_paths(root: str, depth: int = 2) -> list[tuple[str, str]]:
     return out
 
 
-__all__ = ["SCHEMA", "MODIFIERS", "Links", "Record", "LINK_NAMES", "apply", "help_paths", "norm", "parse", "resolve"]
+__all__ = ["SCHEMA", "MODIFIERS", "Links", "Record", "LINK_NAMES", "apply", "check", "help_paths", "norm", "parse", "resolve"]

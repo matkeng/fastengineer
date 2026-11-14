@@ -52,6 +52,16 @@ export interface TemplateLists { lists: { key: string; name: string; columns: st
 	paths?: { tag: string; meaning: string }[]; instrument_paths?: { tag: string; meaning: string }[];
 	/** What can follow a tag's | (<<Tag|upper>>). */
 	modifiers?: TagModifier[] }
+/** What is wrong with a tag in a type's rows: the row (from 0) and column of its cell. */
+export interface TagProblem { row: number; column: string; tag: string; problem: string }
+/** A type's rows as they are in the editor, checked; and, for a chosen load or runsheet row, filled in. */
+export interface RowsCheck {
+	problems: Record<string, TagProblem[]>;
+	preview: Record<string, { header: string[]; rows: { template_row: number; cells: (string | number | boolean | null)[] }[] }> | null;
+	unresolved: string[]; notes: string[];
+}
+/** A load (or an Instrument Runsheet row) a type's rows can be filled in from; `own`: it is of that type. */
+export interface RowsSample { ref: string; tag: string; description: string; own: boolean }
 export interface TagModifier { name: string; meaning: string; example: string; args: number }
 /** A modifier as it is offered after "|": with its example's arguments (left:3). */
 export const modifierText = (m: TagModifier) => (m.args ? (/\|([^|>]+)>>$/.exec(m.example)?.[1] ?? m.name) : m.name);

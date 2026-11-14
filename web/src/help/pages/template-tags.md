@@ -9,7 +9,7 @@ A cell of a load type's or an equipment type's rows can hold a tag in double ang
 <<path|modifier|modifier:arg>>
 ```
 
-In a rows grid, typing `<<` offers the tags, a `.` after a link offers that record's fields, and `|` offers the modifiers. **All tags ⓘ** lists everything.
+In a rows grid, typing `<<` offers the tags, a `.` after a link offers that record's fields, and `|` offers the modifiers. The **Tags** list beside the grid has everything a cell can use: search it, and click a tag or a modifier to put it in the cell. **Check** under the grid says which tags match nothing and why, and **Fill in from** shows the rows filled in for a load (or a runsheet row) you choose.
 
 ![The list of tags](img/template-tags.png)
 
