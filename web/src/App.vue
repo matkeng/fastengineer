@@ -5,6 +5,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import EnginePanel from './components/EnginePanel.vue';
 import AuditView from './components/audit/AuditView.vue';
 import ProjectsView from './components/projects/ProjectsView.vue';
+import RoutingView from './components/routing/RoutingView.vue';
 import AppModal from './components/common/AppModal.vue';
 import Icon from './components/common/Icon.vue';
 import CompareView from './components/compare/CompareView.vue';
@@ -23,6 +24,7 @@ import { useGenerators } from './stores/generators';
 import { useKeyLists } from './stores/keylists';
 import { useMel } from './stores/mel';
 import { useProjects } from './stores/projects';
+import { useRouting } from './stores/routing';
 import { useSymbols } from './stores/symbols';
 import { SECTIONS, useUi } from './stores/ui';
 import { useWorkbench } from './stores/workbench';
@@ -36,6 +38,7 @@ const dl = useDeliverables();
 const sym = useSymbols();
 const projects = useProjects();
 const gens = useGenerators();
+const routing = useRouting();
 
 // Results views fill the window; the table takes the free space.
 const fill = computed(
@@ -46,6 +49,7 @@ const fill = computed(
 			ui.tab === 'symbols' ||
 			(ui.tab === 'generators' && !!gens.draft) ||
 			ui.tab === 'keylists' ||
+			ui.tab === 'routing' ||
 			ui.tab === 'deliverables') ||
 		ui.tab === 'help',
 );
@@ -54,6 +58,7 @@ const dirty: Partial<Record<string, () => boolean>> = {
 	mel: () => mel.dirty,
 	keylists: () => kl.dirty,
 	generators: () => gens.anyDirty,
+	routing: () => routing.dirty,
 	deliverables: () => dl.dirty,
 };
 const sections = computed(() => SECTIONS.filter((s) => s.menu !== false && (s.id !== 'projects' || projects.isAdmin)));
@@ -159,6 +164,7 @@ onMounted(() => wb.connect());
 				<MelView v-show="ui.tab === 'mel'" />
 				<KeyListsView v-show="ui.tab === 'keylists'" />
 				<GenView v-show="ui.tab === 'generators'" />
+				<RoutingView v-show="ui.tab === 'routing'" />
 				<DeliverablesView v-show="ui.tab === 'deliverables'" />
 				<AuditView v-if="ui.tab === 'history'" />
 			</template>

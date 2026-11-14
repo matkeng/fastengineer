@@ -82,10 +82,15 @@ export interface CableType {
 	/** Core insulation (PVC, XLPE…): a load's cable is matched on it. */
 	insulation: string;
 	description: string; sort: number | null;
+	/** The overall diameter (mm; a flat cable: its width) and the mass (kg/m): from the handbook, or typed in. Cable Routing sizes ladders by them. */
+	overall_diameter_mm?: number | null;
+	mass_kg_per_m?: number | null;
 }
 export interface CableTypeList { items: CableType[]; updated_at: string | null }
 /** As typed into the form (sort is text until the engine converts it). */
-export type CableTypeForm = Omit<CableType, 'sort'> & { sort: string };
+export type CableTypeForm = Omit<CableType, 'sort' | 'overall_diameter_mm' | 'mass_kg_per_m'> & {
+	sort: string; overall_diameter_mm?: number | string | null; mass_kg_per_m?: number | string | null;
+};
 
 /** The PLC List: systems -> racks -> cards (by slot) -> IO points (one per channel, from 0). */
 export interface IoPoint { channel: number; tag: string; description: string; spare: boolean }

@@ -99,6 +99,7 @@ export const SECTION_HELP: Record<Section, string> = {
 	mel: 'import-overview',
 	keylists: 'working-in-the-app',
 	generators: 'generators',
+	routing: 'cable-routing',
 	deliverables: 'deliverables',
 	history: 'change-log',
 	projects: 'working-in-the-app#choosing-a-project',

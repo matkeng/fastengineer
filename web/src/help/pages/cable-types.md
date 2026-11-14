@@ -46,6 +46,12 @@ Left blank, with the reason in **Bending basis**: flat cables (the rule is on a 
 
 The figures can be exported and imported in the Cable Types workbook.
 
+## Mass
+
+Every cable with a product code has its **mass** in kg/m, from the "approximate mass" printed on its product page (the handbook prints kg per 100 m).
+
+The **Overall dia. (mm)** and **Mass (kg/m)** of a cable type can be typed in or changed in its form, for cables the handbook does not cover. [Cable Routing](help:cable-routing) sizes each cable ladder from the overall diameters and adds up the mass of the cables on it.
+
 ## A cable type
 
 ![A cable type](img/cable-type-form.png)

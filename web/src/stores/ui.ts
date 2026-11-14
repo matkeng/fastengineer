@@ -4,7 +4,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { IconName } from '../lib/icons';
 
-export type Section = 'dashboard' | 'compare' | 'symbols' | 'mel' | 'keylists' | 'generators' | 'deliverables' | 'history' | 'projects' | 'engine' | 'help';
+export type Section = 'dashboard' | 'compare' | 'symbols' | 'mel' | 'keylists' | 'generators' | 'routing' | 'deliverables' | 'history' | 'projects' | 'engine' | 'help';
 
 /** `menu: false`: not a tab of its own; it is opened from another section. */
 export const SECTIONS: { id: Section; label: string; icon: IconName; menu?: false }[] = [
@@ -14,6 +14,7 @@ export const SECTIONS: { id: Section; label: string; icon: IconName; menu?: fals
 	{ id: 'mel', label: 'List import', icon: 'recipe' },
 	{ id: 'keylists', label: 'Project lists', icon: 'tree' },
 	{ id: 'generators', label: 'Generators', icon: 'generator' },
+	{ id: 'routing', label: 'Cable Routing', icon: 'route' },
 	{ id: 'deliverables', label: 'Deliverables', icon: 'file' },
 	{ id: 'history', label: 'Change log', icon: 'history' },
 	{ id: 'projects', label: 'Projects', icon: 'layers' }, // administrators only (see App.vue)

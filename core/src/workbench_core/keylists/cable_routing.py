@@ -649,6 +649,8 @@ def _ladder(service: Service, override: LadderOverride | None, cables: list[Cabl
     standard = sorted(service.widths_mm)
     if override and override.width_mm:
         load.width_mm = override.width_mm
+    elif not widths:
+        pass  # no cable here has a diameter: the width is not known
     elif standard:
         fits = next((w for w in standard if w >= load.required_mm), None)
         load.width_mm = fits or standard[-1]

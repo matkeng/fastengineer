@@ -219,3 +219,8 @@ def test_services_follow_the_rules() -> None:
     doc.services = doc.services[:2]
     checked, errors, _ = check_routing(doc)
     assert sorted(errors.values()) == ["That service no longer exists"] * 6
+
+
+def test_a_ladder_of_cables_with_no_diameter_has_no_width() -> None:
+    load = compute(loop(), schedule(["X1", "MCC-1", "P-1", "Power", "X"]), TYPES).segments[0].services[0]
+    assert (load.width_mm, load.fill_pct, load.required_mm, load.missing_od) == (None, None, 0, ["X1"])

@@ -21,7 +21,10 @@ let table: FilteredTable<CableType> | null = null;
 const items = computed(() => kl.cableTypes?.items ?? []);
 
 type TextField = 'code' | 'application' | 'type' | 'cores' | 'diameter' | 'voltage' | 'insulation' | 'description';
-const COLS: { field: TextField | 'sort'; title: string; filter?: 'select'; hint?: string }[] = [
+type NumberField = 'overall_diameter_mm' | 'mass_kg_per_m';
+const NUMBERS: NumberField[] = ['overall_diameter_mm', 'mass_kg_per_m'];
+const isNumber = (f: string): f is NumberField => (NUMBERS as string[]).includes(f);
+const COLS: { field: TextField | NumberField | 'sort'; title: string; filter?: 'select'; hint?: string }[] = [
 	{ field: 'sort', title: 'Sort', hint: 'Whole number: the order in the list' },
 	{ field: 'code', title: 'Code' },
 	{ field: 'application', title: 'Application', filter: 'select', hint: 'e.g. AC_415V, DC_24V, Earth' },
@@ -30,6 +33,8 @@ const COLS: { field: TextField | 'sort'; title: string; filter?: 'select'; hint?
 	{ field: 'diameter', title: 'Diameter', hint: 'e.g. 2.5' },
 	{ field: 'voltage', title: 'Voltage', filter: 'select', hint: 'e.g. 0.6/1kV' },
 	{ field: 'insulation', title: 'Insulation', filter: 'select', hint: 'e.g. PVC, XLPE: a load’s cable is matched on it' },
+	{ field: 'overall_diameter_mm', title: 'Overall dia. (mm)', hint: 'Over the sheath (a flat cable: its width). Cable Routing sizes ladders by it' },
+	{ field: 'mass_kg_per_m', title: 'Mass (kg/m)', hint: 'Cable Routing adds it up for each ladder' },
 	{ field: 'description', title: 'Desc' },
 ];
 const distinct = (f: TextField) => [...new Set(items.value.map((r) => r[f]).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -40,12 +45,12 @@ function build() {
 	const columns = COLS.map((c): ColumnsConfig => ({
 		title: escapeHtml(c.title) + (c.field === 'code' ? ' <span class="req" title="Required">*</span>' : ''),
 		data: (r: CableType) => r[c.field] ?? null,
-		className: c.field === 'sort' ? 'dt-right' : c.field === 'code' ? 'key-col' : '',
+		className: c.field === 'sort' || isNumber(c.field) ? 'dt-right' : c.field === 'code' ? 'key-col' : '',
 		render: (v: string | number | null, type: string) => {
 			if (v === null || v === '') return '';
 			if (type === 'sort' || type === 'type') {
 				// sizes sort as numbers where they are numbers ("2.5" before "10"), text after
-				if (c.field === 'sort') return Number(v);
+				if (c.field === 'sort' || isNumber(c.field)) return Number(v);
 				if (c.field === 'diameter') return /^[\d.]+$/.test(String(v)) ? String(Number(v) * 1000).padStart(12, '0') : `~${String(v).toLowerCase()}`;
 				return String(v).toLowerCase();
 			}
@@ -179,9 +184,10 @@ onBeforeUnmount(() => table?.api.destroy());
 					</span>
 					<span v-if="formErrors.code" class="warn small">{{ formErrors.code }}</span>
 				</label>
-				<label v-for="c in COLS.filter((x) => x.field !== 'code' && x.field !== 'description')" :key="c.field" class="field">
+				<label v-for="c in COLS.filter((x) => x.field !== 'code' && x.field !== 'description')" :key="c.field" class="field" :title="c.hint">
 					<span>{{ c.title }}</span>
-					<input v-model="editing.form[c.field]" type="text" :placeholder="c.hint" :class="{ invalid: formErrors[c.field] }" />
+					<input v-if="isNumber(c.field)" v-model="editing.form[c.field]" type="number" min="0" step="any" placeholder="not known" :class="{ invalid: formErrors[c.field] }" />
+					<input v-else v-model="editing.form[c.field]" type="text" :placeholder="c.hint" :class="{ invalid: formErrors[c.field] }" />
 					<span v-if="formErrors[c.field]" class="warn small">{{ formErrors[c.field] }}</span>
 				</label>
 				<label class="field wide">

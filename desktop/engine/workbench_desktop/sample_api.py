@@ -323,9 +323,9 @@ def load_sample_data() -> Added:
 
         listed = {e.tag: e for e in equipment_of(master_of("equipment_list")[0])}
         doc = CableRouting()
-        at = {"Primary Supply": (40, 40), "MSB-1": (40, 160), "MCC-1": (40, 280), "MCC-2": (40, 400), "P-101": (400, 140),
-              "P-102": (580, 140), "P-103": (760, 140), "M-201": (860, 280), "C-401": (860, 400), "F-301": (760, 540),
-              "F-302": (580, 540), "H-501": (400, 540), "LP-601": (220, 540)}
+        at = {"Primary Supply": (40, 20), "MSB-1": (40, 160), "MCC-1": (40, 300), "MCC-2": (40, 440), "P-101": (340, 120),
+              "P-102": (540, 120), "P-103": (760, 120), "M-201": (960, 300), "C-401": (960, 440), "F-301": (860, 620),
+              "F-302": (660, 620), "H-501": (460, 620), "LP-601": (260, 620)}
         for tag, (x, y) in at.items():
             e = listed.get(tag)
             if e or tag == "Primary Supply":
@@ -335,11 +335,11 @@ def load_sample_data() -> Added:
             return 0
         placed = {p.tag: End(kind="equipment", id=p.id) for p in doc.placements}
         nodes = [End(kind="node", id=add_node(doc, x, y).id)
-                 for x, y in ((260, 180), (260, 300), (260, 420), (460, 300), (700, 300), (700, 420), (460, 420))]
+                 for x, y in ((260, 190), (260, 330), (260, 470), (500, 330), (820, 330), (820, 470), (500, 470))]
         n1, n2, n3, n4, n5, n6, n7 = nodes
         runs = [("Primary Supply", "MSB-1", 25), ("MSB-1", n1, 3), ("MCC-1", n2, 3), ("MCC-2", n3, 3), (n1, n2, 6), (n2, n3, 6),
                 (n2, n4, 40), (n4, n5, 35), (n5, n6, 20), (n6, n7, 35), (n7, n3, 45), ("P-101", n4, 8), ("P-102", n4, 12),
-                ("P-103", n5, 10), ("M-201", n5, 15), ("C-401", n6, 12), ("F-301", n6, 14), ("F-302", n7, 16), ("H-501", n7, 9),
+                ("P-103", n5, 10), ("M-201", n5, 15), ("C-401", n6, 12), ("F-301", n6, 14), ("F-302", n6, 16), ("H-501", n7, 9),
                 ("LP-601", n7, 18)]
         for a, b, length in runs:
             a, b = placed.get(a) if isinstance(a, str) else a, placed.get(b) if isinstance(b, str) else b

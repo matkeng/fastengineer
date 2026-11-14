@@ -1344,9 +1344,45 @@ and types, equipment and instrument codes, four load types with rows for every
 list, three switchboards in the Electrical Equipment List, a PLC, a MEL import
 of nine loads, the schedule of
 MCC-2 in Distribution Panels, three rows in the Instrument Runsheet, four
-drawings in the Drawing List, three documents in the Document List, and one
-deliverable of each type. Lists that already have data are left
+drawings in the Drawing List, three documents in the Document List, one
+deliverable of each type, and a Cable Routing map of the plant. Lists that already have data are left
 alone, so it is safe to run on a project in use.
+
+## Cable Routing
+
+The **Cable Routing** section holds a node map of the plant's cable ladder routes, and works out from
+it each cable's length and each ladder's width and mass loading. The map is a symbolic diagram, not
+a scale drawing: every length is typed in.
+
+- **Equipment** is dragged onto the map from the Project Master Equipment List (or typed in, for a
+  junction box or "Primary Supply"), and is matched to the cable schedule's From and To by tag.
+- **Nodes** (N001 to N999) and **segments** (S-001, S-002...) are drawn with the *Draw route* tool:
+  lines and polylines between nodes, or between a node and a piece of equipment. Routes may form
+  loops. A tag is not reused for something else; *Renumber* numbers everything again from 1.
+- Every cable of the **Project Master Cable Schedule** is routed from its From to its To equipment
+  along the shortest way by length (segments with no length are a last resort, and equipment is
+  never a way through). A cable can be given a route of its own: nodes and segments it goes through,
+  in order, and segments it keeps off.
+- A cable's **length** is its route's segments added up, plus a tail at each end and a contingency,
+  rounded up. Switched on in the Rules tab, the master cable schedule's `Length (m)` (and its
+  `Route`, where blank) come from the map for every routed cable, in the master list and in new
+  deliverable revisions. The Load List's typed cable lengths are not changed.
+- Cables are split into **services** (HV, LV Power, Control, Instrumentation, Comms; editable) by
+  rules on their cable type. For each service on a segment the **ladder width** is the cables'
+  overall diameters side by side (three single cores of one circuit count as a trefoil, 2.15
+  diameters), with the service's spacing, layers and spare, rounded up to the next standard width;
+  the **mass** is the cables' kg/m added up, against the service's load limit. What is installed on
+  a segment (a fixed width or limit) can be given instead.
+
+Cable types carry an overall diameter and now a **mass (kg/m)**: from the Nexans Olex Handbook 2017
+for the cables with a product code (`core/src/workbench_core/keylists/cable_mass.py`, written by
+`scripts/nexans_handbook_extract.py`; the handbook prints kg/100 m), or typed in on the Cable Types
+form. Cables with neither are counted and named, and left out of the width or the mass.
+
+The logic is in `core/src/workbench_core/keylists/cable_routing.py`; the map is one JSON document
+in the project database (`key_lists`, id `cable-routing`), behind `GET`/`PUT /api/cable-routing`,
+`POST /api/cable-routing/check` (unsaved edits), `/renumber` and `/export`. The sample data draws a
+map of the sample plant.
 
 ## Deliverable generators
 
