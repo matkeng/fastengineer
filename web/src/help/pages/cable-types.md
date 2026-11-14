@@ -9,6 +9,12 @@ Cable Types is the project's catalogue of cables. The cable schedule picks each 
 
 Every project starts with a default set of 218 types: power, flex, pilot, VSD, control, instrument pairs and triples, earth, fibre and Ethernet.
 
+## Current carrying capacity
+
+Power cables of V-90 PVC and X90 XLPE insulation carry their figures from the **Nexans Olex Handbook 2017**, "Current Ratings" (IEC 60287): the copper current carrying capacity in amps, for a cable unenclosed in air, spaced from a surface, touching another, and enclosed in conduit in air. Each type shows its **conductor (mm²)** and **ampacity** and the page it came from, for 2 core, 3 and 4 core and single core cables. The basis is air at 40 °C, a conductor at 80 °C (XLPE) or 75 °C (PVC), direct sunlight and 1.0 m/s wind. Other conditions need derating under AS/NZS 3008.1, which the handbook does not reproduce.
+
+Not included: buried and underground-duct ratings (the handbook does not state the ground conditions behind them), aluminium conductors, flexible TPE cables, earth, VSD, pilot, control, instrument and network cables, and any size the handbook does not print, which stays blank. The figures can be exported and imported in the Cable Types workbook.
+
 ## A cable type
 
 ![A cable type](img/cable-type-form.png)

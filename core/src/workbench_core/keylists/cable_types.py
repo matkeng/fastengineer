@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from ..refdata.models import ColumnDef, RefValidationError, new_id
 from ..refdata.validate import coerce, name_key
+from .cable_ampacity import METHODS, TABLES, ampacity
 
 _INTEGER = ColumnDef(name="", type="integer")
 TEXT_FIELDS = ("code", "application", "type", "cores", "diameter", "voltage", "insulation", "description")
@@ -29,6 +30,13 @@ class CableType(BaseModel):
     insulation: str = ""  # core insulation, e.g. PVC, XLPE (a load's cable is matched on it)
     description: str = ""
     sort: int | None = None
+    #: The conductor size as a number (mm²), where ``diameter`` is one.
+    conductor_mm2: float | None = None
+    #: Copper current carrying capacity (A) by installation method (keys: cable_ampacity.METHODS),
+    #: from the manufacturer's handbook; blank where the handbook doesn't print the size.
+    ampacity: dict[str, float] = Field(default_factory=dict)
+    #: Where ``ampacity`` comes from (table, page, basis).
+    ampacity_source: str = ""
 
 
 class CableTypeList(BaseModel):
@@ -59,6 +67,23 @@ def fill_insulation(items: list[CableType]) -> bool:
     return changed
 
 
+def _ratings(raw: dict) -> dict:
+    """The numbers a saved cable type keeps beside its text (they come from the handbook, not the
+    form, so a form that doesn't show them must not lose them): conductor size, ampacity, source."""
+    out: dict = {}
+    try:
+        size = raw.get("conductor_mm2")
+        out["conductor_mm2"] = None if size in (None, "") else float(size)
+    except (TypeError, ValueError):
+        out["conductor_mm2"] = None
+    amps = raw.get("ampacity") or {}
+    if isinstance(amps, dict):
+        out["ampacity"] = {k: float(v) for k, v in amps.items() if k in METHODS and isinstance(v, (int, float))
+                           and not isinstance(v, bool)}
+    out["ampacity_source"] = str(raw.get("ampacity_source") or "")
+    return out
+
+
 def check_cable_types(rows: list[dict]) -> list[CableType]:
     """Check the rows as sent: the code is required and unique (ignoring case and extra
     spaces), text is trimmed, and sort is a whole number or blank. Order is kept."""
@@ -82,7 +107,7 @@ def check_cable_types(rows: list[dict]) -> list[CableType]:
             sort = coerce(raw.get("sort"), _INTEGER, None)
         except ValueError as exc:
             errors[f"{rid}.sort"] = str(exc)
-        out.append(CableType(id=rid, sort=sort, **data))
+        out.append(CableType(id=rid, sort=sort, **data, **_ratings(raw)))
     if errors:
         raise RefValidationError(f"{len(errors)} problem(s) in the cable types.", errors)
     return out
@@ -141,6 +166,33 @@ _RUNS: list[tuple[int, str, str, str, str, list[tuple[str, str]]]] = [
 ]
 
 
+#: The handbook table (cable_ampacity.TABLES) for each default family that has one: the copper
+#: cables with V-90 PVC or X90 XLPE insulation, by their core count. Flexible (TPE), earth, VSD,
+#: pilot, control and network cables have no table here, so they keep no ampacity.
+_TABLE_FOR = {
+    (_V90, "2C+E"): "2C-PVC", (_X90, "2C+E"): "2C-XLPE",
+    (_V90, "3C+E"): "3C4C-PVC", (_V90, "4C+E"): "3C4C-PVC", (_X90, "3C+E"): "3C4C-XLPE", (_X90, "4C+E"): "3C4C-XLPE",
+    (_X90, "1C"): "1C-XLPE",
+}
+
+
+def _handbook(description: str, cores: str, diameter: str) -> dict:
+    """The ampacity and conductor size of a default cable type from the handbook, where it has one."""
+    table = _TABLE_FOR.get((description, cores))
+    if table is None:
+        return {}
+    try:
+        size_mm2 = float(diameter)
+    except ValueError:
+        return {}
+    t = TABLES[table]
+    amps = ampacity(table, diameter)  # the table's in-air figures for this size (none when it prints none)
+    if not amps:
+        return {"conductor_mm2": size_mm2}
+    basis = f"Nexans Olex Handbook 2017, page {t['page']} ({t['title']}), copper, in air at 40 °C"
+    return {"conductor_mm2": size_mm2, "ampacity": amps, "ampacity_source": basis}
+
+
 def default_cable_types() -> list[CableType]:
     """The cable types a project starts with (ids are stable: "d<sort>")."""
     out = [CableType(id="d14", code="Vendor - Vendor - VENDOR - VENDOR", application="VENDOR", type="VENDOR", cores="VENDOR",
@@ -149,5 +201,6 @@ def default_cable_types() -> list[CableType]:
         for i, (cores, diameter) in enumerate(sizes):
             out.append(CableType(id=f"d{first + i}", code=f"{application} - {kind} - {cores} - {diameter}",
                                  application=application, type=kind, cores=cores, diameter=diameter, voltage=voltage,
-                                 insulation=guess_insulation(description), description=description, sort=first + i))
+                                 insulation=guess_insulation(description), description=description, sort=first + i,
+                                 **_handbook(description, cores, diameter)))
     return sorted(out, key=lambda c: c.sort or 0)

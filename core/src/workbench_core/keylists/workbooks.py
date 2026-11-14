@@ -519,17 +519,50 @@ def import_code_list(sheets: dict[str, Rows], list_id: str, old: list, disciplin
 
 
 CABLE_HEAD = ["Code", "Application", "Type", "Cores", "Diameter", "Voltage", "Insulation", "Description", "Sort"]
+#: The handbook's figures: the size as a number, the copper amps in each in-air method, and where they come from.
+CABLE_RATING_HEAD = [("Conductor (mm²)", "conductor_mm2")] + [
+    (f"Ampacity: {label} (A)", m) for m, label in (
+        ("unenclosed_space", "unenclosed in air"), ("spaced_from_surface", "spaced from surface"),
+        ("touching", "touching"), ("enclosed_conduit_in_air", "enclosed in conduit in air"))] + [
+    ("Ampacity source", "ampacity_source")]
 
 
 def export_cable_types(items: list[CableType]) -> Sheets:
-    return [("Cable Types", [CABLE_HEAD] + [[getattr(c, h.casefold()) if getattr(c, h.casefold()) != "" else None
-                                             for h in CABLE_HEAD] for c in items])]
+    def cell(c: CableType, field: str):
+        if field.startswith("Ampacity: ") or field == "Conductor (mm²)" or field == "Ampacity source":
+            return None
+        v = getattr(c, field.casefold())
+        return None if v in ("", None) else v
+
+    def rating(c: CableType, key: str):
+        if key == "conductor_mm2":
+            return c.conductor_mm2
+        if key == "ampacity_source":
+            return c.ampacity_source or None
+        return c.ampacity.get(key)
+
+    head = CABLE_HEAD + [t for t, _ in CABLE_RATING_HEAD]
+    rows = [[cell(c, h) if h in CABLE_HEAD else rating(c, dict(CABLE_RATING_HEAD)[h]) for h in head] for c in items]
+    return [("Cable Types", [head] + rows)]
 
 
 def import_cable_types(sheets: dict[str, Rows], old: list[CableType]) -> Parsed:
     keep = _keep([(c.id, c.code) for c in old])
-    items = [{"id": keep(_get(r, "Code"))} | {h.casefold(): _get(r, h) for h in CABLE_HEAD}
-             for r in _sheet(sheets, "Cable Types", ("Code",))]
+    by_id = {c.id: c for c in old}
+    rows = _sheet(sheets, "Cable Types", ("Code",))
+    has_ratings = bool(rows) and any(t.casefold() in rows[0] for t, _ in CABLE_RATING_HEAD)
+    items = []
+    for r in rows:
+        item = {"id": keep(_get(r, "Code"))} | {h.casefold(): _get(r, h) for h in CABLE_HEAD}
+        if has_ratings:  # a figure left blank in the file has none
+            item["conductor_mm2"] = _get(r, "Conductor (mm²)") or None
+            item["ampacity"] = {m: _get(r, heading) for heading, m in CABLE_RATING_HEAD[1:-1]}
+            item["ampacity"] = {m: float(v) for m, v in item["ampacity"].items() if v not in ("", None)}
+            item["ampacity_source"] = _get(r, "Ampacity source")
+        elif item["id"] in by_id:  # a file from before the figures: they stay as they were
+            kept = by_id[item["id"]]
+            item |= {"conductor_mm2": kept.conductor_mm2, "ampacity": dict(kept.ampacity), "ampacity_source": kept.ampacity_source}
+        items.append(item)
     return Parsed({"items": items}, [i["code"] for i in items], labels={i["id"]: i["code"] for i in items})
 
 
