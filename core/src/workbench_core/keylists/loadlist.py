@@ -26,6 +26,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from ..refdata.validate import name_key
+from .units import HP_KW, unit_kind
 
 #: The import targets whose rows make up the Load List.
 LOAD_LIST_TARGETS = ("MEL", "EEL")
@@ -109,7 +110,6 @@ def auto_match(text: CellValue, index: dict[str, str | None]) -> str | None:
     return index.get(name_key(str(text)))
 
 
-HP_KW = 0.7457
 #: name_key(code) -> the load types of that code: (id, rating unit, from, to); a blank bound is None (open).
 LoadTypeIndex = dict[str, list[tuple[str, str, float | None, float | None]]]
 
@@ -156,15 +156,15 @@ def load_type_index(types: list) -> LoadTypeIndex:
 def rating_in_unit(rating: CellValue, units: CellValue) -> tuple[float | None, str | None]:
     """A load's rating and the load types' unit it is in: kW (blank units too; HP converted,
     × 0.7457) or Amps (A, Amp, Amps). (None, unit) for no rating; (None, None) for other units."""
-    u = "" if units is None or isinstance(units, bool) else str(units).strip().casefold()
-    unit = "kW" if u in ("", "kw") or u == "hp" else "Amps" if u in ("a", "amp", "amps") else None
+    kind = unit_kind(units)
+    unit = None if kind is None else "Amps" if kind == "Amps" else "kW"
     try:
         r = None if rating is None or isinstance(rating, bool) or str(rating).strip() == "" else float(str(rating).replace(",", ""))
     except ValueError:
         r = None
     if unit is None or r is None:
         return None, unit
-    return (r * HP_KW if u == "hp" else r), unit
+    return (r * HP_KW if kind == "HP" else r), unit
 
 
 def match_load_type(code: CellValue, rating: CellValue, units: CellValue, index: LoadTypeIndex) -> tuple[str | None, str]:

@@ -22,8 +22,8 @@ from pydantic import BaseModel, Field
 from ..refdata.models import RefValidationError, new_id
 from ..refdata.validate import name_key
 from .drive_data_755ts import PF755TS
+from .units import HP_KW, rating_kw, unit_kind
 
-HP_KW = 0.7457
 Enclosure = Literal["Open", "IP54", "Flange"]
 ENCLOSURES: dict[str, str] = {"Open": "IP00/IP20, NEMA/UL Type Open", "IP54": "IP54, NEMA/UL Type 12",
                               "Flange": "Flange Mount (front: IP20, NEMA/UL Type Open; back/heatsink: IP66, NEMA/UL Type 4X)"}
@@ -223,12 +223,11 @@ def drive_for_load(rating: object, units: object, volts: object, motor_flc: obje
                    drives: list[Drive]) -> Drive | None:
     """A load's drive: matched on its motor's full load current (`motor_flc`), else a rating in
     Amps; with neither, on its power (a rating in kW, or Hp converted)."""
-    u = str(units or "kW").strip().casefold()
     r = _number(rating)
     amps = _number(motor_flc)
-    if amps is None and u in ("amps", "a") and r is not None:
+    if amps is None and unit_kind(units) == "Amps" and r is not None:
         amps = r
-    kw = None if r is None else r * HP_KW if u == "hp" else r if u in ("kw", "") else None
+    kw = None if r is None else rating_kw(r, units)
     return drive_for(volts, amps, kw, duty, enclosure, drives)
 
 

@@ -19,8 +19,8 @@ from pydantic import BaseModel, Field
 from ..refdata.models import RefValidationError, new_id
 from ..refdata.validate import name_key
 from .motor_data_w22 import W22_E3_415V_50HZ
+from .units import rating_kw
 
-HP_KW = 0.7457
 #: Number fields: model field -> (column title, what it is). Their tag is the title without spaces.
 NUMBERS: dict[str, tuple[str, str]] = {
     "kw": ("kW", "output (kW)"), "speed": ("Speed", "rated speed (rpm)"), "flc": ("FLC", "full load current (A)"),
@@ -152,13 +152,9 @@ def motor_for(rating: object, units: object, poles: object, motors: list[Motor])
     """The motor a load gets: the smallest of `poles` whose output is at least the load's kW (a
     rating in HP converted; one in Amps or blank matches nothing), Standard design before
     High-Output. None when no motor fits."""
-    kw, p = _number(rating), _number(poles)
+    r, p = _number(rating), _number(poles)
+    kw = None if r is None else rating_kw(r, units)
     if kw is None or kw <= 0 or p is None:
-        return None
-    u = str(units or "kW").strip().casefold()
-    if u in ("hp",):
-        kw *= HP_KW
-    elif u not in ("kw", ""):
         return None
     fits = [m for m in motors if m.poles == int(p) and m.kw >= kw - 1e-9]
     if not fits:

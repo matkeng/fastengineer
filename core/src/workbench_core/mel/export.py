@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 
 from openpyxl import Workbook
 from openpyxl.comments import Comment
@@ -20,17 +21,29 @@ OVERRIDE = PatternFill("solid", fgColor="FCE3CC")
 CUSTOM = PatternFill("solid", fgColor="E3F1E4")
 ERROR = PatternFill("solid", fgColor="F8DEDE")
 NUM_CHARS = set("0123456789.+-eE")
+_LEADING_ZERO = re.compile(r"^[+-]?0\d")
 
 
 def _num(text: str):
+    """A cell's text as a number where it reads as one. "007" and "0101" stay text: they are
+    codes, and a number would lose their leading zeros."""
     t = text.strip()
-    if t and set(t) <= NUM_CHARS:
+    if t and set(t) <= NUM_CHARS and not _LEADING_ZERO.match(t):
         try:
             f = float(t)
             return int(f) if f.is_integer() and "." not in t and "e" not in t.lower() else f
         except ValueError:
             pass
     return text
+
+
+def _put(ws, row: int, column: int, value):
+    """Write a cell. Text that starts with "=" stays text: it came from a file, and Excel must
+    not run it as a formula."""
+    cell = ws.cell(row=row, column=column, value=value)
+    if isinstance(value, str) and value.startswith("="):
+        cell.data_type = "s"
+    return cell
 
 
 def combined_csv(result: PipelineResult) -> bytes:
@@ -67,7 +80,7 @@ def combined_xlsx(result: PipelineResult, auto_columns: list[str], title: str) -
     _header(ws, result.headers, {h: AUTO_HEADER for h in auto_columns})
     for i, r in enumerate(result.rows, start=2):
         for c, h in enumerate(result.headers, start=1):
-            cell = ws.cell(row=i, column=c, value=_num(r.values.get(h, "")))
+            cell = _put(ws, i, c, _num(r.values.get(h, "")))
             if h in r.overridden:
                 cell.fill = OVERRIDE
                 cell.comment = Comment("Overridden in the import recipe", "ECG Source List")
@@ -90,7 +103,7 @@ def load_list_xlsx(ll: LoadListResult, result: PipelineResult, title: str, sheet
     _header(ws, ll.fields)
     for i, r in enumerate(ll.rows, start=2):
         for c, f in enumerate(ll.fields, start=1):
-            ws.cell(row=i, column=c, value=r.get(f))
+            _put(ws, i, c, r.get(f))
     if ll.rows:
         ws.auto_filter.ref = f"A1:{get_column_letter(len(ll.fields))}{len(ll.rows) + 1}"
     _notes(wb, result, title, ll.warnings)

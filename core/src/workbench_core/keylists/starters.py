@@ -24,8 +24,8 @@ from pydantic import BaseModel, Field
 from ..refdata.models import RefValidationError, new_id
 from ..refdata.validate import name_key
 from .starter_data_nhp import NHP_TYPE2
+from .units import rating_kw, unit_kind
 
-HP_KW = 0.7457
 DEFAULT_CHART = "ECH64.2"
 NO_STARTER = "None"
 #: The built-in charts: chart -> (fault level kA, what it is).
@@ -183,12 +183,11 @@ def starter_for(rating: object, units: object, chart: str | None, starters: list
     r = _number(rating)
     if r is None or r <= 0:
         return None
-    u = str(units or "kW").strip().casefold()
     pool = [s for s in starters if name_key(s.chart) == name_key(chart)]
-    if u in ("amps", "a"):
+    if unit_kind(units) == "Amps":
         fits = [s for s in pool if s.flc is not None and s.flc >= r - 1e-9]
         return min(fits, key=lambda s: (s.flc, s.kw)) if fits else None
-    kw = r * HP_KW if u == "hp" else r if u in ("kw", "") else None
+    kw = rating_kw(r, units)
     if kw is None:
         return None
     fits = [s for s in pool if s.kw >= kw - 1e-9]

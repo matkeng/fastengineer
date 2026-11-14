@@ -32,3 +32,9 @@ def test_default_watts() -> None:
     assert default_pole_watts(2.4, "kW", 1, 240, 0.85) == 2400
     assert default_pole_watts(10, "Amps", 3, 240, 0.85) == pytest.approx(2040)
     assert default_pole_watts(None, "kW", 1, 240, 0.85) is None
+    # the units are read as everywhere else: A and Amp are Amps, HP is converted, blank is kW
+    assert default_pole_watts(10, "A", 1, 240, 0.85) == pytest.approx(2040)
+    assert default_pole_watts(10, " amp ", 1, 240, 0.85) == pytest.approx(2040)
+    assert default_pole_watts(10, "HP", 1, 240, 0.85) == pytest.approx(7457)
+    assert default_pole_watts(2.4, "", 1, 240, 0.85) == 2400
+    assert default_pole_watts(10, "kVA", 1, 240, 0.85) is None  # not a unit the app knows: no watts, not 10 kW

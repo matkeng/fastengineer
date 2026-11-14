@@ -26,6 +26,7 @@ a load's cells by <<name>> (load_cells), the same functions and operators.
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Literal
 
@@ -114,12 +115,12 @@ class SummaryOutTable(BaseModel):
 def _number(v: object) -> float | None:
     if isinstance(v, bool) or v is None:
         return None
-    if isinstance(v, (int, float)):
-        return float(v)
     try:
-        return float(str(v).strip())
+        # "1,000" is a number here as it is for a load's rating; "nan" and "inf" are not
+        n = float(v) if isinstance(v, (int, float)) else float(str(v).strip().replace(",", ""))
     except ValueError:
         return None
+    return n if math.isfinite(n) else None
 
 
 def _key(name: str) -> str:

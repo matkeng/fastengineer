@@ -74,11 +74,13 @@ def masked_ncc(work01, t_ink, mask):
     import numpy as np
     m = (mask > 0).astype(np.float32) if mask is not None else np.ones(t_ink.shape, np.float32)
     n = float(m.sum())
+    if n < 4:  # an empty (or nearly empty) mask: nothing to compare
+        return None
     t = (t_ink > 0).astype(np.float32)
     mean_t = float((t * m).sum()) / n
     t0 = (t - mean_t) * m
     t_norm = float(np.sqrt((t0 * t0).sum()))
-    if n < 4 or t_norm < 1e-6:
+    if t_norm < 1e-6:
         return None
     num = cv2.matchTemplate(work01, t0, cv2.TM_CCORR)
     s1 = cv2.matchTemplate(work01, m, cv2.TM_CCORR)  # ink under the mask (binary: sum I^2 == sum I)

@@ -20,6 +20,9 @@ from .models import (CablePrefix, ColumnDef, Computed, Concat, Count, DerivedTag
                      Template, TemplateCell, TemplateRow, DEFAULT_CONFIGS)
 from .text import to_text
 
+#: The row number of a cell reference in a formula (A5, $B12): the column is kept. Not the digits
+#: of a function's name (LOG10(, ATAN2().
+_ROW_OF_REF = re.compile(r"(?<![A-Za-z0-9_.])([A-Z]{1,3})\d+\b(?!\()")
 SOURCE_WORDS = {"model", "number", "choice", "inbuilt", "builtin", "text"}
 
 
@@ -316,7 +319,7 @@ def _import(source: Path | bytes, path: Path, gen_id: str | None) -> ImportResul
         for fr in forms[start:]:
             v = fr[i] if i < len(fr) else None
             if isinstance(v, str) and v.startswith("="):
-                cols[i].formula = re.sub(r"(?<=[A-Z])\d+\b", "{row}", v)
+                cols[i].formula = _ROW_OF_REF.sub(r"\1{row}", v)
                 rep.runsheet_formula_columns[cols[i].tag or cols[i].name] = cols[i].formula
                 break
     rows = [RunRow(id=str(r1 + 1 + k), values=[_clean(v) for v in vals[k]]) for k in range(start, len(vals))]

@@ -22,6 +22,8 @@ from collections.abc import Iterable
 
 from pydantic import BaseModel
 
+from .units import rating_kw, unit_kind
+
 #: The phases of a three-phase panel, in the order of its pole rows: red, white, blue.
 POLES: tuple[str, ...] = ("R", "W", "B")
 
@@ -39,13 +41,15 @@ class PanelTotals(BaseModel):
 
 
 def default_pole_watts(rating: float | None, unit: str, poles: int, voltage: float, power_factor: float) -> float | None:
-    """The watts on each pole of a load, from its rating: a kW rating is shared equally by its
-    poles; an Amps rating is the current in each pole. None when the load has no rating."""
+    """The watts on each pole of a load, from its rating: a kW rating (blank units too; HP
+    converted) is shared equally by its poles; an Amps rating (A, Amp, Amps) is the current in
+    each pole. None when the load has no rating, or its units are none of those."""
     if rating is None or poles < 1:
         return None
-    if unit.strip().casefold() == "amps":
+    if unit_kind(unit) == "Amps":
         return rating * voltage * power_factor
-    return rating * 1000 / poles
+    kw = rating_kw(rating, unit)
+    return None if kw is None else kw * 1000 / poles
 
 
 def panel_totals(pole_watts: Iterable[tuple[str, float]], *, three_phase: bool, voltage: float, power_factor: float,
