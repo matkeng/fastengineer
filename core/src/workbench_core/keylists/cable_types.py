@@ -16,6 +16,7 @@ from ..refdata.validate import coerce, name_key
 from .cable_ampacity import METHODS, TABLES, ampacity
 from .cable_products import product_code
 from .cable_handbook import RECORDS
+from .cable_dimensions import DIMENSIONS
 
 _INTEGER = ColumnDef(name="", type="integer")
 TEXT_FIELDS = ("code", "application", "type", "cores", "diameter", "voltage", "insulation", "description", "product_code")
@@ -41,6 +42,13 @@ class CableType(BaseModel):
     ampacity: dict[str, float] = Field(default_factory=dict)
     #: Where ``ampacity`` comes from (table, page, basis).
     ampacity_source: str = ""
+    #: The overall diameter (mm), printed on the product page.
+    overall_diameter_mm: float | None = None
+    #: The minimum installed bending radius (mm), static; and the minimum bending radius during installation (mm).
+    bend_installed_mm: float | None = None
+    bend_pulling_mm: float | None = None
+    #: The handbook rule or printed page the radii come from.
+    bend_basis: str = ""
 
 
 class CableTypeList(BaseModel):
@@ -85,6 +93,13 @@ def _ratings(raw: dict) -> dict:
         out["ampacity"] = {k: float(v) for k, v in amps.items() if k in METHODS and isinstance(v, (int, float))
                            and not isinstance(v, bool)}
     out["ampacity_source"] = str(raw.get("ampacity_source") or "")
+    for field in ("overall_diameter_mm", "bend_installed_mm", "bend_pulling_mm"):
+        try:
+            value = raw.get(field)
+            out[field] = None if value in (None, "") else float(value)
+        except (TypeError, ValueError):
+            out[field] = None
+    out["bend_basis"] = str(raw.get("bend_basis") or "")
     return out
 
 
@@ -219,7 +234,18 @@ def default_cable_types() -> list[CableType]:
                                  insulation=guess_insulation(description), description=description, sort=first + i,
                                  product_code=_product(description, cores, diameter), **_handbook(description, cores, diameter)))
     out += handbook_cable_types()
+    out = [_dimensions(c) for c in out]
     return sorted(out, key=lambda c: c.sort or 0)
+
+
+def _dimensions(c: CableType) -> CableType:
+    """The overall diameter and bending radii of a cable with a printed product code (cable_dimensions)."""
+    row = DIMENSIONS.get(c.product_code) if c.product_code else None
+    if row is None:
+        return c
+    od, installed, pulling, basis = row
+    return c.model_copy(update={"overall_diameter_mm": od, "bend_installed_mm": installed,
+                                "bend_pulling_mm": pulling, "bend_basis": basis})
 
 
 #: The application of a handbook product: the Load List's cable choices leave these out.

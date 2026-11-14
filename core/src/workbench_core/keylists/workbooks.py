@@ -526,21 +526,26 @@ CABLE_RATING_HEAD = [("Conductor (mm²)", "conductor_mm2")] + [
     (f"Ampacity: {label} (A)", m) for m, label in (
         ("unenclosed_space", "unenclosed in air"), ("spaced_from_surface", "spaced from surface"),
         ("touching", "touching"), ("enclosed_conduit_in_air", "enclosed in conduit in air"))] + [
-    ("Ampacity source", "ampacity_source")]
+    ("Ampacity source", "ampacity_source"), ("Overall diameter (mm)", "overall_diameter_mm"),
+    ("Bending radius installed (mm)", "bend_installed_mm"), ("Bending radius pulling (mm)", "bend_pulling_mm"),
+    ("Bending basis", "bend_basis")]
+#: The numbers and texts of CABLE_RATING_HEAD that are not the ampacity table.
+_CABLE_NUMBER_KEYS = ("conductor_mm2", "overall_diameter_mm", "bend_installed_mm", "bend_pulling_mm")
+_CABLE_TEXT_KEYS = ("ampacity_source", "bend_basis")
 
 
 def export_cable_types(items: list[CableType]) -> Sheets:
     def cell(c: CableType, field: str):
-        if field.startswith("Ampacity: ") or field == "Conductor (mm²)" or field == "Ampacity source":
+        if field.startswith("Ampacity: ") or field in dict(CABLE_RATING_HEAD):
             return None
         v = getattr(c, _CABLE_FIELD.get(field, field.casefold()))
         return None if v in ("", None) else v
 
     def rating(c: CableType, key: str):
-        if key == "conductor_mm2":
-            return c.conductor_mm2
-        if key == "ampacity_source":
-            return c.ampacity_source or None
+        if key in _CABLE_NUMBER_KEYS:
+            return getattr(c, key)
+        if key in _CABLE_TEXT_KEYS:
+            return getattr(c, key) or None
         return c.ampacity.get(key)
 
     head = CABLE_HEAD + [t for t, _ in CABLE_RATING_HEAD]
@@ -560,12 +565,20 @@ def import_cable_types(sheets: dict[str, Rows], old: list[CableType]) -> Parsed:
             item["product_code"] = by_id[item["id"]].product_code
         if has_ratings:  # a figure left blank in the file has none
             item["conductor_mm2"] = _get(r, "Conductor (mm²)") or None
-            item["ampacity"] = {m: _get(r, heading) for heading, m in CABLE_RATING_HEAD[1:-1]}
+            item["ampacity"] = {m: _get(r, heading) for heading, m in CABLE_RATING_HEAD
+                                if m not in _CABLE_NUMBER_KEYS and m not in _CABLE_TEXT_KEYS and m != "conductor_mm2"}
             item["ampacity"] = {m: float(v) for m, v in item["ampacity"].items() if v not in ("", None)}
+            for heading, key in CABLE_RATING_HEAD:
+                if key in _CABLE_NUMBER_KEYS:
+                    item[key] = _get(r, heading) or None
+                elif key in _CABLE_TEXT_KEYS:
+                    item[key] = _get(r, heading)
             item["ampacity_source"] = _get(r, "Ampacity source")
         elif item["id"] in by_id:  # a file from before the figures: they stay as they were
             kept = by_id[item["id"]]
-            item |= {"conductor_mm2": kept.conductor_mm2, "ampacity": dict(kept.ampacity), "ampacity_source": kept.ampacity_source}
+            item |= {"conductor_mm2": kept.conductor_mm2, "ampacity": dict(kept.ampacity), "ampacity_source": kept.ampacity_source,
+                     "overall_diameter_mm": kept.overall_diameter_mm, "bend_installed_mm": kept.bend_installed_mm,
+                     "bend_pulling_mm": kept.bend_pulling_mm, "bend_basis": kept.bend_basis}
         items.append(item)
     return Parsed({"items": items}, [i["code"] for i in items], labels={i["id"]: i["code"] for i in items})
 

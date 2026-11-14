@@ -15,6 +15,8 @@ Power cables of V-90 PVC and X90 XLPE insulation carry their figures from the **
 
 **Product code** is the Nexans Olex product code, filled in only where the handbook prints exactly one code for that cable (its core count, insulation, conductor size and construction). Where several are printed for the same size (the flat and circular V-90 ranges, or two constructions), the field is left blank until one is chosen.
 
+**Overall diameter and bending radii** are on every handbook product (469 types). The overall diameter is the one printed on the product page. The **installed** bending radius is the minimum for a cable laid in place, and the **pulling** bending radius is the minimum during installation. Both are the handbook's general rule (page 94) as a multiple of the overall diameter: for PVC and XLPE cables 4 and 6 times up to 25 mm, 6 and 9 times above it; for armoured (SWA) cables 12 and 18; for aluminium conductors 8 and 12. Where a product page prints its own radius (the Alsecure Plus and Premium single cores, pages 34 and 36) that value is used. Flexible, Envirolex, ceramifiable, VSD and PVC cord products have no rule in the handbook, so their radii are blank. The rule used for each cable is in its bending basis.
+
 Not included: buried and underground-duct ratings (the handbook does not state the ground conditions behind them), aluminium conductors, flexible TPE cables, earth, VSD, pilot, control, instrument and network cables, and any size the handbook does not print, which stays blank. The figures can be exported and imported in the Cable Types workbook.
 
 ## A cable type
