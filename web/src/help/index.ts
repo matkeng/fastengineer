@@ -130,5 +130,6 @@ export const LIST_HELP: Record<KeyListId, string> = {
 	enums: 'enums',
 	'load-list': 'load-list',
 	'load-summary': 'load-summary',
+	'board-loading': 'board-loading',
 	master: 'master-lists',
 };

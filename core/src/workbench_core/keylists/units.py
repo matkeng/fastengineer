@@ -8,12 +8,13 @@ from typing import Literal
 
 #: One horsepower (mechanical) in kW.
 HP_KW = 0.7457
-UnitKind = Literal["kW", "HP", "Amps"]
+UnitKind = Literal["kW", "HP", "Amps", "kVA"]
 
 
 def unit_kind(units: object) -> UnitKind | None:
-    """What a load's units text means, ignoring case and spaces: "kW" (blank too), "HP", or
-    "Amps" (A, Amp, Amps). None for anything else (kVA, W…): the rating can't be used."""
+    """What a load's units text means, ignoring case and spaces: "kW" (blank too), "HP",
+    "Amps" (A, Amp, Amps) or "kVA" (a transformer's or a board's rating). None for anything
+    else (W, MW…): the rating can't be used."""
     u = "" if units is None or isinstance(units, bool) else str(units).strip().casefold()
     if u in ("", "kw"):
         return "kW"
@@ -21,10 +22,12 @@ def unit_kind(units: object) -> UnitKind | None:
         return "HP"
     if u in ("a", "amp", "amps"):
         return "Amps"
+    if u == "kva":
+        return "kVA"
     return None
 
 
 def rating_kw(rating: float, units: object) -> float | None:
-    """A rating as kW: itself in kW, converted from HP; None in Amps or an unknown unit."""
+    """A rating as kW: itself in kW, converted from HP; None in Amps, kVA or an unknown unit."""
     kind = unit_kind(units)
     return rating if kind == "kW" else rating * HP_KW if kind == "HP" else None

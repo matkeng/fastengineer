@@ -33,6 +33,7 @@ from .distribution_panels_api import router as distribution_panels_router
 from .instrument_runsheet_api import router as instrument_runsheet_router
 from .master_api import columns_router as master_columns_router, load_fields_router, router as master_router
 from .load_summary_api import router as load_summary_router
+from .loading_api import router as loading_router
 from .drawing_list_api import document_router, enums_router, router as drawing_list_router
 from .keylist_workbooks_api import router as keylist_workbooks_router
 from .deliverables_api import router as deliverables_router
@@ -136,6 +137,7 @@ app.include_router(master_router)
 app.include_router(master_columns_router)
 app.include_router(load_fields_router)
 app.include_router(load_summary_router)
+app.include_router(loading_router)
 app.include_router(enums_router)
 app.include_router(drawing_list_router)
 app.include_router(document_router)

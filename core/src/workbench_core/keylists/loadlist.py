@@ -157,7 +157,7 @@ def rating_in_unit(rating: CellValue, units: CellValue) -> tuple[float | None, s
     """A load's rating and the load types' unit it is in: kW (blank units too; HP converted,
     × 0.7457) or Amps (A, Amp, Amps). (None, unit) for no rating; (None, None) for other units."""
     kind = unit_kind(units)
-    unit = None if kind is None else "Amps" if kind == "Amps" else "kW"
+    unit = "Amps" if kind == "Amps" else "kW" if kind in ("kW", "HP") else None  # load types are in kW or Amps
     try:
         r = None if rating is None or isinstance(rating, bool) or str(rating).strip() == "" else float(str(rating).replace(",", ""))
     except ValueError:

@@ -24,16 +24,17 @@ import StarterDataEditor from './StarterDataEditor.vue';
 import PidSymbolsView from './PidSymbolsView.vue';
 import InstrumentTypesEditor from './InstrumentTypesEditor.vue';
 import LoadFactorsEditor from './LoadFactorsEditor.vue';
+import BoardLoadingView from './BoardLoadingView.vue';
 import LoadSummaryView from './LoadSummaryView.vue';
 import PlantAreasEditor from './PlantAreasEditor.vue';
 
 // The project's built-in lists; more are added to the sidebar.
 const kl = useKeyLists();
 const ui = useUi();
-const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Project Master Load List', 'load-summary': 'Load List Summary Page',
+const TITLES = { 'plant-areas': 'Plant Areas', 'equipment-packages': 'Equipment Packages', 'load-types': 'Load Types', 'load-list': 'Project Master Load List', 'load-summary': 'Load List Summary Page', 'board-loading': 'Board Loading',
 	'equipment-codes': 'Equipment Codes', 'instrument-codes': 'Instrument Codes', eel: 'Electrical Equipment List', plc: 'PLC List',
 	'cable-types': 'Cable Types', motors: 'Motor Data', drives: 'Drive Data', starters: 'Starter Coordination', 'load-factors': 'Load Factors', 'distribution-panels': 'Distribution Panels', 'instrument-runsheet': 'Instrument Runsheet', 'pid-symbols': 'PID Symbols', 'instrument-types': 'Instrument Types', mel: 'MEL', master: 'Project Master list', enums: 'Enums', 'drawing-list': 'Drawing List', 'document-list': 'Document List' };
-const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true, 'load-summary': true,
+const loaded = computed(() => !!{ 'plant-areas': kl.areasDraft, 'equipment-packages': kl.packagesDraft, 'load-types': kl.loadTypes, 'load-list': true, 'load-summary': true, 'board-loading': true,
 	'equipment-codes': kl.codeLists['equipment-codes'], 'instrument-codes': kl.codeLists['instrument-codes'], eel: kl.eel, plc: kl.plcDraft,
 	'cable-types': kl.cableTypes, motors: true, drives: true, starters: true, 'load-factors': true, 'distribution-panels': kl.panelsDraft, 'instrument-runsheet': kl.runsheetView, 'pid-symbols': true, 'instrument-types': true, mel: kl.melList, master: kl.master, enums: kl.enumsDraft, 'drawing-list': kl.registers['drawing-list'], 'document-list': kl.registers['document-list'] }[kl.selected]);
 
@@ -184,6 +185,9 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 						<li :class="{ current: kl.selected === 'load-summary' }" title="Totals of the Load List: transformer and MCC loading…" @click="kl.select('load-summary')">
 							<span class="name">Load List Summary</span>
 						</li>
+						<li :class="{ current: kl.selected === 'board-loading' }" title="Every switchboard, MCC and transformer with the demand below it, against its rating" @click="kl.select('board-loading')">
+							<span class="name">Board Loading</span>
+						</li>
 						<li v-for="m in kl.masters" :key="m.key" :class="{ current: kl.selected === 'master' && kl.masterKey === m.key }"
 							@click="kl.masterKey = m.key; kl.select('master')">
 							<span class="name">{{ m.name.replace('Project Master ', '') }}</span>
@@ -215,6 +219,7 @@ watch(() => ui.tab, (tab) => { if (tab === 'keylists') void kl.load(); });
 			<PlcEditor v-if="kl.plcDraft" v-show="kl.selected === 'plc'" />
 			<LoadListEditor v-if="kl.selected === 'load-list'" />
 			<LoadSummaryView v-if="kl.selected === 'load-summary'" />
+			<BoardLoadingView v-if="kl.selected === 'board-loading'" />
 			<DistributionPanelsEditor v-if="kl.panelsDraft" v-show="kl.selected === 'distribution-panels'" />
 			<InstrumentRunsheetEditor v-if="kl.runsheetView" v-show="kl.selected === 'instrument-runsheet'" />
 			<MelListView v-if="kl.melList" v-show="kl.selected === 'mel'" />

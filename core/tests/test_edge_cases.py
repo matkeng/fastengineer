@@ -20,7 +20,7 @@ from workbench_core.symbols.match import masked_ncc
 def test_units_are_read_one_way() -> None:
     assert [unit_kind(u) for u in ("", None, "kW", " KW ", "hp", "HP", "A", "amp", "Amps")] == [
         "kW", "kW", "kW", "kW", "HP", "HP", "Amps", "Amps", "Amps"]
-    assert unit_kind("kVA") is None and unit_kind("W") is None
+    assert unit_kind("kVA") == "kVA" and unit_kind("W") is None
     assert rating_kw(10, "kW") == 10 and rating_kw(10, "hp") == pytest.approx(7.457)
     assert rating_kw(10, "A") is None and rating_kw(10, "kVA") is None
 
