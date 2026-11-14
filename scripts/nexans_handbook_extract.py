@@ -9,8 +9,13 @@ its columns, then its product code. PAGES says, for each page, what the family i
 column is which. Writes:
     core/src/workbench_core/keylists/cable_handbook.py     every product
     core/src/workbench_core/keylists/cable_dimensions.py   overall diameter and bending radii
+    core/src/workbench_core/keylists/cable_mass.py         mass per metre
     core/src/workbench_core/keylists/cable_products.py     the codes of the default cable types
     core/tests/data/nexans_handbook_rows.json              the lines read and the rating pages' text, for the audit test
+
+Without the handbook, cable_mass.py alone can be written again from the lines already read:
+
+    python scripts/nexans_handbook_extract.py --mass-from-rows
 """
 
 from __future__ import annotations
@@ -70,6 +75,12 @@ ALUMINIUM_PAGES = (11, 25)
 ALUMINIUM_RANGES_P24 = ("XDD",)  # page 24: the rows under "LV Distribution – Aluminium"
 
 
+def mass_of(page: int, numbers: list[float]) -> float:
+    """A product's mass in kg/m. The pages print "approximate mass (kg/100m)": the column after the
+    overall diameter, before what pages 34, 36 and 39 print after it (see read_products)."""
+    return round(numbers[-{34: 3, 36: 3, 39: 2}.get(page, 1)] / 100, 4)
+
+
 def page_lines(pdf: str, page: int) -> list[str]:
     out = subprocess.run(["pdftotext", "-raw", "-f", str(page), "-l", str(page), pdf, "-"], capture_output=True, text=True, check=True)
     return [line.strip() for line in out.stdout.splitlines()]
@@ -121,7 +132,7 @@ def read_products(pdf: str) -> tuple[list[dict], list[list]]:
                 "code": code, "page": page, "family": fam, "insulation": insulation,
                 "voltage": VOLTAGE_BY_RANGE.get(code[:4], voltage) if page in (14, 15) else voltage,
                 "cores": row_cores, "size": size, "construction": construction, "armoured": armoured, "flexible": flexible,
-                "aluminium": aluminium, "od": od, "minor": minor, "bend_printed": bend_printed,
+                "aluminium": aluminium, "mass": mass_of(page, numbers), "od": od, "minor": minor, "bend_printed": bend_printed,
                 "note": "non-flexible conductor" if m.group(2) else ""})
             lines_read.append([page, code, line[:m.start()].strip()])
     return products, lines_read
@@ -200,6 +211,8 @@ DIMENSIONS: dict[str, tuple[float, float | None, float | None, float | None, str
     out.append('}\n\n\n__all__ = ["DIMENSIONS"]\n')
     (KEYLISTS / "cable_dimensions.py").write_text("\n".join(out), encoding="utf-8")
 
+    write_mass({p["code"]: p["mass"] for p in products})
+
     # the default cable types' codes: copper, unarmoured, fixed wiring, V-90 PVC or X-90 XLPE
     index: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     for p in products:
@@ -245,7 +258,34 @@ __all__ = ["AMBIGUOUS", "CODES", "product_code"]
                                                     encoding="utf-8")
 
 
+def write_mass(masses: dict[str, float]) -> None:
+    out = [HEADER + f'''"""Mass per metre of the Nexans Olex Handbook 2017 products.
+
+The product pages print each cable's approximate mass in kg per 100 m; it is kept here in kg/m.
+
+{GENERATED}
+"""
+
+from __future__ import annotations
+
+#: product code -> kg/m
+MASS: dict[str, float] = {{''']
+    out += [f'    "{code}": {mass},' for code, mass in masses.items()]
+    out.append('}\n\n\n__all__ = ["MASS"]\n')
+    (KEYLISTS / "cable_mass.py").write_text("\n".join(out), encoding="utf-8")
+
+
+def mass_from_rows() -> int:
+    """Write cable_mass.py from the product lines kept for the audit test (no handbook needed)."""
+    rows = json.loads((ROOT / "core" / "tests" / "data" / "nexans_handbook_rows.json").read_text(encoding="utf-8"))["products"]
+    write_mass({code: mass_of(page, [float(t) for t in line.replace(" X ", " ").split() if NUMBER.match(t)]) for page, code, line in rows})
+    return len(rows)
+
+
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--mass-from-rows"]:
+        print(f"{mass_from_rows()} products' mass")
+        sys.exit(0)
     found, read = read_products(sys.argv[1])
     # the rating pages (cable_ampacity.TABLES), each as its numbers and words in reading order
     rating_pages = (61, 62, 63, 64, 67, 69, 72, 74, 78, 80)

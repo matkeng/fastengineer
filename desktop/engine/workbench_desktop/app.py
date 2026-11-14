@@ -30,6 +30,7 @@ from .loadlist_api import router as loadlist_router
 from .eel_api import router as eel_router
 from .plc_api import router as plc_router
 from .distribution_panels_api import router as distribution_panels_router
+from .cable_routing_api import router as cable_routing_router
 from .instrument_runsheet_api import router as instrument_runsheet_router
 from .master_api import columns_router as master_columns_router, load_fields_router, router as master_router
 from .load_summary_api import router as load_summary_router
@@ -69,6 +70,7 @@ _RECORD_URLS = [(re.compile(p), entity) for p, entity in (
     (r"^/api/plc/(catalogue)$", "gen_catalogue"),
     (r"^/api/(plc)$", "plc"),
     (r"^/api/(distribution-panels)$", "distribution_panels"),
+    (r"^/api/(cable-routing)$", "cable_routing"),
     (r"^/api/(instrument-runsheet)$", "instrument_runsheet"),
     (r"^/api/(enums)$", "enums"),
     (r"^/api/(master-columns)$", "master_columns"),
@@ -132,6 +134,7 @@ app.include_router(pid_symbols_router)
 app.include_router(eel_router)
 app.include_router(plc_router)
 app.include_router(distribution_panels_router)
+app.include_router(cable_routing_router)
 app.include_router(instrument_runsheet_router)
 app.include_router(master_router)
 app.include_router(master_columns_router)

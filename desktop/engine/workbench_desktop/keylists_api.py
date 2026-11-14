@@ -69,6 +69,7 @@ def overview() -> dict:
             "load_factors": {"items": len(lists.load_factors().items)},
             "instrument_types": {"items": len(lists.instrument_types().items)},
             "distribution_panels": {"items": len(lists.distribution_panels().panels)},
+            "cable_routing": {"items": len(lists.cable_routing().segments)},
             "instrument_runsheet": {"items": len(lists.instrument_runsheet().rows)},
             "pid_symbols": {"items": _pid_symbol_count()},
             "mel": {"items": _mel_count()},

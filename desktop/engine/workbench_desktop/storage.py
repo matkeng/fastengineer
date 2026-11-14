@@ -17,7 +17,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from workbench_core.keylists.cable_types import CableType, CableTypeList, default_cable_types, fill_insulation
+from workbench_core.keylists.cable_routing import CableRouting
+from workbench_core.keylists.cable_types import CableType, CableTypeList, default_cable_types, fill_insulation, fill_mass
 from workbench_core.deliverables import Deliverable, next_letter
 from workbench_core.deliverables import Revision as IssuedRevision
 from workbench_core.deliverables import RevisionInfo as IssueInfo
@@ -901,6 +902,8 @@ class KeyListStore:
         cables = CableTypeList.model_validate_json(row[0])
         if '"insulation"' not in row[0]:  # saved before the Insulation column: read it from the descriptions
             fill_insulation(cables.items)
+        if '"mass_kg_per_m"' not in row[0]:  # saved before the mass was kept: the handbook's, by product code
+            fill_mass(cables.items)
         return cables
 
     def save_cable_types(self, items: list[CableType], note: str | None = None) -> CableTypeList:
@@ -1060,6 +1063,25 @@ class KeyListStore:
                       before or DistributionPanelList().model_dump_json(), panels.model_dump_json(),
                       label="Distribution Panels", note=note)
         return panels
+
+    CABLE_ROUTING = "cable-routing"
+
+    def cable_routing(self) -> CableRouting:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM key_lists WHERE id = ?", (self.CABLE_ROUTING,)).fetchone()
+        return CableRouting.model_validate_json(row[0]) if row else CableRouting()
+
+    def save_cable_routing(self, routing: CableRouting, note: str | None = None) -> CableRouting:
+        routing = routing.model_copy(update={"updated_at": _now()})
+        with self._lock, self._db:
+            before = audit.data_of(self._db, "key_lists", "id = ?", (self.CABLE_ROUTING,))
+            self._db.execute("INSERT INTO key_lists VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                             (self.CABLE_ROUTING, routing.model_dump_json()))
+            # the record id is the one in the URL (/api/cable-routing), for the version check
+            audit.log(self._db, "cable_routing", self.CABLE_ROUTING,
+                      before or CableRouting().model_dump_json(), routing.model_dump_json(),
+                      label="Cable Routing", note=note)
+        return routing
 
     EEL = "electrical-equipment"
 

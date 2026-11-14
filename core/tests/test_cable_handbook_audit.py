@@ -17,6 +17,7 @@ from pathlib import Path
 from workbench_core.keylists.cable_ampacity import TABLES
 from workbench_core.keylists.cable_dimensions import DIMENSIONS
 from workbench_core.keylists.cable_handbook import RECORDS
+from workbench_core.keylists.cable_mass import MASS
 from workbench_core.keylists.cable_types import HANDBOOK, default_cable_types
 
 ROWS = json.loads((Path(__file__).parent / "data" / "nexans_handbook_rows.json").read_text(encoding="utf-8"))
@@ -48,6 +49,25 @@ def test_each_products_size_and_overall_diameter_are_on_its_line() -> None:
         assert numbers[-1 - after] == od, (page, code, line)
         if minor is not None:
             assert page in (12, 13) and numbers[-2] == minor and " X " in line.upper(), (page, code, line)  # width X height
+
+
+def test_each_products_mass_is_the_column_after_its_overall_diameter() -> None:
+    """The pages print the approximate mass in kg/100 m; it is stored in kg/m."""
+    import math
+
+    assert set(MASS) == set(DIMENSIONS)
+    for page, code, line in ROWS["products"]:
+        numbers = _numbers(line)
+        od, minor = DIMENSIONS[code][0], DIMENSIONS[code][1]
+        at = len(numbers) - {34: 3, 36: 3, 39: 2}.get(page, 1)
+        assert MASS[code] == round(numbers[at] / 100, 4), (page, code, line)
+        assert numbers[at - 1] == (minor if minor is not None else od), (page, code, line)
+        # a cable weighs between a third of and twelve times what water of its size would (copper is 8.9)
+        area_m2 = math.pi * (od / 2000) ** 2 if minor is None else (od / 1000) * (minor / 1000)
+        assert 300 < MASS[code] / area_m2 < 12000, (page, code, line)
+    assert MASS["BAAP32AA001"] == 6.13  # 630 mm² single core: 5.6 kg/m of copper and its insulation
+    by_code = {c.product_code: c for c in default_cable_types() if c.product_code}
+    assert all(by_code[code].mass_kg_per_m == mass for code, mass in MASS.items())
 
 
 def test_core_counts_follow_the_rows_and_headings() -> None:

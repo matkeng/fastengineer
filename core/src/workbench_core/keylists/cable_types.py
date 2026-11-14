@@ -17,6 +17,7 @@ from .cable_ampacity import METHODS, TABLES, ampacity
 from .cable_products import product_code
 from .cable_handbook import RECORDS
 from .cable_dimensions import DIMENSIONS
+from .cable_mass import MASS
 
 _INTEGER = ColumnDef(name="", type="integer")
 TEXT_FIELDS = ("code", "application", "type", "cores", "diameter", "voltage", "insulation", "description", "product_code")
@@ -51,6 +52,8 @@ class CableType(BaseModel):
     bend_pulling_mm: float | None = None
     #: The handbook rule or printed page the radii come from.
     bend_basis: str = ""
+    #: The cable's mass (kg/m): the handbook's approximate mass, or typed in.
+    mass_kg_per_m: float | None = None
 
 
 class CableTypeList(BaseModel):
@@ -95,7 +98,7 @@ def _ratings(raw: dict) -> dict:
         out["ampacity"] = {k: float(v) for k, v in amps.items() if k in METHODS and isinstance(v, (int, float))
                            and not isinstance(v, bool)}
     out["ampacity_source"] = str(raw.get("ampacity_source") or "")
-    for field in ("overall_diameter_mm", "overall_minor_mm", "bend_installed_mm", "bend_pulling_mm"):
+    for field in ("overall_diameter_mm", "overall_minor_mm", "bend_installed_mm", "bend_pulling_mm", "mass_kg_per_m"):
         try:
             value = raw.get(field)
             out[field] = None if value in (None, "") else float(value)
@@ -247,7 +250,14 @@ def _dimensions(c: CableType) -> CableType:
         return c
     od, minor, installed, pulling, basis = row
     return c.model_copy(update={"overall_diameter_mm": od, "overall_minor_mm": minor, "bend_installed_mm": installed,
-                                "bend_pulling_mm": pulling, "bend_basis": basis})
+                                "bend_pulling_mm": pulling, "bend_basis": basis, "mass_kg_per_m": MASS.get(c.product_code)})
+
+
+def fill_mass(items: list[CableType]) -> None:
+    """Give cable types saved before the mass was kept the handbook's mass, by their product code."""
+    for c in items:
+        if c.mass_kg_per_m is None and c.product_code in MASS:
+            c.mass_kg_per_m = MASS[c.product_code]
 
 
 #: The application of a handbook product: the Load List's cable choices leave these out.

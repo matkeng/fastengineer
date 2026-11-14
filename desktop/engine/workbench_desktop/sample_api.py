@@ -15,6 +15,7 @@ from workbench_core.keylists.distribution_panels import (CB_RATINGS, Distributio
 from workbench_core.keylists import (EquipmentCode, EquipmentPackage, EquipmentPackageList, EquipmentType,
                                      InstrumentCode, PlantArea, PlantAreaList, check_code_list, check_eel,
                                      check_equipment_packages, check_load_types, check_plant_areas)
+from workbench_core.keylists.cable_routing import CableRouting, End, Placement, add_node, add_segment, check_routing, equipment_of
 from workbench_core.keylists.plc import IoPoint, PlcCard, PlcList, PlcRack, PlcSystem, normalise_points
 from workbench_core.mel import parse_csv
 from workbench_core.refdata import RefValidationError, name_key
@@ -316,6 +317,40 @@ def load_sample_data() -> Added:
         lists.save_distribution_panels(doc)
         return 1
 
+    def routing() -> int:
+        """A node map of the sample plant: a trunk through the switchroom and a loop round the plant."""
+        from .master_api import master_of
+
+        listed = {e.tag: e for e in equipment_of(master_of("equipment_list")[0])}
+        doc = CableRouting()
+        at = {"Primary Supply": (40, 40), "MSB-1": (40, 160), "MCC-1": (40, 280), "MCC-2": (40, 400), "P-101": (400, 140),
+              "P-102": (580, 140), "P-103": (760, 140), "M-201": (860, 280), "C-401": (860, 400), "F-301": (760, 540),
+              "F-302": (580, 540), "H-501": (400, 540), "LP-601": (220, 540)}
+        for tag, (x, y) in at.items():
+            e = listed.get(tag)
+            if e or tag == "Primary Supply":
+                doc.placements.append(Placement(id=f"sq{len(doc.placements) + 1}", tag=tag, description=e.description if e else "",
+                                                source=e.source if e else None, x=x, y=y))
+        if len(doc.placements) < 4:
+            return 0
+        placed = {p.tag: End(kind="equipment", id=p.id) for p in doc.placements}
+        nodes = [End(kind="node", id=add_node(doc, x, y).id)
+                 for x, y in ((260, 180), (260, 300), (260, 420), (460, 300), (700, 300), (700, 420), (460, 420))]
+        n1, n2, n3, n4, n5, n6, n7 = nodes
+        runs = [("Primary Supply", "MSB-1", 25), ("MSB-1", n1, 3), ("MCC-1", n2, 3), ("MCC-2", n3, 3), (n1, n2, 6), (n2, n3, 6),
+                (n2, n4, 40), (n4, n5, 35), (n5, n6, 20), (n6, n7, 35), (n7, n3, 45), ("P-101", n4, 8), ("P-102", n4, 12),
+                ("P-103", n5, 10), ("M-201", n5, 15), ("C-401", n6, 12), ("F-301", n6, 14), ("F-302", n7, 16), ("H-501", n7, 9),
+                ("LP-601", n7, 18)]
+        for a, b, length in runs:
+            a, b = placed.get(a) if isinstance(a, str) else a, placed.get(b) if isinstance(b, str) else b
+            if a and b:
+                add_segment(doc, a, b, length)
+        doc, errors, _ = check_routing(doc)
+        if errors:
+            return 0
+        lists.save_cable_routing(doc)
+        return len(doc.segments)
+
     ec = lambda i, c, n: {"id": i, "code": c, "name": n, "disciplines": ["E"]}  # noqa: E731
     ic = lambda c, n, p: {"code": c, "name": n, "plc_code": p}  # noqa: E731
     fill("Plant Areas", not lists.plant_areas().nodes, areas)
@@ -335,6 +370,8 @@ def load_sample_data() -> Added:
     fill("Drawing List", not lists.drawing_list().items, drawings)
     fill("Document List", not lists.document_list().items, documents)
     fill("Deliverables", not dl.list(), deliverables)
+    existing = lists.cable_routing()
+    fill("Cable Routing", not (existing.placements or existing.nodes), routing)
     if "List import (MEL)" in added or "Electrical Equipment List" in added:
         done = 0
         for r in rows:

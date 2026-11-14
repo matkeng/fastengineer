@@ -54,9 +54,10 @@ def inputs() -> Inputs:
                   columns=lists.master_columns().all(), links=links)
 
 
-def master_of(list_key: str, src: Inputs | None = None) -> tuple[BuildResult, list[str], list[str]]:
+def master_of(list_key: str, src: Inputs | None = None, routed: bool = True) -> tuple[BuildResult, list[str], list[str]]:
     """A master list as it is now: (the list, warnings, tags of the loads with no load type).
-    Those loads add nothing to any list until a load type is allocated to them."""
+    Those loads add nothing to any list until a load type is allocated to them. The cable
+    schedule's lengths come from Cable Routing where that is switched on (`routed` False: never)."""
     src = src or inputs()
     warnings: list[str] = []
     cols = src.columns[list_key]
@@ -69,6 +70,13 @@ def master_of(list_key: str, src: Inputs | None = None) -> tuple[BuildResult, li
     gone = sum(1 for r in src.runsheet.rows if r.equipment_type_id not in src.equipment_types)  # type: ignore[attr-defined]
     if gone:
         warnings.append(f"{gone} row(s) of the Instrument Runsheet have an equipment type that no longer exists and add nothing.")
+    if routed and list_key == "cable_schedule":
+        from workbench_core.keylists.cable_routing import apply_routes, check_routing, compute
+
+        routing = check_routing(get_keylists().cable_routing())[0]
+        if routing.allowance.apply_to_master and routing.segments:
+            result, more = apply_routes(result, compute(routing, result, src.cables).cables, routing.allowance)
+            warnings += more
     return result, warnings, missing_load_types(src.loads, src.load_types)
 
 

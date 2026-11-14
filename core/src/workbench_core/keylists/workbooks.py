@@ -528,9 +528,10 @@ CABLE_RATING_HEAD = [("Conductor (mm²)", "conductor_mm2")] + [
         ("touching", "touching"), ("enclosed_conduit_in_air", "enclosed in conduit in air"))] + [
     ("Ampacity source", "ampacity_source"), ("Overall diameter (mm)", "overall_diameter_mm"), ("Flat cable height (mm)", "overall_minor_mm"),
     ("Bending radius installed (mm)", "bend_installed_mm"), ("Bending radius pulling (mm)", "bend_pulling_mm"),
-    ("Bending basis", "bend_basis")]
+    ("Bending basis", "bend_basis"), ("Mass (kg/m)", "mass_kg_per_m")]
 #: The numbers and texts of CABLE_RATING_HEAD that are not the ampacity table.
-_CABLE_NUMBER_KEYS = ("conductor_mm2", "overall_diameter_mm", "overall_minor_mm", "bend_installed_mm", "bend_pulling_mm")
+_CABLE_NUMBER_KEYS = ("conductor_mm2", "overall_diameter_mm", "overall_minor_mm", "bend_installed_mm", "bend_pulling_mm",
+                      "mass_kg_per_m")
 _CABLE_TEXT_KEYS = ("ampacity_source", "bend_basis")
 
 
@@ -569,7 +570,9 @@ def import_cable_types(sheets: dict[str, Rows], old: list[CableType]) -> Parsed:
                                 if m not in _CABLE_NUMBER_KEYS and m not in _CABLE_TEXT_KEYS and m != "conductor_mm2"}
             item["ampacity"] = {m: float(v) for m, v in item["ampacity"].items() if v not in ("", None)}
             for heading, key in CABLE_RATING_HEAD:
-                if key in _CABLE_NUMBER_KEYS:
+                if key in _CABLE_NUMBER_KEYS and heading.casefold() not in r and item["id"] in by_id:
+                    item[key] = getattr(by_id[item["id"]], key)  # a file from before this figure: it stays
+                elif key in _CABLE_NUMBER_KEYS:
                     item[key] = _get(r, heading) or None
                 elif key in _CABLE_TEXT_KEYS:
                     item[key] = _get(r, heading)
@@ -578,7 +581,7 @@ def import_cable_types(sheets: dict[str, Rows], old: list[CableType]) -> Parsed:
             kept = by_id[item["id"]]
             item |= {"conductor_mm2": kept.conductor_mm2, "ampacity": dict(kept.ampacity), "ampacity_source": kept.ampacity_source,
                      "overall_diameter_mm": kept.overall_diameter_mm, "overall_minor_mm": kept.overall_minor_mm, "bend_installed_mm": kept.bend_installed_mm,
-                     "bend_pulling_mm": kept.bend_pulling_mm, "bend_basis": kept.bend_basis}
+                     "bend_pulling_mm": kept.bend_pulling_mm, "bend_basis": kept.bend_basis, "mass_kg_per_m": kept.mass_kg_per_m}
         items.append(item)
     return Parsed({"items": items}, [i["code"] for i in items], labels={i["id"]: i["code"] for i in items})
 
