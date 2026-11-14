@@ -32,6 +32,18 @@ def test_the_w22_tables_as_printed() -> None:
     assert (k25.sound, k25.inertia, k25.locked_cold, k25.locked_hot, k25.weight, k25.voltage, k25.frequency) == (56, 0.0642, 40, 18, 78, 415, 50)
     k20 = next(m for m in W22 if m.part_no == "K20/1 W22")  # 2 pole High-Output, 112M* on page 24
     assert (k20.design, k20.frame, k20.reduced_frame, k20.kw) == ("High-Output", "112M", True, 5.5)
+    # the printed full load current must agree with the printed efficiency and power factor at full load
+    # (at 415 V, 3 phases): K8/1 was printed as 12.0 A, which is a typing error for about 1.5 A
+    k81 = next(m for m in W22 if m.part_no == "K8/1 W22")
+    assert (k81.kw, k81.poles, k81.design, k81.flc) == (0.75, 4, "Standard", 1.5)
+    # K198 (8 pole, 4 kW) is also 11 % off its implied current: not yet confirmed against the catalogue,
+    # so it is listed here rather than changed. Any other row out by more than 8 % fails this test.
+    unconfirmed = {"K198 W22"}
+    for m in W22:
+        if m.part_no in unconfirmed:
+            continue
+        implied = m.kw * 1000 / (3 ** 0.5 * 415 * (m.eff100 / 100) * m.pf100)
+        assert abs(m.flc - implied) / implied < 0.08, (m.part_no, m.flc, round(implied, 2))
     last = next(m for m in W22 if m.part_no == "K62B/1 W22")  # the last row of page 27
     assert (last.poles, last.kw, last.frame, last.weight) == (8, 132, "315L", 1500)
 
