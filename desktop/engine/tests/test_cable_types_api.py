@@ -26,9 +26,9 @@ def data_dir(tmp_path: Path):
 
 def test_a_project_starts_with_the_default_cable_types() -> None:
     items = client.get(URL).json()["items"]
-    assert len(items) == 218 and client.get("/api/keylists").json()["cable_types"] == {"items": 218}
-    assert len({i["code"] for i in items}) == 218
-    assert [i["sort"] for i in items] == sorted(i["sort"] for i in items) and (items[0]["sort"], items[-1]["sort"]) == (1, 238)
+    assert len(items) == 656 and client.get("/api/keylists").json()["cable_types"] == {"items": 656}  # 218 + the handbook's 438
+    assert len({i["code"] for i in items}) == 656
+    assert [i["sort"] for i in items] == sorted(i["sort"] for i in items) and (items[0]["sort"], items[-1]["sort"]) == (1, 1437)
     by = {i["sort"]: i for i in items}
     # the handbook's figures (page 67, 2 core V-90 PVC, copper, in air) ride along with the text
     assert by[1] == {"id": "d1", "code": "AC_240V - Power - 2C+E - 1.5", "application": "AC_240V", "type": "Power",
@@ -69,12 +69,12 @@ def test_edit_rules_defaults_conflicts_and_log(data_dir: Path) -> None:
     storage.configure(data_dir)
     assert len(client.get(URL).json()["items"]) == 4  # the saved list, not the defaults again
     back = client.post(f"{URL}/defaults").json()["items"]
-    assert len(back) == 219 and back[3]["code"] == "SPECIAL - 1"
-    assert len(client.post(f"{URL}/defaults").json()["items"]) == 219  # nothing more to add
+    assert len(back) == 657 and back[3]["code"] == "SPECIAL - 1"
+    assert len(client.post(f"{URL}/defaults").json()["items"]) == 657  # nothing more to add
     log = client.get("/api/audit", params={"entity": "cable_types", "record_id": "cable-types"}).json()
     entries = log["entries"] if isinstance(log, dict) else log
     assert entries[0]["label"] == "Cable Types"
-    assert any(c["new"] == "215 default cable type(s) added" for c in entries[0]["changes"])
+    assert any(c["new"] == "653 default cable type(s) added" for c in entries[0]["changes"])
 
 
 def test_insulation_is_saved_and_read_from_descriptions_of_older_lists(data_dir: Path) -> None:

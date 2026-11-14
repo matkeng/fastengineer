@@ -7,7 +7,7 @@ Cable Types is the project's catalogue of cables. The cable schedule picks each 
 
 ![Cable Types](img/cable-types.png)
 
-Every project starts with a default set of 218 types: power, flex, pilot, VSD, control, instrument pairs and triples, earth, fibre and Ethernet.
+Every project starts with 656 types: the original default set of 218 (power, flex, pilot, VSD, control, instrument pairs and triples, earth, fibre and Ethernet), and every product in the Nexans Olex Handbook 2017 product pages (438 more, each named by its family and product code). The Load List chooses a load's cable from the original set only, so its insulation and size choices don't change.
 
 ## Current carrying capacity
 

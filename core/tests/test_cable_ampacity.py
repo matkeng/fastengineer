@@ -84,7 +84,9 @@ def test_product_codes_are_the_printed_ones() -> None:
 
 
 def test_only_the_default_types_with_one_printed_code_have_one() -> None:
-    have = [c for c in default_cable_types() if c.product_code]
+    from workbench_core.keylists.cable_types import HANDBOOK
+    defaults = [c for c in default_cable_types() if c.application != HANDBOOK]
+    have = [c for c in defaults if c.product_code]
     assert len(have) == 31
     assert all(c.cores in ("1C", "2C+E", "3C+E", "4C+E") and c.description in ("Cu-PVC-PVC-V90 (Power)", "Cu-XLPE-PVC-X90 (Power)")
                for c in have)
@@ -95,3 +97,24 @@ def test_an_edit_without_the_code_field_keeps_nothing_but_the_form_keeps_it() ->
     saved = _by_code("AC_240V - Power - 2C+E - 70").model_dump(mode="json")
     assert check_cable_types([saved])[0].product_code == "DTHC20AA002"  # the editor sends the whole row
     assert check_cable_types([dict(saved, product_code="  dthc20aa002 ")])[0].product_code == "dthc20aa002"  # trimmed, as typed
+
+
+def test_every_handbook_product_is_a_cable_type() -> None:
+    from workbench_core.keylists.cable_handbook import RECORDS
+    from workbench_core.keylists.cable_types import HANDBOOK, handbook_cable_types
+    cables = {c.product_code: c for c in default_cable_types() if c.product_code}
+    assert len(cables) == 469 and all(r[0] in cables for r in RECORDS)  # every printed product code is a type
+    # a product of each family, as printed: page 8 (1.0 stranded), page 30 (Envirolex 10 mm²), page 28 flexible
+    c = cables["BAAP03AA001"]
+    assert (c.type, c.cores, c.diameter, c.insulation, c.voltage, c.application) == (
+        "V-90 PVC single core copper", "1C", "1.0", "PVC", "0.6/1kV", HANDBOOK)
+    assert cables["BZHX01AA001"].type == "Envirolex 110 °C single core" and cables["BZHX01AA001"].diameter == "10"
+    assert cables["BZHX01AA001"].insulation == "X-HF-110" and cables["BZHX01AA001"].conductor_mm2 == 10
+    assert all(c.application == HANDBOOK for c in handbook_cable_types())
+
+
+def test_the_load_list_chooses_from_the_defaults_only() -> None:
+    from workbench_core.keylists.cable_types import HANDBOOK
+    # the insulation and size choices the Load List offers do not include the handbook's
+    defaults = [c for c in default_cable_types() if c.application != HANDBOOK]
+    assert {c.insulation for c in defaults if c.insulation} == {"PVC", "XLPE"}

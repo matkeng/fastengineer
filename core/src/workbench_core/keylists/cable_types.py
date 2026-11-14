@@ -15,6 +15,7 @@ from ..refdata.models import ColumnDef, RefValidationError, new_id
 from ..refdata.validate import coerce, name_key
 from .cable_ampacity import METHODS, TABLES, ampacity
 from .cable_products import product_code
+from .cable_handbook import RECORDS
 
 _INTEGER = ColumnDef(name="", type="integer")
 TEXT_FIELDS = ("code", "application", "type", "cores", "diameter", "voltage", "insulation", "description", "product_code")
@@ -217,4 +218,28 @@ def default_cable_types() -> list[CableType]:
                                  application=application, type=kind, cores=cores, diameter=diameter, voltage=voltage,
                                  insulation=guess_insulation(description), description=description, sort=first + i,
                                  product_code=_product(description, cores, diameter), **_handbook(description, cores, diameter)))
+    out += handbook_cable_types()
     return sorted(out, key=lambda c: c.sort or 0)
+
+
+#: The application of a handbook product: the Load List's cable choices leave these out.
+HANDBOOK = "Handbook"
+
+
+def handbook_cable_types() -> list[CableType]:
+    """Every product in the Nexans Olex Handbook 2017 product pages that the defaults above don't
+    already carry (cable_handbook). Each is named by its family, core count, size and product code;
+    the family is its type, so these don't match the power cables the defaults are chosen from."""
+    out = []
+    for i, (code, family, insulation, voltage, cores, size, construction, armoured, flexible, page) in enumerate(RECORDS):
+        kind = " ".join(x for x in (construction, "armoured" if armoured else "", "flexible" if flexible else "") if x)
+        try:
+            mm2 = float(size)
+        except ValueError:
+            mm2 = None
+        out.append(CableType(
+            id=f"h{code}", code=f"{family} - {cores} - {size} ({code})", application=HANDBOOK, type=family, cores=cores,
+            diameter=size, voltage=voltage, insulation=insulation,
+            description=f"{family}, {kind or 'conductor'}. Nexans Olex Handbook 2017, page {page}",
+            product_code=code, conductor_mm2=mm2, sort=1000 + i))
+    return out

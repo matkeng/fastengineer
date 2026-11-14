@@ -197,7 +197,7 @@ def load_list() -> LoadListView:
         warnings.append(f"{len(unfit)} load(s) have a load type code but no load type of that code whose rating unit and range fit: "
                         + ", ".join(unfit[:10]) + (f" and {len(unfit) - 10} more" if len(unfit) > 10 else "")
                         + ". Change the load types' ranges, or set the load type by hand.")
-    cables = get_keylists().cable_types().items
+    cables = _choosable_cables()
 
     def sizes(of: list) -> list[str]:
         numbers = {c.diameter for c in of if c.diameter.replace(".", "", 1).isdigit()}
@@ -243,10 +243,17 @@ class Allocation(BaseModel):
     lf_max_demand: float | None = None
 
 
+def _choosable_cables() -> list:
+    """The Cable Types a load's cable is chosen from: all but the Nexans handbook products, which are
+    the catalogue (see cable_types.handbook_cable_types), not the cables the list is set up with."""
+    from workbench_core.keylists.cable_types import HANDBOOK
+    return [c for c in get_keylists().cable_types().items if c.application != HANDBOOK]
+
+
 def _check_cable(change: dict[str, object]) -> None:
     """The cable details as sent: tidied in place; raises RefValidationError for a bad one."""
     errors: dict[str, str] = {}
-    cables = get_keylists().cable_types().items
+    cables = _choosable_cables()
     for f in ("cable_insulation", "cable_size", "earth_size"):
         if f in change:
             change[f] = str(change[f] or "").strip()
