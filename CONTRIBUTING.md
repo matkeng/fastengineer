@@ -33,4 +33,5 @@ Signed-off-by: Your Name <you@example.com>
   line; keep them on files you add.
 - New dependencies must be permissively licensed (MIT, BSD, Apache-2.0, ISC, Zlib, or
   file-level MPL-2.0). Add them to `docs/THIRD_PARTY_LICENSES.md`.
-- Run the tests (`pytest core/tests desktop/engine/tests`) and `npm run build` in `web/`.
+- Run the tests (`pytest core/tests desktop/engine/tests`), `ruff check` and `npm run build` in
+  `web/`. The *Checks* workflow runs the same on every push.

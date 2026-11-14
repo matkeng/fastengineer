@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 from decimal import Decimal, InvalidOperation
 
-from .models import CellValue, ColumnDef, EnumList, RefRow, RefTable, RefTree, RefValidationError
+from .models import CellValue, ColumnDef, EnumList, RefRow, RefTable, RefTree, RefValidationError, TreeNode
 
 _WS = re.compile(r"\s+")
 TRUE = {"true", "yes", "y", "1", "t", "x", "on"}

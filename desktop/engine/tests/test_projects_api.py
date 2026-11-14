@@ -306,7 +306,8 @@ def test_starts_in_the_project_last_opened(server: Path) -> None:
 
 
 def test_background_work_stays_in_its_project(server: Path) -> None:
-    a, b = new_project("Plant A", members=[BOB]), new_project("Plant B", members=[BOB])
+    new_project("Plant A", members=[BOB])
+    b = new_project("Plant B", members=[BOB])
     seen = {}
 
     def job():

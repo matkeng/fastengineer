@@ -12,18 +12,16 @@ from pydantic import BaseModel
 from workbench_core.deliverables import DELIVERABLE_TYPES, PANEL_TYPE, Deliverable, check_deliverable
 from workbench_core.keylists.distribution_panels import (DistributionPanel, DistributionPanelList, PanelDivider, PanelEntry,
                                                          PoleValues, auto_place, check_panels)
-from workbench_core.keylists import (EelList, EquipmentCode, EquipmentPackage, EquipmentPackageList, EquipmentType,
+from workbench_core.keylists import (EquipmentCode, EquipmentPackage, EquipmentPackageList, EquipmentType,
                                      InstrumentCode, PlantArea, PlantAreaList, check_code_list, check_eel,
                                      check_equipment_packages, check_load_types, check_plant_areas)
 from workbench_core.keylists.plc import IoPoint, PlcCard, PlcList, PlcRack, PlcSystem, normalise_points
 from workbench_core.mel import parse_csv
 from workbench_core.refdata import RefValidationError, name_key
 from workbench_core.mel.models import FieldMap
-from workbench_core.refdata import (ColumnDef, EnumItem, EnumList, RefRow, RefTable, RefTree, TreeNode, check_enum,
-                                    check_table_columns, check_tree, validate_row)
 
 from .loadlist_api import current_rows
-from .storage import get_deliverables, get_keylists, get_loadlist, get_ref, get_store
+from .storage import get_deliverables, get_keylists, get_loadlist, get_store
 
 router = APIRouter(prefix="/api/sample-data", tags=["sample data"])
 SAMPLE_PANEL = "sdp1"
@@ -125,7 +123,7 @@ class Added(BaseModel):
 
 @router.post("", response_model=Added)
 def load_sample_data() -> Added:
-    lists, ref, store, dl = get_keylists(), get_ref(), get_store(), get_deliverables()
+    lists, store, dl = get_keylists(), get_store(), get_deliverables()
     added: dict[str, int] = {}
     skipped: list[str] = []
 

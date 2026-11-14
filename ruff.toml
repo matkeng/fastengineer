@@ -1,0 +1,9 @@
+# Lint settings for the Python code (core/ and desktop/engine/). Run: ruff check
+# A small rule set that the code passes today: real errors (pyflakes) and a few pycodestyle checks.
+target-version = "py311"
+line-length = 140
+extend-exclude = [".venv", "web", "desktop/src-tauri"]
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = ["E731"]  # short lambdas are used on purpose

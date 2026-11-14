@@ -25,7 +25,6 @@ from pydantic import BaseModel, Field
 from workbench_core.refdata import RefValidationError
 from workbench_core.symbols import (
     Drawing,
-    Exclusion,
     Library,
     PageInfo,
     PageOverride,

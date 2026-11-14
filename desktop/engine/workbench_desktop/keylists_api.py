@@ -11,7 +11,6 @@ from pydantic import BaseModel
 
 from workbench_core.keylists import (
     AREA_TYPES,
-    DISCIPLINES,
     EquipmentCode,
     EquipmentCodeList,
     InstrumentCode,

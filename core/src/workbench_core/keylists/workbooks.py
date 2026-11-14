@@ -28,8 +28,7 @@ from .distribution_panels import (KIND_LABELS, DistributionPanel, DistributionPa
                                   circuit_name)
 from .loadgen import LISTS, ROW_SETTINGS, TEMPLATE_LISTS, ordered
 from .loadlist import CABLE_CONSTRUCTIONS, EEL_SOURCE, PRIMARY_SUPPLY, LoadListRow
-from .models import (DISCIPLINES, EelList, EquipmentCode, EquipmentPackageList, InstrumentCode, LoadTypeList, PlantArea,
-                     PlantAreaList)
+from .models import (DISCIPLINES, EelList, EquipmentCode, EquipmentPackageList, InstrumentCode, LoadTypeList, PlantAreaList)
 from .panel_calc import POLES
 
 Grid = list[list]
