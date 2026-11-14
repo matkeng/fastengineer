@@ -35,7 +35,8 @@ def test_a_project_starts_with_the_default_cable_types() -> None:
                      "cores": "2C+E", "diameter": "1.5", "voltage": "0.6/1kV", "insulation": "PVC",
                      "description": "Cu-PVC-PVC-V90 (Power)", "sort": 1, "conductor_mm2": 1.5,
                      "ampacity": {"unenclosed_space": 19.0, "touching": 18.0, "enclosed_conduit_in_air": 16.0},
-                     "ampacity_source": "Nexans Olex Handbook 2017, page 67 (2 core V-90 PVC), copper, in air at 40 °C"}
+                     "ampacity_source": "Nexans Olex Handbook 2017, page 67 (2 core V-90 PVC), copper, in air at 40 °C",
+                     "product_code": ""}
     assert (by[7]["insulation"], by[229]["insulation"], by[231]["insulation"]) == ("XLPE", "", "")
     assert by[14]["code"] == "Vendor - Vendor - VENDOR - VENDOR" and by[14]["voltage"] == "VENDOR"
     assert by[7]["description"] == "Cu-XLPE-PVC-X90 (Power)" and by[37]["code"] == "AC_415V - Power - 6C+E - 4"
@@ -46,7 +47,7 @@ def test_a_project_starts_with_the_default_cable_types() -> None:
     assert by[238] | {"id": ""} == {"id": "", "code": "Network - Ethernet - CAT6A - Outdoor", "application": "Network",
                                     "type": "Ethernet", "cores": "CAT6A", "diameter": "Outdoor", "voltage": "N/A", "insulation": "",
                                     "description": "Cu-HDPE-SF/UTP CAT6 Outdoor", "sort": 238,
-                                    "conductor_mm2": None, "ampacity": {}, "ampacity_source": ""}
+                                    "conductor_mm2": None, "ampacity": {}, "ampacity_source": "", "product_code": ""}
     assert not {31, 36, 38, 51, 62, 133, 235, 236} & set(by)  # the original list's blank rows
 
 
@@ -59,7 +60,7 @@ def test_edit_rules_defaults_conflicts_and_log(data_dir: Path) -> None:
     assert saved.status_code == 200, saved.text
     assert saved.json()["items"][3] == {"id": "n1", "code": "SPECIAL - 1", "application": "AC_415V", "type": "", "cores": "",
                                         "diameter": "", "voltage": "", "insulation": "", "description": "", "sort": 500,
-                                        "conductor_mm2": None, "ampacity": {}, "ampacity_source": ""}
+                                        "conductor_mm2": None, "ampacity": {}, "ampacity_source": "", "product_code": ""}
     bad = client.put(URL, json={"items": mine + [{"id": "x1", "code": "special  - 1", "sort": "abc"}, {"id": "x2", "code": " "}]})
     assert bad.status_code == 422 and set(bad.json()["fields"]) == {"x1.code", "x1.sort", "x2.code"}
     stale = client.put(URL, json={"items": []}, headers={**BOB, "If-Match": bob})

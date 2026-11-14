@@ -69,3 +69,29 @@ def test_a_bad_figure_from_the_form_is_dropped_not_stored() -> None:
     raw = {"code": "X", "ampacity": {"touching": "lots", "nonsense": 9, "spaced_from_surface": 12}, "conductor_mm2": "abc"}
     out = check_cable_types([raw])[0]
     assert out.ampacity == {"spaced_from_surface": 12.0} and out.conductor_mm2 is None
+
+
+def test_product_codes_are_the_printed_ones() -> None:
+    from workbench_core.keylists.cable_products import AMBIGUOUS, CODES, product_code
+    # read from the product pages: page 16 (2C+E XLPE multicore, 70 mm²), page 14 (3C+E V-90 circular, 10 mm²)
+    assert _by_code("AC_240V - Power - 2C+E - 70").product_code == "DTHC20AA002"
+    assert _by_code("AC_415V - Power - 3C+E - 10").product_code == "FNHP13AA003"
+    assert product_code("X90", "1C", "630") == "BDBP32AA001"  # the single-core XLPE page 10
+    # sizes printed more than once (circular and flat ranges, two constructions) stay blank until chosen
+    assert _by_code("AC_415V - Power - 3C+E - 1.5").product_code == ""
+    assert set(AMBIGUOUS[("V90", "3C+E", "1.5")]) == {"ENCP05AA003", "ENHP05AA003", "FNHP05AA003"}  # flat and two circular
+    assert all(code for code, _ in CODES.values()) and len(CODES) == 72 and len(AMBIGUOUS) == 31
+
+
+def test_only_the_default_types_with_one_printed_code_have_one() -> None:
+    have = [c for c in default_cable_types() if c.product_code]
+    assert len(have) == 31
+    assert all(c.cores in ("1C", "2C+E", "3C+E", "4C+E") and c.description in ("Cu-PVC-PVC-V90 (Power)", "Cu-XLPE-PVC-X90 (Power)")
+               for c in have)
+    assert not any(c.product_code for c in default_cable_types() if "Flex" in c.description or "Earth" in c.description)
+
+
+def test_an_edit_without_the_code_field_keeps_nothing_but_the_form_keeps_it() -> None:
+    saved = _by_code("AC_240V - Power - 2C+E - 70").model_dump(mode="json")
+    assert check_cable_types([saved])[0].product_code == "DTHC20AA002"  # the editor sends the whole row
+    assert check_cable_types([dict(saved, product_code="  dthc20aa002 ")])[0].product_code == "dthc20aa002"  # trimmed, as typed

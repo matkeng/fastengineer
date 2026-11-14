@@ -518,7 +518,9 @@ def import_code_list(sheets: dict[str, Rows], list_id: str, old: list, disciplin
     return Parsed({"items": items}, [str(i["code"]) for i in items], labels={str(i["id"]): str(i["code"]) for i in items})
 
 
-CABLE_HEAD = ["Code", "Application", "Type", "Cores", "Diameter", "Voltage", "Insulation", "Description", "Sort"]
+CABLE_HEAD = ["Code", "Application", "Type", "Cores", "Diameter", "Voltage", "Insulation", "Description", "Sort", "Product code"]
+#: The column heading of each field that is not simply the heading in lower case.
+_CABLE_FIELD = {"Product code": "product_code"}
 #: The handbook's figures: the size as a number, the copper amps in each in-air method, and where they come from.
 CABLE_RATING_HEAD = [("Conductor (mm²)", "conductor_mm2")] + [
     (f"Ampacity: {label} (A)", m) for m, label in (
@@ -531,7 +533,7 @@ def export_cable_types(items: list[CableType]) -> Sheets:
     def cell(c: CableType, field: str):
         if field.startswith("Ampacity: ") or field == "Conductor (mm²)" or field == "Ampacity source":
             return None
-        v = getattr(c, field.casefold())
+        v = getattr(c, _CABLE_FIELD.get(field, field.casefold()))
         return None if v in ("", None) else v
 
     def rating(c: CableType, key: str):
@@ -553,7 +555,9 @@ def import_cable_types(sheets: dict[str, Rows], old: list[CableType]) -> Parsed:
     has_ratings = bool(rows) and any(t.casefold() in rows[0] for t, _ in CABLE_RATING_HEAD)
     items = []
     for r in rows:
-        item = {"id": keep(_get(r, "Code"))} | {h.casefold(): _get(r, h) for h in CABLE_HEAD}
+        item = {"id": keep(_get(r, "Code"))} | {_CABLE_FIELD.get(h, h.casefold()): _get(r, h) for h in CABLE_HEAD}
+        if "product code" not in r and item["id"] in by_id:  # a file from before the product codes: they stay
+            item["product_code"] = by_id[item["id"]].product_code
         if has_ratings:  # a figure left blank in the file has none
             item["conductor_mm2"] = _get(r, "Conductor (mm²)") or None
             item["ampacity"] = {m: _get(r, heading) for heading, m in CABLE_RATING_HEAD[1:-1]}

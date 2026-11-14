@@ -14,9 +14,10 @@ from pydantic import BaseModel, Field
 from ..refdata.models import ColumnDef, RefValidationError, new_id
 from ..refdata.validate import coerce, name_key
 from .cable_ampacity import METHODS, TABLES, ampacity
+from .cable_products import product_code
 
 _INTEGER = ColumnDef(name="", type="integer")
-TEXT_FIELDS = ("code", "application", "type", "cores", "diameter", "voltage", "insulation", "description")
+TEXT_FIELDS = ("code", "application", "type", "cores", "diameter", "voltage", "insulation", "description", "product_code")
 
 
 class CableType(BaseModel):
@@ -30,6 +31,8 @@ class CableType(BaseModel):
     insulation: str = ""  # core insulation, e.g. PVC, XLPE (a load's cable is matched on it)
     description: str = ""
     sort: int | None = None
+    #: The Nexans Olex product code, where the handbook prints exactly one for this cable (see cable_products).
+    product_code: str = ""
     #: The conductor size as a number (mm²), where ``diameter`` is one.
     conductor_mm2: float | None = None
     #: Copper current carrying capacity (A) by installation method (keys: cable_ampacity.METHODS),
@@ -176,6 +179,10 @@ _TABLE_FOR = {
 }
 
 
+#: The handbook's insulation names for the descriptions above.
+_HANDBOOK_INSULATION = {_V90: "V90", _X90: "X90"}
+
+
 def _handbook(description: str, cores: str, diameter: str) -> dict:
     """The ampacity and conductor size of a default cable type from the handbook, where it has one."""
     table = _TABLE_FOR.get((description, cores))
@@ -187,10 +194,17 @@ def _handbook(description: str, cores: str, diameter: str) -> dict:
         return {}
     t = TABLES[table]
     amps = ampacity(table, diameter)  # the table's in-air figures for this size (none when it prints none)
-    if not amps:
-        return {"conductor_mm2": size_mm2}
-    basis = f"Nexans Olex Handbook 2017, page {t['page']} ({t['title']}), copper, in air at 40 °C"
-    return {"conductor_mm2": size_mm2, "ampacity": amps, "ampacity_source": basis}
+    out: dict = {"conductor_mm2": size_mm2}
+    if amps:
+        out["ampacity"] = amps
+        out["ampacity_source"] = f"Nexans Olex Handbook 2017, page {t['page']} ({t['title']}), copper, in air at 40 °C"
+    return out
+
+
+def _product(description: str, cores: str, diameter: str) -> str:
+    """The product code printed once for this cable in the handbook (cable_products), else ""."""
+    insulation = _HANDBOOK_INSULATION.get(description)
+    return product_code(insulation, cores, diameter) if insulation else ""
 
 
 def default_cable_types() -> list[CableType]:
@@ -202,5 +216,5 @@ def default_cable_types() -> list[CableType]:
             out.append(CableType(id=f"d{first + i}", code=f"{application} - {kind} - {cores} - {diameter}",
                                  application=application, type=kind, cores=cores, diameter=diameter, voltage=voltage,
                                  insulation=guess_insulation(description), description=description, sort=first + i,
-                                 **_handbook(description, cores, diameter)))
+                                 product_code=_product(description, cores, diameter), **_handbook(description, cores, diameter)))
     return sorted(out, key=lambda c: c.sort or 0)
