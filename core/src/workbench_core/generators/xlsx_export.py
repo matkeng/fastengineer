@@ -8,7 +8,7 @@ import csv
 from datetime import datetime
 from pathlib import Path
 
-from .models import BuildResult, GeneratorConfig
+from .models import BuildResult, ChangeReport, GeneratorConfig
 from .text import to_text
 
 
@@ -28,9 +28,39 @@ def export_xlsx(result: BuildResult, cfg: GeneratorConfig, path: str | Path, bui
     return path
 
 
+def _changes_sheet(ws, changes: ChangeReport, label: str, key_name: str) -> None:
+    """What changed between two revisions: a title line, the counts, then one line for each added
+    or removed row and for each changed cell."""
+    from openpyxl.styles import Font
+
+    def safe(v):
+        return "'" + v if isinstance(v, str) and v.startswith("=") else v
+
+    ws.append([label or "Changes"])
+    ws.append([f"{changes.added} added, {changes.removed} removed, {changes.changed} changed"])
+    ws.append([])
+    ws.append(["Change", key_name or "Key", "Column", "Old", "New"])
+    for c in ws[1] + ws[4]:
+        c.font = Font(bold=True)
+    for e in changes.entries:
+        if e.kind == "changed":
+            for cell in e.cells:
+                ws.append(["Changed", safe(e.key), safe(cell.column), safe(cell.old), safe(cell.new)])
+        else:
+            ws.append([e.kind.capitalize(), safe(e.key)])
+    ws.freeze_panes = "A5"
+    if changes.entries:
+        ws.auto_filter.ref = f"A4:E{ws.max_row}"
+    for letter, width in zip("ABCDE", (10, 24, 24, 32, 32)):
+        ws.column_dimensions[letter].width = width
+
+
 def xlsx_bytes(result: BuildResult, cfg: GeneratorConfig, build_id: str = "",
-               summary: list[tuple[str, str | int | float | None]] | None = None) -> bytes:
-    """`summary`: label and value lines, written to a second sheet, "Panel"."""
+               summary: list[tuple[str, str | int | float | None]] | None = None,
+               changes: ChangeReport | None = None, changes_label: str = "", key_name: str = "") -> bytes:
+    """`summary`: label and value lines, written to a second sheet, "Panel". `changes`: what
+    changed against another revision, written to a sheet "Changes" under `changes_label`
+    ("Rev C compared with Rev A"); `key_name` heads its key column."""
     import io
 
     from openpyxl import Workbook
@@ -59,6 +89,8 @@ def xlsx_bytes(result: BuildResult, cfg: GeneratorConfig, build_id: str = "",
             c.font = Font(bold=True)
         extra.column_dimensions["A"].width = max(len(label) for label, _ in summary) + 2
         extra.column_dimensions["B"].width = min(60, max([8] + [len(to_text(v)) + 2 for _, v in summary]))
+    if changes is not None:
+        _changes_sheet(wb.create_sheet("Changes"), changes, changes_label, key_name)
     p = wb.properties
     p.title = cfg.doc_title or None
     if cfg.doc_number:

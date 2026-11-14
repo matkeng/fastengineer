@@ -25,6 +25,8 @@ export interface Revision {
 	/** Label and value lines frozen with the content (a distribution panel's header block). */
 	summary: SummaryLine[];
 }
+/** What changed from one issued revision (old) to a later one (new). */
+export interface Comparison { old: RevisionInfo; new: RevisionInfo; changes: Changes }
 export type SummaryLine = [string, string | number | null];
 export const PANEL_TYPE = 'Distribution Panel';
 export interface PanelChoice { id: string; tag: string; title: string }

@@ -822,6 +822,10 @@ main.fill .dl-editor { overflow: auto; }
 .dl-revs tr.on td { background: var(--select); }
 .dl-revs td.actions { text-align: right; }
 .dl-view-head { margin-bottom: 6px; }
+.dl-revs-head { align-items: center; }
+.dl-revs-head .check { margin-top: 0; }
+.dl-against { display: flex; align-items: center; gap: 6px; }
+.dl-against select { width: auto; }
 .dl-editor .results { min-height: 260px; }
 /* Inputs directly in a column layout must not grow vertically. */
 .ref-editor > input:not([type='checkbox']):not([type='radio']):not([type='range']) { flex: 0 0 auto; }

@@ -55,6 +55,8 @@ A **Load List** deliverable can show the list's ten main columns, the load's pow
 - **Issue Rev A…** (then B, C… and after Z: AA, AB…) freezes the rows and columns as they are, with the date, who issued it and the description you type.
 - Each revision keeps its rows and the changes against the revision before it: added, removed and changed rows, with old → new for each column.
 - **View** shows a revision. **Excel** and **CSV** export it. The file is named with the document number, the revision letter and the title.
+- **Compared with**, beside the Rows and Changes buttons of a revision you are viewing, compares it with any other revision of the deliverable, not only the one before: choose Rev A while viewing Rev C to see everything that changed between them. The earlier revision is always the old one.
+- Tick **Excel exports include a Changes sheet** to get those changes in the Excel file, on a second sheet named Changes: a title such as *Rev C compared with Rev A*, the counts, then a line for each added or removed row and each changed cell. It compares with the revision before, or with the one chosen in **Compared with** for the revision you are viewing. The first revision has nothing before it, so its file has no Changes sheet.
 - Issued revisions cannot be edited. Only the description can be amended (**edit**).
 - **Withdraw** removes the **latest** revision, with a reason. Its frozen copy is deleted, the letter is used by the next issue, and the change log records it.
 

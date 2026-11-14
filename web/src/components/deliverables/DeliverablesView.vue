@@ -170,9 +170,30 @@ const host = ref<HTMLDivElement | null>(null);
 let table: FilteredTable<unknown> | null = null;
 const content = computed<{ result: BuildResult | null; changes: Changes | null; key: string; title: string }>(() => {
 	if (dl.shown) {
-		return { result: dl.shown.result, changes: dl.shown.changes, key: dl.shown.diff_key, title: `Rev ${dl.shown.info.letter}` };
+		return { result: dl.shown.result, changes: dl.compared?.changes ?? dl.shown.changes, key: dl.shown.diff_key, title: `Rev ${dl.shown.info.letter}` };
 	}
 	return { result: cur.value?.result ?? null, changes: cur.value?.changes ?? null, key: '', title: 'Current (not issued)' };
+});
+
+// Comparing the viewed revision with any other one ('' = the one before it), and whether an
+// Excel export gets a Changes sheet (against the same revision when it is the one being viewed).
+const against = ref('');
+const withChanges = ref(false);
+const others = computed(() => (d.value?.revisions ?? []).filter((r) => r.id !== dl.shown?.info.id));
+watch(() => dl.shown?.info.id, () => { against.value = ''; });
+async function pickAgainst() {
+	await dl.compareWith(against.value || null);
+	if (against.value && !dl.compared) against.value = '';
+	if (content.value.changes) view.value = 'changes';
+}
+function exportExcel(r: RevisionInfo) {
+	const other = dl.shown?.info.id === r.id && against.value ? against.value : 'previous';
+	void dl.exportRevision(r, 'xlsx', withChanges.value ? other : null);
+}
+const comparedText = computed(() => {
+	if (!dl.shown) return 'What a new revision would contain; changes are against the latest revision.';
+	const issued = `As issued on ${when(dl.shown.info.issued_at)}`;
+	return dl.compared ? `${issued}; changes are from Rev ${dl.compared.old.letter} to Rev ${dl.compared.new.letter}.` : `${issued}; changes are against the revision before it.`;
 });
 
 interface ChangeLine { kind: string; key: string; column: string; old: Scalar; new: Scalar }
@@ -347,7 +368,13 @@ onBeforeUnmount(() => table?.api.destroy());
 					<span v-for="[label, value] in summary" :key="label" class="chip">{{ label }} <strong>{{ value }}</strong></span>
 				</div>
 
-				<h3 class="dl-h">Revisions</h3>
+				<div class="row dl-revs-head">
+					<h3 class="dl-h">Revisions</h3>
+					<span class="spacer" />
+					<label v-if="d.revisions.length > 1" class="check small" title="The Excel file gets a second sheet, Changes: what changed against the revision before, or against the one chosen in Compared with">
+						<input v-model="withChanges" type="checkbox"> Excel exports include a Changes sheet
+					</label>
+				</div>
 				<table class="grid simple dl-revs">
 					<thead><tr><th>Rev</th><th>Issued</th><th>By</th><th>Description</th><th>Rows</th><th>Since previous</th><th /></tr></thead>
 					<tbody>
@@ -360,7 +387,7 @@ onBeforeUnmount(() => table?.api.destroy());
 							<td>{{ r.added === null ? 'first issue' : `${r.added} added · ${r.removed} removed · ${r.changed} changed` }}</td>
 							<td class="actions">
 								<button type="button" class="secondary small" @click="dl.view(r); view = 'rows'">View</button>
-								<button type="button" class="secondary small" @click="dl.exportRevision(r, 'xlsx')">Excel</button>
+								<button type="button" class="secondary small" @click="exportExcel(r)">Excel</button>
 								<button type="button" class="secondary small" @click="dl.exportRevision(r, 'csv')">CSV</button>
 								<button v-if="i === 0" type="button" class="secondary small" title="Withdraw this revision (only the latest can be)"
 									@click="dl.error = null; withdrawing = { rev: r, reason: '' }">Withdraw</button>
@@ -381,7 +408,13 @@ onBeforeUnmount(() => table?.api.destroy());
 							Changes<span v-if="content.changes" class="count">{{ content.changes.added + content.changes.removed + content.changes.changed }}</span>
 						</button>
 					</div>
-					<span class="hint small">{{ dl.shown ? `As issued on ${when(dl.shown.info.issued_at)}; changes are against the revision before it.` : 'What a new revision would contain; changes are against the latest revision.' }}</span>
+					<label v-if="dl.shown && others.length" class="small dl-against">Compared with
+						<select v-model="against" :disabled="dl.busy" @change="pickAgainst">
+							<option value="">the revision before</option>
+							<option v-for="r in others" :key="r.id" :value="r.id">Rev {{ r.letter }}</option>
+						</select>
+					</label>
+					<span class="hint small">{{ comparedText }}</span>
 					<span class="spacer" />
 					<button type="button" class="secondary small" :disabled="d.revisions.length > 0" :title="d.revisions.length ? 'A deliverable with revisions can\'t be deleted' : ''" @click="remove">Delete deliverable</button>
 				</div>

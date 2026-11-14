@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -377,9 +377,46 @@ def withdraw(rid: str, body: WithdrawBody):
     return {"status": "withdrawn", "letter": info.letter}
 
 
+class Comparison(BaseModel):
+    """What changed from one issued revision (`old`) to a later one (`new`)."""
+    old: RevisionInfo
+    new: RevisionInfo
+    changes: ChangeReport
+
+
+def _compared(rev: Revision, against: str) -> Comparison | None:
+    """`rev` compared with another revision of its deliverable: `against` is that revision's id,
+    or "previous" for the one issued before it (None when `rev` is the first). The earlier of
+    the two is the old one, whichever was asked for first."""
+    if against == "previous":
+        earlier = [r for r in get_deliverables().revisions(rev.info.deliverable_id) if r.issued_at < rev.info.issued_at]
+        if not earlier:
+            return None
+        other = _revision(max(earlier, key=lambda r: r.issued_at).id)
+    else:
+        other = _revision(against)
+    if other.info.deliverable_id != rev.info.deliverable_id:
+        raise HTTPException(400, "Those are revisions of two different deliverables.")
+    if other.info.id == rev.info.id:
+        raise HTTPException(400, "Choose another revision to compare with.")
+    old, new = sorted((rev, other), key=lambda r: r.info.issued_at)
+    return Comparison(old=old.info, new=new.info, changes=compare(old, new.result, new.diff_key))
+
+
+@router.get("/revisions/{rid}/compare", response_model=Comparison)
+def compare_revisions(rid: str, against: str = Query(..., min_length=1)) -> Comparison:
+    """What changed between any two revisions of a deliverable (not only one and the one before)."""
+    c = _compared(_revision(rid), against)
+    if c is None:
+        raise HTTPException(400, "That is the first revision: there is none before it.")
+    return c
+
+
 class ExportBody(BaseModel):
     format: Literal["xlsx", "csv"] = "xlsx"
     path: str | None = None  # desktop: chosen in a Save As dialog
+    #: .xlsx only: add a "Changes" sheet against this revision (its id, or "previous").
+    changes_against: str | None = None
 
 
 def _export_config(rev: Revision, name: str):
@@ -401,7 +438,12 @@ def export_revision(rid: str, body: ExportBody, request: Request):
         raise HTTPException(415, "Expected application/json")
     rev = _revision(rid)
     cfg = _export_config(rev, _get(rev.info.deliverable_id).name)
-    data = xlsx_bytes(rev.result, cfg, f"{rev.info.build_seq}", rev.summary) if body.format == "xlsx" else csv_bytes(rev.result, cfg.date_format)
+    if body.format == "xlsx":
+        c = _compared(rev, body.changes_against) if body.changes_against else None
+        data = xlsx_bytes(rev.result, cfg, f"{rev.info.build_seq}", rev.summary, changes=c.changes if c else None,
+                          changes_label=f"Rev {c.new.letter} compared with Rev {c.old.letter}" if c else "", key_name=rev.diff_key)
+    else:
+        data = csv_bytes(rev.result, cfg.date_format)
     if body.path is None:
         name = export_name(cfg, "", rev.info.issued_at, f".{body.format}")
         return Response(data, media_type=MEDIA[body.format], headers={"Content-Disposition": f'attachment; filename="{name}"'})

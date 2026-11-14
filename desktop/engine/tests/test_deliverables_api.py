@@ -276,3 +276,46 @@ def test_a_project_deliverable_with_no_loads_or_unknown_tags() -> None:
     cur = client.get(f"{API}/{d['id']}").json()["current"]
     assert cur["problem"] is None and "NoSuchTag" in cur["warnings"][0]
     assert client.post(f"{API}/{d['id']}/revisions", json={}).status_code == 200  # a warning, not a block
+
+
+def test_any_two_revisions_can_be_compared_and_the_changes_exported() -> None:
+    rid = _generator()
+    d, other = _new(rid), _new(rid, name="Second", doc_number="E-SCH-002")
+    _build(rid)
+    a = client.post(f"{API}/{d['id']}/revisions", json={}).json()
+    x = client.post(f"{API}/{other['id']}/revisions", json={}).json()
+    _rename_run(rid, 0, "FIRST CHANGE")
+    _build(rid)
+    b = client.post(f"{API}/{d['id']}/revisions", json={}).json()
+    _rename_run(rid, 1, "SECOND CHANGE")
+    _build(rid)
+    c = client.post(f"{API}/{d['id']}/revisions", json={}).json()
+    assert (b["changed"], c["changed"]) == (2, 2)  # each against the one before
+
+    # A with C: both changes, the earlier revision is the old one whichever is asked for first
+    for first, second in ((c, a), (a, c)):
+        cmp = client.get(f"{API}/revisions/{first['id']}/compare", params={"against": second["id"]}).json()
+        assert (cmp["old"]["letter"], cmp["new"]["letter"], cmp["changes"]["changed"]) == ("A", "C", 4)
+    news = [cell["new"] for e in cmp["changes"]["entries"] for cell in e["cells"] if cell["column"] == "To Location"]
+    assert any(str(n).startswith("FIRST CHANGE") for n in news) and any(str(n).startswith("SECOND CHANGE") for n in news)
+    prev = client.get(f"{API}/revisions/{c['id']}/compare", params={"against": "previous"}).json()
+    assert (prev["old"]["letter"], prev["changes"]["changed"]) == ("B", 2)
+    # what can't be compared
+    assert client.get(f"{API}/revisions/{a['id']}/compare", params={"against": "previous"}).status_code == 400  # the first
+    assert client.get(f"{API}/revisions/{a['id']}/compare", params={"against": a["id"]}).status_code == 400
+    assert client.get(f"{API}/revisions/{a['id']}/compare", params={"against": x["id"]}).status_code == 400  # another deliverable
+    assert client.get(f"{API}/revisions/{a['id']}/compare", params={"against": "nope"}).status_code == 404
+
+    # the export carries the comparison on its own sheet, when asked for
+    plain = load_workbook(io.BytesIO(client.post(f"{API}/revisions/{c['id']}/export", json={}).content))
+    assert plain.sheetnames == ["Schedule"]
+    wb = load_workbook(io.BytesIO(client.post(f"{API}/revisions/{c['id']}/export", json={"changes_against": a["id"]}).content))
+    ws = wb["Changes"]
+    assert ws["A1"].value == "Rev C compared with Rev A" and ws["A2"].value == "0 added, 0 removed, 4 changed"
+    assert [cell.value for cell in ws[4]] == ["Change", "Cable Number", "Column", "Old", "New"]
+    lines = [[cell.value for cell in row] for row in ws.iter_rows(min_row=5)]
+    assert len(lines) == sum(len(e["cells"]) for e in cmp["changes"]["entries"]) and {line[0] for line in lines} == {"Changed"}
+    wb = load_workbook(io.BytesIO(client.post(f"{API}/revisions/{b['id']}/export", json={"changes_against": "previous"}).content))
+    assert wb["Changes"]["A1"].value == "Rev B compared with Rev A"
+    first = load_workbook(io.BytesIO(client.post(f"{API}/revisions/{a['id']}/export", json={"changes_against": "previous"}).content))
+    assert first.sheetnames == ["Schedule"]  # nothing before Rev A to compare it with

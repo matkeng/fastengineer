@@ -4,7 +4,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { ApiError, apiDelete, apiGet, apiPostJson, apiPostJsonForBlob, apiPut, exportToPath, runningInTauri } from '../lib/engine';
 import type {
-	Deliverable, DeliverableDetail, DeliverableForm, DeliverablesOverview, Revision, RevisionInfo,
+	Comparison, Deliverable, DeliverableDetail, DeliverableForm, DeliverablesOverview, Revision, RevisionInfo,
 } from '../lib/deliverableTypes';
 
 const API = '/api/deliverables';
@@ -26,6 +26,8 @@ export const useDeliverables = defineStore('deliverables', () => {
 	const detail = ref<DeliverableDetail | null>(null);
 	const form = ref<DeliverableForm | null>(null); // the selected deliverable's details, as edited
 	const shown = ref<Revision | null>(null); // the revision being viewed (null: the current content)
+	// The viewed revision compared with a revision other than the one before it (null: the one before).
+	const compared = ref<Comparison | null>(null);
 	const busy = ref(false);
 	const error = ref<string | null>(null);
 	const fieldErrors = ref<Record<string, string>>({});
@@ -63,7 +65,7 @@ export const useDeliverables = defineStore('deliverables', () => {
 	}
 
 	function close() {
-		detail.value = form.value = shown.value = null;
+		detail.value = form.value = shown.value = compared.value = null;
 	}
 
 	/** `generatorId` null: the content is generated from the Project Load List. `panelId`: a
@@ -117,12 +119,24 @@ export const useDeliverables = defineStore('deliverables', () => {
 	}
 
 	async function view(rev: RevisionInfo | null) {
+		compared.value = null;
 		if (!rev) {
 			shown.value = null;
 			return;
 		}
 		const r = await run(() => apiGet<Revision>(`${API}/revisions/${rev.id}`));
 		if (r) shown.value = r;
+	}
+
+	/** Compare the revision being viewed with another one of its deliverable (null: back to the one before it). */
+	async function compareWith(otherId: string | null) {
+		const rev = shown.value;
+		if (!rev || !otherId) {
+			compared.value = null;
+			return;
+		}
+		const c = await run(() => apiGet<Comparison>(`${API}/revisions/${rev.info.id}/compare`, { against: otherId }));
+		compared.value = c ?? null;
 	}
 
 	async function amend(rev: RevisionInfo, description: string) {
@@ -141,8 +155,10 @@ export const useDeliverables = defineStore('deliverables', () => {
 		return true;
 	}
 
-	async function exportRevision(rev: RevisionInfo, format: 'xlsx' | 'csv') {
+	/** `changesAgainst` (Excel only): add a Changes sheet against that revision's id, or 'previous'. */
+	async function exportRevision(rev: RevisionInfo, format: 'xlsx' | 'csv', changesAgainst: string | null = null) {
 		const url = `${API}/revisions/${rev.id}/export`;
+		const body = format === 'xlsx' && changesAgainst ? { format, changes_against: changesAgainst } : { format };
 		await run(async () => {
 			const { name } = await apiGet<{ name: string }>(`${API}/revisions/${rev.id}/name`, { format });
 			if (runningInTauri) {
@@ -152,10 +168,10 @@ export const useDeliverables = defineStore('deliverables', () => {
 					filters: [format === 'csv' ? { name: 'CSV', extensions: ['csv'] } : { name: 'Excel workbook', extensions: ['xlsx'] }],
 				});
 				if (!path) return;
-				const res = await exportToPath(url, { format }, path);
+				const res = await exportToPath(url, body, path);
 				message.value = `Saved ${res.path}`;
 			} else {
-				const blob = await apiPostJsonForBlob(url, { format });
+				const blob = await apiPostJsonForBlob(url, body);
 				const href = URL.createObjectURL(blob);
 				Object.assign(document.createElement('a'), { href, download: name }).click();
 				setTimeout(() => URL.revokeObjectURL(href), 10_000);
@@ -165,7 +181,7 @@ export const useDeliverables = defineStore('deliverables', () => {
 	}
 
 	return {
-		overview, detail, form, shown, busy, error, fieldErrors, message, dirty,
-		refresh, open, close, create, save, discard, remove, issue, view, amend, withdraw, exportRevision,
+		overview, detail, form, shown, compared, busy, error, fieldErrors, message, dirty,
+		refresh, open, close, create, save, discard, remove, issue, view, compareWith, amend, withdraw, exportRevision,
 	};
 });
