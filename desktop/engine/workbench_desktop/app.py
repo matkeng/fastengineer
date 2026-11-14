@@ -93,11 +93,9 @@ app.add_middleware(identity.IdentityMiddleware, record_of=record_of, resolve_pro
                    version_of=lambda entity, record_id: get_store().version_of(entity, record_id),
                    proper_words=lambda: [w.name for w in get_keylists().enums().x_proper])
 
-# The Tauri WebView origin differs by OS (http://tauri.localhost on Windows,
-# tauri://localhost on macOS/Linux); Vite dev server runs on localhost:5173.
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^(https?://tauri\.localhost|tauri://localhost|http://localhost:\d+|http://127\.0\.0\.1:\d+)$",
+    allow_origin_regex=identity.APP_ORIGINS,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
     expose_headers=["ETag"],

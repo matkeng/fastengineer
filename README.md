@@ -203,7 +203,8 @@ There is no central list of projects, and nothing is shared between projects.
   when. Nothing is overwritten silently. Open the record again to get their
   version, then make the change again. Editing *different* records, or different
   rows of the same table, at the same time is fine.
-- Exports are saved on the PC of the person exporting, as before.
+- Exports are saved on the PC of the person exporting, as before. The server itself refuses to
+  write an export to a path a client names, and every request must name its user.
 
 ### Limits to know about
 

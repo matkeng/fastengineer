@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -32,6 +31,8 @@ from workbench_core.mel.ingest import STRIKE_COLUMN, add_blank_strike_column
 from workbench_core.mel.models import RevisionInfo, TargetList
 from workbench_core.mel.pipeline import LoadListResult, Stage
 
+from .exporting import save_to
+from .uploads import read_upload
 from .excel_api import ExtractRequest
 from .excel_api import store as workbooks
 from .storage import NotFound, get_keylists, get_store
@@ -203,14 +204,7 @@ def export_settings(recipe_id: str, body: SettingsBody, request: Request):
     if body.path is None:
         return Response(data, media_type="application/json",
                         headers={"Content-Disposition": 'attachment; filename="list-import-settings.json"'})
-    target = Path(body.path)
-    if target.suffix.lower() != ".json":
-        target = target.with_suffix(".json")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not save {target.name}: {exc.strerror or exc}.") from exc
-    return {"path": str(target)}
+    return save_to(body.path, data, ".json")
 
 
 @router.post("/recipes/{recipe_id}/settings/read", response_model=Recipe)
@@ -259,9 +253,7 @@ def _suggest_key(headers: list[str], rows: list[dict[str, str]]) -> str:
 
 
 async def _body(request: Request) -> bytes:
-    data = await request.body()
-    if len(data) > MAX_UPLOAD:
-        raise HTTPException(413, "The file is larger than 100 MB.")
+    data = await read_upload(request, MAX_UPLOAD)
     return data
 
 
@@ -417,14 +409,7 @@ def export(recipe_id: str, body: ExportRequest, request: Request):
         name = f"{recipe.target}-{body.table}.{body.format}"
         return Response(data, media_type=MEDIA[body.format],
                         headers={"Content-Disposition": f'attachment; filename="{name}"'})
-    target = Path(body.path)
-    if target.suffix.lower() != f".{body.format}":
-        target = target.with_suffix(f".{body.format}")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not save {target.name}: {exc.strerror or exc}. Is it open in Excel?") from exc
-    return {"path": str(target)}
+    return save_to(body.path, data, f".{body.format}")
 
 
 class ReportRequest(BaseModel):
@@ -450,14 +435,7 @@ def edits_report_file(recipe_id: str, body: ReportRequest, request: Request):
         plain = name.encode("ascii", "replace").decode().replace("?", "_")
         return Response(data, media_type=MEDIA["xlsx"], headers={
             "Content-Disposition": f"attachment; filename=\"{plain}\"; filename*=UTF-8''{quote(name)}"})
-    target = Path(body.path)
-    if target.suffix.lower() != ".xlsx":
-        target = target.with_suffix(".xlsx")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not save {target.name}: {exc.strerror or exc}. Is it open in Excel?") from exc
-    return {"path": str(target)}
+    return save_to(body.path, data, ".xlsx")
 
 
 class EditsCheck(BaseModel):

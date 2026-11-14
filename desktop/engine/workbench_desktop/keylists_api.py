@@ -38,6 +38,7 @@ from workbench_core.symbols.render import PdfError, page_count
 
 from workbench_core.keylists.loadlist import load_type_names
 
+from .uploads import read_upload
 from .refdata_api import invalid
 from .storage import NotFound, get_keylists, get_loadlist
 
@@ -248,9 +249,7 @@ def _no_load_type() -> HTTPException:
 @router.put("/load-types/{load_id}/pdf", response_model=LoadTypeList)
 async def attach_load_type_pdf(load_id: str, request: Request, filename: str = Query(...)) -> LoadTypeList:
     """Attach a PDF (the request body) to a load type, replacing the one it had."""
-    data = await request.body()
-    if len(data) > MAX_PDF:
-        raise HTTPException(413, "The file is larger than 50 MB.")
+    data = await read_upload(request, MAX_PDF)
     try:
         pages = await run_in_threadpool(page_count, data)
     except PdfError as exc:

@@ -17,6 +17,7 @@ import contextvars
 import getpass
 import json
 import os
+import re
 import socket
 from dataclasses import dataclass
 
@@ -27,8 +28,15 @@ MACHINE_HEADER = "x-workbench-machine"
 BASE_TIME_HEADER = "x-workbench-base-time"
 PROJECT_HEADER = "x-workbench-project"
 
-#: Set by ``--server``: writes must name their user (no falling back to the engine's own login).
+#: Set by ``--server``: every request must name its user (no falling back to the engine's own login).
 server_mode = False
+#: Answered without a user even on a shared server: the app asks these before it knows who is asking.
+OPEN_PATHS = {"/api/health", "/api/hello"}
+SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+#: Where the app's own pages are served from. The Tauri WebView origin differs by OS
+#: (http://tauri.localhost on Windows, tauri://localhost on macOS/Linux); the Vite dev server
+#: runs on localhost:5173.
+APP_ORIGINS = r"^(https?://tauri\.localhost|tauri://localhost|http://localhost:\d+|http://127\.0\.0\.1:\d+)$"
 #: Set by ``--admin`` (lower-cased): who may create projects and choose their members.
 admins: set[str] = set()
 
@@ -112,6 +120,7 @@ class IdentityMiddleware:
 
     def __init__(self, app, record_of=None, version_of=None, resolve_project=None, proper_words=None):
         self.app = app
+        self.allowed_origin = re.compile(APP_ORIGINS).match
         #: () -> the request's project's xProper words, read on first use (text_case.proper_case)
         self.proper_words = proper_words
         #: (context, path, requested project id) -> sets context.project, or raises
@@ -137,7 +146,14 @@ class IdentityMiddleware:
                                     (b"content-length", str(len(body)).encode())]})
             await send({"type": "http.response.body", "body": body})
 
-        if server_mode and not user and method not in ("GET", "HEAD", "OPTIONS"):
+        # A page of another website can POST to the engine without asking first (no preflight for
+        # a request with no body or a plain one). Browsers name the page in Origin: refuse any
+        # change that comes from a page that is not the app.
+        origin = headers.get("origin", "")
+        if origin and method not in SAFE_METHODS and not self.allowed_origin(origin):
+            await refuse(403, "This request came from a web page that is not the app.")
+            return
+        if server_mode and not user and method != "OPTIONS" and scope.get("path", "") not in OPEN_PATHS:
             await refuse(401, "This server needs to know who you are. Update the desktop app, "
                               f"or send the {USER_HEADER} header.")
             return

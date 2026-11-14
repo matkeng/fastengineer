@@ -26,6 +26,8 @@ from workbench_core.keylists.distribution_panels import check_panels
 from workbench_core.keylists.drawing_list import REGISTERS
 from workbench_core.refdata import RefValidationError, name_key
 
+from .exporting import save_to
+from .uploads import read_upload
 from . import distribution_panels_api, drawing_list_api, eel_api, instrument_runsheet_api, keylists_api, loadlist_api
 from .storage import NotFound, get_keylists, get_loadlist
 
@@ -124,14 +126,7 @@ class TypeRowsBody(BaseModel):
 def _write(data: bytes, path: str | None, name: str):
     if path is None:
         return Response(data, media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{name}.xlsx"'})
-    target = Path(path)
-    if target.suffix.lower() != ".xlsx":
-        target = target.with_suffix(".xlsx")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not write {target}: {exc.strerror or exc}. Is it open in another program?") from exc
-    return {"path": str(target)}
+    return save_to(path, data, ".xlsx")
 
 
 @router.post("/type-rows/export")
@@ -172,9 +167,7 @@ async def import_type_rows(request: Request, kind: Literal["load", "equipment"] 
     from workbench_core.keylists.loadgen import LISTS as OUTPUT_LISTS
     from workbench_core.keylists.validate import _template_rows
 
-    data = await request.body()
-    if len(data) > MAX_UPLOAD:
-        raise HTTPException(413, "The file is larger than 50 MB.")
+    data = await read_upload(request, MAX_UPLOAD)
     columns = get_keylists().master_columns().all()
     try:
         parsed = await run_in_threadpool(lambda: wbk.import_type_rows(wbk.read_sheets(data), columns))
@@ -206,14 +199,7 @@ def export_list(list_id: str, body: ExportBody):
     data = wbk.write_sheets(_sheets(list_id))
     if body.path is None:
         return Response(data, media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{name}.xlsx"'})
-    target = Path(body.path)
-    if target.suffix.lower() != ".xlsx":
-        target = target.with_suffix(".xlsx")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not write {target}: {exc.strerror or exc}. Is it open in another program?") from exc
-    return {"path": str(target)}
+    return save_to(body.path, data, ".xlsx")
 
 
 class ImportPreview(BaseModel):
@@ -406,9 +392,7 @@ async def import_list(list_id: str, request: Request, filename: str = Query(...)
     name, item = _known(list_id), LISTS[list_id][1]
     if list_id in READ_ONLY:
         raise HTTPException(400, f"The {name} list is read-only here: it changes in List import.")
-    data = await request.body()
-    if len(data) > MAX_UPLOAD:
-        raise HTTPException(413, "The file is larger than 50 MB.")
+    data = await read_upload(request, MAX_UPLOAD)
     try:
         parsed, old = await run_in_threadpool(_parse, list_id, data)
     except ValueError as exc:

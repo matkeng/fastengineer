@@ -6,7 +6,6 @@ workbench_core.keylists.master). They are worked out when asked for, and read on
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -18,6 +17,7 @@ from workbench_core.keylists.loadgen import LISTS, generate, missing_load_types
 from workbench_core.mel.models import is_load_target
 from workbench_core.keylists.master import INSTRUMENT, MASTER_LISTS, MASTER_NAMES, POWER, generator_counts, master_columns, master_list
 
+from .exporting import save_to
 from .storage import get_keylists
 
 router = APIRouter(prefix="/api/master", tags=["project master lists"])
@@ -134,14 +134,7 @@ def export_master(list_key: str, body: ExportBody, request: Request):
     data = xlsx_bytes(result, cfg) if body.format == "xlsx" else csv_bytes(result, cfg.date_format)
     if body.path is None:
         return Response(data, media_type=MEDIA[body.format], headers={"Content-Disposition": f'attachment; filename="{name}.{body.format}"'})
-    target = Path(body.path)
-    if target.suffix.lower() != f".{body.format}":
-        target = target.with_suffix(f".{body.format}")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not write {target}: {exc.strerror or exc}. Is it open in another program?") from exc
-    return {"path": str(target)}
+    return save_to(body.path, data, f".{body.format}")
 
 
 # -- the project's columns of the master lists -------------------------------------------------

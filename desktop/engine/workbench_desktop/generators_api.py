@@ -31,6 +31,8 @@ from workbench_core.generators.preview import PreviewResult, preview
 from workbench_core.generators.xlsx_export import csv_bytes, export_name, xlsx_bytes
 from workbench_core.generators.xlsx_import import ImportReport, import_workbook
 
+from .exporting import save_to
+from .uploads import read_upload
 from .storage import NotFound, get_generators
 
 router = APIRouter(prefix="/api/generators", tags=["generators"])
@@ -76,9 +78,7 @@ class ImportResponse(BaseModel):
 
 @router.post("/import", response_model=ImportResponse)
 async def import_file(request: Request, filename: str = Query(...), name: str | None = Query(None)):
-    data = await request.body()
-    if len(data) > MAX_UPLOAD:
-        raise HTTPException(413, "The file is larger than 100 MB.")
+    data = await read_upload(request, MAX_UPLOAD)
     if not data:
         raise HTTPException(400, "The file is empty.")
     try:
@@ -296,14 +296,7 @@ def export_build(bid: str, body: ExportBody, request: Request):
         name = export_name(cfg, rec.name, b.info.created_at, f".{body.format}")
         return Response(data, media_type=MEDIA[body.format],
                         headers={"Content-Disposition": f'attachment; filename="{name}"'})
-    target = Path(body.path)
-    if target.suffix.lower() != f".{body.format}":
-        target = target.with_suffix(f".{body.format}")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not write {target}: {exc.strerror or exc}. Is it open in another program?") from exc
-    return {"path": str(target)}
+    return save_to(body.path, data, f".{body.format}")
 
 
 @router.get("/builds/{bid}/name")
@@ -357,14 +350,7 @@ def export_inputs(rid: str, body: ExportBody, request: Request):
     name = f"{rec.name} inputs.xlsx".replace("/", "_")
     if body.path is None:
         return Response(data, media_type=MEDIA["xlsx"], headers={"Content-Disposition": f'attachment; filename="{name}"'})
-    target = Path(body.path)
-    if target.suffix.lower() != ".xlsx":
-        target = target.with_suffix(".xlsx")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not write {target}: {exc.strerror or exc}. Is it open in another program?") from exc
-    return {"path": str(target)}
+    return save_to(body.path, data, ".xlsx")
 
 
 class InputsImport(BaseModel):
@@ -377,9 +363,7 @@ class InputsImport(BaseModel):
 async def import_inputs(rid: str, request: Request, filename: str = Query(...), apply: str = Query("")):
     """Without `apply`: a per-sheet preview of what the file would change (nothing is saved).
     With `apply=runsheet,templates,...`: those sheets are saved (sheets with errors never are)."""
-    data = await request.body()
-    if len(data) > MAX_UPLOAD:
-        raise HTTPException(413, "The file is larger than 100 MB.")
+    data = await read_upload(request, MAX_UPLOAD)
     current = _inputs(rid)
     try:
         preview, parsed = await run_in_threadpool(read_inputs, data, current)

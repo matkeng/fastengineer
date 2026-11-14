@@ -8,7 +8,6 @@ import threading
 import uuid
 from collections import OrderedDict
 
-from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -27,6 +26,9 @@ from workbench_core.excel import (
     compare_tables,
     compare_to_xlsx,
 )
+
+from .exporting import save_to
+from .uploads import read_upload
 
 router = APIRouter(prefix="/api/excel", tags=["excel"])
 
@@ -70,11 +72,9 @@ def _bad_request(exc: ExcelError) -> HTTPException:
 @router.post("/workbooks", response_model=WorkbookSummary)
 async def open_workbook(request: Request, filename: str = Query(..., min_length=1)) -> WorkbookSummary:
     """Upload a workbook as the raw request body (no multipart needed)."""
-    data = await request.body()
+    data = await read_upload(request, MAX_UPLOAD_BYTES)
     if not data:
         raise HTTPException(400, "The file is empty.")
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, "The file is larger than 200 MB.")
     try:
         wb = await run_in_threadpool(Workbook, data, filename, uuid.uuid4().hex)
     except ExcelError as exc:
@@ -178,12 +178,4 @@ def export_compare(req: CompareExportRequest, request: Request):
     if req.path is None:
         return Response(data, media_type=XLSX,
                         headers={"Content-Disposition": 'attachment; filename="table-compare.xlsx"'})
-    target = Path(req.path)
-    if target.suffix.lower() != ".xlsx":
-        target = target.with_suffix(".xlsx")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:  # e.g. the file is open in Excel
-        raise HTTPException(409, f"Could not save {target.name}: {exc.strerror or exc}. "
-                                 "Is it open in Excel?") from exc
-    return {"path": str(target)}
+    return save_to(req.path, data, ".xlsx")

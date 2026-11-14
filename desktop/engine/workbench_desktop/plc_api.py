@@ -18,6 +18,8 @@ from workbench_core.keylists.plc import (PlcList, as_hardware, cards, check_plc,
                                          write_workbook)
 from workbench_core.refdata import RefValidationError, name_key
 
+from .exporting import save_to
+from .uploads import read_upload
 from .loadlist_api import Choice, _choices
 from .refdata_api import invalid
 from .storage import get_keylists
@@ -140,14 +142,7 @@ def export_plc(body: ExportBody):
     data = write_workbook(lists.plc(), lists.catalogue(), {n.id: n.tag for n in lists.plant_areas().nodes})
     if body.path is None:
         return Response(data, media_type=XLSX, headers={"Content-Disposition": 'attachment; filename="PLC List.xlsx"'})
-    target = Path(body.path)
-    if target.suffix.lower() != ".xlsx":
-        target = target.with_suffix(".xlsx")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not write {target}: {exc.strerror or exc}. Is it open in another program?") from exc
-    return {"path": str(target)}
+    return save_to(body.path, data, ".xlsx")
 
 
 class ImportPreview(BaseModel):
@@ -165,9 +160,7 @@ class ImportPreview(BaseModel):
 async def import_plc(request: Request, filename: str = Query(...), apply: bool = Query(False)):
     """Read a PLC List workbook (or a generator inputs workbook's PLC sheets). Without
     `apply` nothing is saved; with it the file replaces the PLC List and the types."""
-    data = await request.body()
-    if len(data) > MAX_UPLOAD:
-        raise HTTPException(413, "The file is larger than 50 MB.")
+    data = await read_upload(request, MAX_UPLOAD)
     lists = get_keylists()
     areas = {name_key(n.tag): n.id for n in lists.plant_areas().nodes}
     try:

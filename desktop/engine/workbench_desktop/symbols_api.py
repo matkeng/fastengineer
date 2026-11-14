@@ -49,6 +49,8 @@ from workbench_core.symbols.pipeline import REVIEW_IOU
 from workbench_core.symbols.tags import apply_exclusion, check_format, compile_pattern, format_tag, group_names, resolve_points
 from workbench_core.symbols.templates import crop, effective_mask, erase_words, trim_box
 
+from .exporting import save_to
+from .uploads import read_upload
 from . import identity
 from .storage import InUse, NotFound, SymbolStore, get_symbols
 
@@ -287,14 +289,7 @@ class SavePath(BaseModel):
 
 
 def _write(path: str, data: bytes, suffix: str) -> dict[str, str]:
-    target = Path(path)
-    if target.suffix.lower() != suffix:
-        target = target.with_suffix(suffix)
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not save {target.name}: {exc.strerror or exc}. Is it open in another program?") from exc
-    return {"path": str(target)}
+    return save_to(path, data, suffix)
 
 
 def _json_only(request: Request) -> None:
@@ -447,9 +442,7 @@ def list_drawings() -> list[Drawing]:
 @router.post("/drawings", response_model=Drawing)
 async def upload_drawing(request: Request, filename: str = Query(...), library_id: str = Query(...)) -> Drawing:
     _library(library_id)
-    data = await request.body()
-    if len(data) > MAX_UPLOAD:
-        raise HTTPException(413, "The file is larger than 200 MB.")
+    data = await read_upload(request, MAX_UPLOAD)
     try:
         n = await run_in_threadpool(page_count, data)
     except PdfError as exc:
@@ -812,7 +805,7 @@ def _decode_upload(data: bytes):
 @router.post("/templates/upload", response_model=Template)
 async def template_upload(request: Request, filename: str = Query(...), library_id: str = Query(...)) -> Template:
     """A symbol image file as a new template (cut it at the drawings' 200 DPI scale)."""
-    return _new_template(_decode_upload(await request.body()), Path(filename).stem, library_id)
+    return _new_template(_decode_upload(await read_upload(request, MAX_UPLOAD)), Path(filename).stem, library_id)
 
 
 @router.get("/templates/{template_id}", response_model=Template)
@@ -908,7 +901,7 @@ async def set_template_mask(template_id: str, request: Request) -> Template:
     """Store a custom mask (an image the template's size; white or opaque = scored) and use it."""
     from workbench_core.symbols.templates import custom_mask
     t = _template(template_id)
-    img = _decode_upload(await request.body())
+    img = _decode_upload(await read_upload(request, MAX_UPLOAD))
     m = custom_mask(img, (t.height, t.width))
     if not m.any():
         raise HTTPException(400, "The mask is empty: paint the parts of the symbol that should be compared.")

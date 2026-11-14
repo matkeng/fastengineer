@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -13,6 +12,7 @@ from pydantic import BaseModel
 from workbench_core.keylists.load_summary import FUNCS, SummaryOutTable, SummaryPage, check_page, work_out
 from workbench_core.refdata import RefValidationError
 
+from .exporting import save_to
 from .refdata_api import invalid
 from .storage import get_keylists
 
@@ -121,11 +121,4 @@ def export_summary(body: ExportBody, request: Request):
     data = write_sheets(sheets or [("Summary", [["No tables yet"]])])
     if body.path is None:
         return Response(data, media_type=XLSX, headers={"Content-Disposition": 'attachment; filename="Load List Summary.xlsx"'})
-    target = Path(body.path)
-    if target.suffix.lower() != ".xlsx":
-        target = target.with_suffix(".xlsx")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not write {target}: {exc.strerror or exc}. Is it open in another program?") from exc
-    return {"path": str(target)}
+    return save_to(body.path, data, ".xlsx")

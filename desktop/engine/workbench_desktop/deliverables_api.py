@@ -7,7 +7,6 @@ issued in lettered revisions (see workbench_core.deliverables)."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -24,6 +23,7 @@ from workbench_core.keylists.distribution_panels import PANEL_COLUMNS, PANEL_DIF
 from workbench_core.keylists.loadgen import BY_TYPE, generate, load_list_columns, missing_load_types
 from workbench_core.refdata import RefValidationError
 
+from .exporting import save_to
 from . import identity
 from .refdata_api import invalid
 from .storage import InUse, NotFound, get_deliverables, get_generators, get_keylists
@@ -405,11 +405,4 @@ def export_revision(rid: str, body: ExportBody, request: Request):
     if body.path is None:
         name = export_name(cfg, "", rev.info.issued_at, f".{body.format}")
         return Response(data, media_type=MEDIA[body.format], headers={"Content-Disposition": f'attachment; filename="{name}"'})
-    target = Path(body.path)
-    if target.suffix.lower() != f".{body.format}":
-        target = target.with_suffix(f".{body.format}")
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(409, f"Could not write {target}: {exc.strerror or exc}. Is it open in another program?") from exc
-    return {"path": str(target)}
+    return save_to(body.path, data, f".{body.format}")

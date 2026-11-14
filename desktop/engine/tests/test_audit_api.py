@@ -116,7 +116,8 @@ def test_rows_conflict_by_the_time_last_seen() -> None:
 def test_server_mode_needs_a_user() -> None:
     identity.server_mode = True
     assert client.post("/api/ref/enums", json={"name": "Voltage"}).status_code == 401
-    assert client.get("/api/ref").status_code == 200  # reading is not logged, so it needs no name
+    assert client.get("/api/ref").status_code == 401  # reading needs a name too
+    assert client.get("/api/health").status_code == 200  # asked before the app knows who is asking
     assert client.post("/api/ref/enums", json={"name": "Voltage"}, headers=ANN).status_code == 200
     who = client.get("/api/whoami", headers=ANN).json()
     assert who["user"] == "ACME\\ann" and who["machine"] == "PC-01" and who["server"] is True
@@ -126,3 +127,30 @@ def test_standalone_uses_the_local_login() -> None:
     e = client.post("/api/ref/enums", json={"name": "Voltage"}).json()
     (entry,) = log(record_id=e["id"])
     assert entry["user"] == identity.local_user() and entry["machine"] == identity.local_machine()
+
+
+def test_a_shared_server_never_writes_a_file_a_client_names(data_dir: Path) -> None:
+    target = data_dir / "out.xlsx"
+    body = {"path": str(target)}
+    assert client.post("/api/plc/export", json=body, headers=ANN).json() == {"path": str(target)}
+    target.unlink()
+    identity.server_mode = True
+    assert client.post("/api/plc/export", json=body, headers=ANN).status_code == 403
+    assert not target.exists()
+    sent = client.post("/api/plc/export", json={}, headers=ANN)  # downloaded instead
+    assert sent.status_code == 200 and sent.content[:2] == b"PK"
+
+
+def test_changes_from_another_web_page_are_refused() -> None:
+    evil = {"Origin": "https://example.com"}
+    assert client.post("/api/sample-data", headers=evil).status_code == 403
+    assert client.get("/api/ref", headers=evil).status_code == 200  # CORS keeps the answer from the page
+    app_page = {"Origin": "http://tauri.localhost"}
+    assert client.post("/api/ref/enums", json={"name": "Voltage"}, headers=app_page).status_code == 200
+
+
+def test_an_upload_over_the_limit_is_refused_before_it_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    from workbench_desktop import plc_api
+    monkeypatch.setattr(plc_api, "MAX_UPLOAD", 2 * 1024 * 1024)
+    r = client.post("/api/plc/import", params={"filename": "plc.xlsx"}, content=b"x" * (2 * 1024 * 1024 + 1))
+    assert r.status_code == 413 and r.json()["detail"] == "The file is larger than 2 MB."
