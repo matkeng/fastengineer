@@ -227,7 +227,7 @@ def test_reset_the_other_lists_obeys_their_rules() -> None:
     assert client.post(f"{API}/distribution-panels/reset").status_code == 422  # a deliverable issues the panel
     assert client.post(f"{API}/instrument-codes/reset").json() == {"message": "Instrument Codes is empty."}
     assert client.get(LISTS["instrument-codes"]).json()["items"] == []
-    assert "656 default" in client.post(f"{API}/cable-types/reset").json()["message"]
+    assert "644 default" in client.post(f"{API}/cable-types/reset").json()["message"]
     assert client.post(f"{API}/plc/reset").status_code == 200 and client.get("/api/plc").json()["plc"]["systems"] == []
     assert client.post(f"{API}/nope/reset").status_code == 404
 

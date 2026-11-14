@@ -526,11 +526,11 @@ CABLE_RATING_HEAD = [("Conductor (mm²)", "conductor_mm2")] + [
     (f"Ampacity: {label} (A)", m) for m, label in (
         ("unenclosed_space", "unenclosed in air"), ("spaced_from_surface", "spaced from surface"),
         ("touching", "touching"), ("enclosed_conduit_in_air", "enclosed in conduit in air"))] + [
-    ("Ampacity source", "ampacity_source"), ("Overall diameter (mm)", "overall_diameter_mm"),
+    ("Ampacity source", "ampacity_source"), ("Overall diameter (mm)", "overall_diameter_mm"), ("Flat cable height (mm)", "overall_minor_mm"),
     ("Bending radius installed (mm)", "bend_installed_mm"), ("Bending radius pulling (mm)", "bend_pulling_mm"),
     ("Bending basis", "bend_basis")]
 #: The numbers and texts of CABLE_RATING_HEAD that are not the ampacity table.
-_CABLE_NUMBER_KEYS = ("conductor_mm2", "overall_diameter_mm", "bend_installed_mm", "bend_pulling_mm")
+_CABLE_NUMBER_KEYS = ("conductor_mm2", "overall_diameter_mm", "overall_minor_mm", "bend_installed_mm", "bend_pulling_mm")
 _CABLE_TEXT_KEYS = ("ampacity_source", "bend_basis")
 
 
@@ -577,7 +577,7 @@ def import_cable_types(sheets: dict[str, Rows], old: list[CableType]) -> Parsed:
         elif item["id"] in by_id:  # a file from before the figures: they stay as they were
             kept = by_id[item["id"]]
             item |= {"conductor_mm2": kept.conductor_mm2, "ampacity": dict(kept.ampacity), "ampacity_source": kept.ampacity_source,
-                     "overall_diameter_mm": kept.overall_diameter_mm, "bend_installed_mm": kept.bend_installed_mm,
+                     "overall_diameter_mm": kept.overall_diameter_mm, "overall_minor_mm": kept.overall_minor_mm, "bend_installed_mm": kept.bend_installed_mm,
                      "bend_pulling_mm": kept.bend_pulling_mm, "bend_basis": kept.bend_basis}
         items.append(item)
     return Parsed({"items": items}, [i["code"] for i in items], labels={i["id"]: i["code"] for i in items})

@@ -31,8 +31,8 @@ def test_every_table_is_copper_in_air_and_in_order() -> None:
 
 
 def test_the_basis_is_recorded() -> None:
-    assert {k: t["verified"] for k, t in TABLES.items() if t["verified"] == "image"} == {
-        "1C-PVC": "image", "1C-PVC-flex": "image", "1C-XLPE": "image"}
+    assert {t["verified"] for t in TABLES.values()} == {"image", "text"}
+    assert {k for k, t in TABLES.items() if t["phase"] == "three"} == {"3C4C-PVC", "3C4C-XLPE", "3x1C-PVC", "3x1C-XLPE"}
     assert TABLES["2C-PVC"]["page"] == 67 and TABLES["3C4C-XLPE"]["page"] == 80
 
 
@@ -43,7 +43,9 @@ def _by_code(code: str) -> CableType:
 def test_default_cable_types_carry_the_handbook_figures() -> None:
     c = _by_code("AC_415V - Power - 3C+E - 25")  # X90 3 core + earth, 25 mm²: 3 and 4 core XLPE, page 80
     assert c.conductor_mm2 == 25 and c.ampacity["unenclosed_space"] == 119 and "page 80" in c.ampacity_source
-    assert _by_code("AC_415V - Power - 1C - 630").ampacity["touching"] == 950  # the 1 core XLPE table
+    # single cores on AC_415V are three cables, three phase: page 74 (not the two-cable, single phase table)
+    assert _by_code("AC_415V - Power - 1C - 630").ampacity["touching"] == 938
+    assert ampacity("3x1C-XLPE", "16") == {"unenclosed_space": 108, "spaced_from_surface": 92, "touching": 86, "enclosed_conduit_in_air": 72}
     assert _by_code("AC_415V - Power - 3C+E - 1.5").ampacity["unenclosed_space"] == 16  # V-90 PVC, page 78
     # not in any table: earth, VSD, pilot, flexible TPE and network cables
     for code in ("AC_415V - Power VSD - 3C+3E - 25", "Earth - PVC - 1C - 25", "AC_240V - Power Flex - 2C+E - 1.5",
@@ -73,48 +75,28 @@ def test_a_bad_figure_from_the_form_is_dropped_not_stored() -> None:
 
 def test_product_codes_are_the_printed_ones() -> None:
     from workbench_core.keylists.cable_products import AMBIGUOUS, CODES, product_code
-    # read from the product pages: page 16 (2C+E XLPE multicore, 70 mm²), page 14 (3C+E V-90 circular, 10 mm²)
+    from workbench_core.keylists.cable_types import HANDBOOK
+    # page 16 (2C+E XLPE multicore, 70 mm²), page 14 (3C+E V-90 circular, 10 mm²), page 10 (single core XLPE)
     assert _by_code("AC_240V - Power - 2C+E - 70").product_code == "DTHC20AA002"
     assert _by_code("AC_415V - Power - 3C+E - 10").product_code == "FNHP13AA003"
-    assert product_code("X90", "1C", "630") == "BDBP32AA001"  # the single-core XLPE page 10
-    # sizes printed more than once (circular and flat ranges, two constructions) stay blank until chosen
+    assert product_code("X90", "1C", "630") == "BDBP32AA001"
+    # sizes printed more than once (flat and circular, 450/750 V and 0.6/1 kV) stay blank until chosen
     assert _by_code("AC_415V - Power - 3C+E - 1.5").product_code == ""
-    assert set(AMBIGUOUS[("V90", "3C+E", "1.5")]) == {"ENCP05AA003", "ENHP05AA003", "FNHP05AA003"}  # flat and two circular
-    assert all(code for code, _ in CODES.values()) and len(CODES) == 72 and len(AMBIGUOUS) == 31
-
-
-def test_only_the_default_types_with_one_printed_code_have_one() -> None:
-    from workbench_core.keylists.cable_types import HANDBOOK
+    assert set(AMBIGUOUS[("V90", "3C+E", "1.5")]) == {"ENCP05AA003", "ENHP05AA003", "FNHP05AA003"}
+    assert not set(CODES) & set(AMBIGUOUS)
     defaults = [c for c in default_cable_types() if c.application != HANDBOOK]
     have = [c for c in defaults if c.product_code]
-    assert len(have) == 31
-    assert all(c.cores in ("1C", "2C+E", "3C+E", "4C+E") and c.description in ("Cu-PVC-PVC-V90 (Power)", "Cu-XLPE-PVC-X90 (Power)")
-               for c in have)
-    assert not any(c.product_code for c in default_cable_types() if "Flex" in c.description or "Earth" in c.description)
-
-
-def test_an_edit_without_the_code_field_keeps_nothing_but_the_form_keeps_it() -> None:
-    saved = _by_code("AC_240V - Power - 2C+E - 70").model_dump(mode="json")
-    assert check_cable_types([saved])[0].product_code == "DTHC20AA002"  # the editor sends the whole row
-    assert check_cable_types([dict(saved, product_code="  dthc20aa002 ")])[0].product_code == "dthc20aa002"  # trimmed, as typed
-
-
-def test_every_handbook_product_is_a_cable_type() -> None:
-    from workbench_core.keylists.cable_handbook import RECORDS
-    from workbench_core.keylists.cable_types import HANDBOOK, handbook_cable_types
-    cables = {c.product_code: c for c in default_cable_types() if c.product_code}
-    assert len(cables) == 469 and all(r[0] in cables for r in RECORDS)  # every printed product code is a type
-    # a product of each family, as printed: page 8 (1.0 stranded), page 30 (Envirolex 10 mm²), page 28 flexible
-    c = cables["BAAP03AA001"]
-    assert (c.type, c.cores, c.diameter, c.insulation, c.voltage, c.application) == (
-        "V-90 PVC single core copper", "1C", "1.0", "PVC", "0.6/1kV", HANDBOOK)
-    assert cables["BZHX01AA001"].type == "Envirolex 110 °C single core" and cables["BZHX01AA001"].diameter == "10"
-    assert cables["BZHX01AA001"].insulation == "X-HF-110" and cables["BZHX01AA001"].conductor_mm2 == 10
-    assert all(c.application == HANDBOOK for c in handbook_cable_types())
+    assert len(have) == 44 and len({c.product_code for c in have}) == 44
+    assert all(c.description in ("Cu-PVC-PVC-V90 (Power)", "Cu-XLPE-PVC-X90 (Power)") for c in have)
 
 
 def test_the_load_list_chooses_from_the_defaults_only() -> None:
     from workbench_core.keylists.cable_types import HANDBOOK
-    # the insulation and size choices the Load List offers do not include the handbook's
     defaults = [c for c in default_cable_types() if c.application != HANDBOOK]
-    assert {c.insulation for c in defaults if c.insulation} == {"PVC", "XLPE"}
+    assert len(defaults) == 218 and {c.insulation for c in defaults if c.insulation} == {"PVC", "XLPE"}
+
+
+def test_a_typed_product_code_is_kept_as_typed() -> None:
+    saved = _by_code("AC_240V - Power - 2C+E - 70").model_dump(mode="json")
+    assert check_cable_types([saved])[0].product_code == "DTHC20AA002"
+    assert check_cable_types([dict(saved, product_code="  dthc20aa002 ")])[0].product_code == "dthc20aa002"

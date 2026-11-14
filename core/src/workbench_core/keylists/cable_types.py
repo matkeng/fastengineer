@@ -42,8 +42,10 @@ class CableType(BaseModel):
     ampacity: dict[str, float] = Field(default_factory=dict)
     #: Where ``ampacity`` comes from (table, page, basis).
     ampacity_source: str = ""
-    #: The overall diameter (mm), printed on the product page.
+    #: The overall diameter (mm), printed on the product page (a flat cable: its width).
     overall_diameter_mm: float | None = None
+    #: A flat cable's height (mm); None for a round cable.
+    overall_minor_mm: float | None = None
     #: The minimum installed bending radius (mm), static; and the minimum bending radius during installation (mm).
     bend_installed_mm: float | None = None
     bend_pulling_mm: float | None = None
@@ -93,7 +95,7 @@ def _ratings(raw: dict) -> dict:
         out["ampacity"] = {k: float(v) for k, v in amps.items() if k in METHODS and isinstance(v, (int, float))
                            and not isinstance(v, bool)}
     out["ampacity_source"] = str(raw.get("ampacity_source") or "")
-    for field in ("overall_diameter_mm", "bend_installed_mm", "bend_pulling_mm"):
+    for field in ("overall_diameter_mm", "overall_minor_mm", "bend_installed_mm", "bend_pulling_mm"):
         try:
             value = raw.get(field)
             out[field] = None if value in (None, "") else float(value)
@@ -191,7 +193,7 @@ _RUNS: list[tuple[int, str, str, str, str, list[tuple[str, str]]]] = [
 _TABLE_FOR = {
     (_V90, "2C+E"): "2C-PVC", (_X90, "2C+E"): "2C-XLPE",
     (_V90, "3C+E"): "3C4C-PVC", (_V90, "4C+E"): "3C4C-PVC", (_X90, "3C+E"): "3C4C-XLPE", (_X90, "4C+E"): "3C4C-XLPE",
-    (_X90, "1C"): "1C-XLPE",
+    (_X90, "1C"): "3x1C-XLPE",  # AC_415V single cores: three cables, three phase
 }
 
 
@@ -213,7 +215,7 @@ def _handbook(description: str, cores: str, diameter: str) -> dict:
     out: dict = {"conductor_mm2": size_mm2}
     if amps:
         out["ampacity"] = amps
-        out["ampacity_source"] = f"Nexans Olex Handbook 2017, page {t['page']} ({t['title']}), copper, in air at 40 °C"
+        out["ampacity_source"] = f"Nexans Olex Handbook 2017, page {t['page']} ({t['title']}), copper, in air"
     return out
 
 
@@ -233,7 +235,7 @@ def default_cable_types() -> list[CableType]:
                                  application=application, type=kind, cores=cores, diameter=diameter, voltage=voltage,
                                  insulation=guess_insulation(description), description=description, sort=first + i,
                                  product_code=_product(description, cores, diameter), **_handbook(description, cores, diameter)))
-    out += handbook_cable_types()
+    out += handbook_cable_types(skip={c.product_code for c in out if c.product_code})
     out = [_dimensions(c) for c in out]
     return sorted(out, key=lambda c: c.sort or 0)
 
@@ -243,8 +245,8 @@ def _dimensions(c: CableType) -> CableType:
     row = DIMENSIONS.get(c.product_code) if c.product_code else None
     if row is None:
         return c
-    od, installed, pulling, basis = row
-    return c.model_copy(update={"overall_diameter_mm": od, "bend_installed_mm": installed,
+    od, minor, installed, pulling, basis = row
+    return c.model_copy(update={"overall_diameter_mm": od, "overall_minor_mm": minor, "bend_installed_mm": installed,
                                 "bend_pulling_mm": pulling, "bend_basis": basis})
 
 
@@ -252,12 +254,14 @@ def _dimensions(c: CableType) -> CableType:
 HANDBOOK = "Handbook"
 
 
-def handbook_cable_types() -> list[CableType]:
-    """Every product in the Nexans Olex Handbook 2017 product pages that the defaults above don't
-    already carry (cable_handbook). Each is named by its family, core count, size and product code;
+def handbook_cable_types(skip: set[str] | frozenset[str] = frozenset()) -> list[CableType]:
+    """Every product in the Nexans Olex Handbook 2017 product pages (cable_handbook), but those whose
+    product code is in `skip` (the ones the defaults above already carry). Each is named by its family, core count, size and product code;
     the family is its type, so these don't match the power cables the defaults are chosen from."""
     out = []
     for i, (code, family, insulation, voltage, cores, size, construction, armoured, flexible, page) in enumerate(RECORDS):
+        if code in skip:
+            continue
         kind = " ".join(x for x in (construction, "armoured" if armoured else "", "flexible" if flexible else "") if x)
         try:
             mm2 = float(size)

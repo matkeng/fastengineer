@@ -1,19 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 Matthew Kelly
 """Current carrying capacity (ampacity) of Nexans Olex low voltage power cables, from the
-Nexans Olex Handbook 2017, "Current Ratings" section (IEC 60287 calculations).
+Nexans Olex Handbook 2017, "Current Ratings" section (pages 61 to 80).
 
-Basis printed in the handbook: air ambient 40 °C; maximum conductor temperature 80 °C for XLPE
-and 75 °C for PVC; direct sunlight 1000 W/m²; 1.0 m/s wind. Derating for other conditions is in
-AS/NZS 3008.1 (not reproduced in the handbook). The buried-direct and underground-duct columns
-are not used: the handbook does not state the ground basis for them.
+What the handbook states about these tables: they are "calculated in accordance with
+International Electrotechnical Commission Publication IEC 60287", they are "simplified tables
+... for commonly used cables", and "in large installations where current ratings are critical,
+attention is drawn to the comprehensive tables given in AS/NZS 3008.1.1:2009". It does not state
+the ambient temperature or the other conditions behind them, and refers to AS/NZS 3008.1 for
+derating. (The 40 °C note in the handbook belongs to its aerial cable tables, not to these.)
 
-Only copper and only the four in-air methods are kept. Values are the handbook's, transcribed
-from each page by reading its word positions and checked against the printed page. The
-"verified" note says how far each table was checked against the page image:
-  image          every value compared with the rendered page
-  partly checked the rows that were compared matched; the rest was checked by count and order only
-  not checked   read by the same method; not yet compared with the page
+Only copper and only the four in-air methods are kept: the buried-direct and underground-duct
+columns are not used, because the handbook does not state the ground conditions for them.
+
+A table's "phase" is the circuit it is for: "single" (two loaded conductors) or "three". Every
+value was read from the page by word position and then checked against the page's text in
+reading order (the two agree for every size of every table): "verified" is "text" for those,
+"image" where each value was also compared with the rendered page.
 """
 
 from __future__ import annotations
@@ -29,7 +32,8 @@ METHODS: dict[str, str] = {
 #: Each table: key -> (title, page, insulation, cores, flexible, verified, {method: {size mm²: amps}}).
 TABLES: dict[str, dict] = {
     "1C-PVC": {
-        "title": "1 core V-90 PVC (solid)", "page": 61, "insulation": "PVC", "cores": "1C",
+        "title": "2 single core V-90 PVC, single phase", "page": 61, "insulation": "PVC", "cores": "1C",
+        "phase": "single",
         "flexible": False, "verified": "image",
         "amps": {
             "unenclosed_space": {"1": 16, "1.5": 21, "2.5": 30, "4": 40, "6": 51, "10": 69, "16": 92, "25": 124, "35": 153, "50": 187, "70": 238, "95": 295, "120": 344, "150": 395, "185": 459, "240": 549, "300": 636, "400": 744, "500": 867, "630": 1014},
@@ -39,7 +43,8 @@ TABLES: dict[str, dict] = {
         },
     },
     "1C-PVC-flex": {
-        "title": "1 core V-90 PVC (flexible)", "page": 62, "insulation": "PVC", "cores": "1C",
+        "title": "2 single core V-90 PVC flexible, single phase", "page": 62, "insulation": "PVC", "cores": "1C",
+        "phase": "single",
         "flexible": True, "verified": "image",
         "amps": {
             "unenclosed_space": {"1": 17, "1.5": 21, "2.5": 29, "4": 38, "6": 49, "10": 69, "16": 91, "25": 121, "35": 150, "50": 189, "70": 238, "95": 287, "120": 341, "150": 393, "185": 450, "240": 541, "300": 624, "400": 752, "500": 876, "630": 1036},
@@ -49,7 +54,8 @@ TABLES: dict[str, dict] = {
         },
     },
     "1C-XLPE": {
-        "title": "1 core XLPE/PVC (solid)", "page": 63, "insulation": "XLPE", "cores": "1C",
+        "title": "2 single core XLPE/PVC, single phase", "page": 63, "insulation": "XLPE", "cores": "1C",
+        "phase": "single",
         "flexible": False, "verified": "image",
         "amps": {
             "unenclosed_space": {"1": 20, "1.5": 26, "2.5": 36, "4": 48, "6": 61, "10": 84, "16": 112, "25": 151, "35": 186, "50": 228, "70": 291, "95": 361, "120": 422, "150": 486, "185": 565, "240": 678, "300": 787, "400": 923, "500": 1078, "630": 1261},
@@ -59,8 +65,9 @@ TABLES: dict[str, dict] = {
         },
     },
     "1C-XLPE-flex": {
-        "title": "1 core XLPE/PVC (flexible)", "page": 64, "insulation": "XLPE", "cores": "1C",
-        "flexible": True, "verified": "not checked",
+        "title": "2 single core XLPE/PVC flexible, single phase", "page": 64, "insulation": "XLPE", "cores": "1C",
+        "phase": "single",
+        "flexible": True, "verified": "text",
         "amps": {
             "unenclosed_space": {"1": 21, "1.5": 26, "2.5": 35, "4": 46, "6": 59, "10": 83, "16": 110, "25": 147, "35": 183, "50": 231, "70": 292, "95": 351, "120": 418, "150": 483, "185": 555, "240": 668, "300": 772, "400": 933, "500": 1090, "630": 1288},
             "spaced_from_surface": {"1": 21, "1.5": 26, "2.5": 34, "4": 46, "6": 58, "10": 81, "16": 106, "25": 141, "35": 174, "50": 218, "70": 274, "95": 328, "120": 389, "150": 448, "185": 512, "240": 613, "300": 705, "400": 843, "500": 975, "630": 1135},
@@ -70,7 +77,8 @@ TABLES: dict[str, dict] = {
     },
     "2C-PVC": {
         "title": "2 core V-90 PVC", "page": 67, "insulation": "PVC", "cores": "2C",
-        "flexible": False, "verified": "partly checked",
+        "phase": "single",
+        "flexible": False, "verified": "text",
         "amps": {
             "unenclosed_space": {"1": 15, "1.5": 19, "2.5": 27, "4": 37, "6": 46, "10": 64, "16": 85, "25": 113, "35": 139, "50": 170, "70": 215, "95": 265, "120": 307, "150": 351, "185": 403, "240": 477, "300": 547, "400": 631, "500": 716},
             "touching": {"1": 14, "1.5": 18, "2.5": 26, "4": 34, "6": 44, "10": 60, "16": 80, "25": 107, "35": 131, "50": 159, "70": 201, "95": 248, "120": 288, "150": 328, "185": 377, "240": 446, "300": 511, "400": 589, "500": 668},
@@ -79,7 +87,8 @@ TABLES: dict[str, dict] = {
     },
     "2C-XLPE": {
         "title": "2 core XLPE/PVC", "page": 69, "insulation": "XLPE", "cores": "2C",
-        "flexible": False, "verified": "not checked",
+        "phase": "single",
+        "flexible": False, "verified": "text",
         "amps": {
             "unenclosed_space": {"1": 18, "1.5": 24, "2.5": 34, "4": 45, "6": 57, "10": 78, "16": 104, "25": 140, "35": 173, "50": 211, "70": 268, "95": 331, "120": 385, "150": 441, "185": 509, "240": 604, "300": 694, "400": 804, "500": 915},
             "touching": {"1": 17, "1.5": 22, "2.5": 31, "4": 42, "6": 53, "10": 73, "16": 97, "25": 131, "35": 162, "50": 197, "70": 250, "95": 309, "120": 359, "150": 411, "185": 473, "240": 562, "300": 645, "400": 745, "500": 848},
@@ -88,7 +97,8 @@ TABLES: dict[str, dict] = {
     },
     "3C4C-PVC": {
         "title": "3 and 4 core V-90 PVC", "page": 78, "insulation": "PVC", "cores": "3C/4C",
-        "flexible": False, "verified": "partly checked",
+        "phase": "three",
+        "flexible": False, "verified": "text",
         "amps": {
             "unenclosed_space": {"1": 13, "1.5": 16, "2.5": 23, "4": 31, "6": 40, "10": 54, "16": 72, "25": 97, "35": 120, "50": 146, "70": 185, "95": 228, "120": 265, "150": 303, "185": 348, "240": 412, "300": 472, "400": 544, "500": 616},
             "touching": {"1": 12, "1.5": 15, "2.5": 22, "4": 29, "6": 37, "10": 51, "16": 68, "25": 91, "35": 112, "50": 137, "70": 172, "95": 213, "120": 247, "150": 282, "185": 324, "240": 383, "300": 438, "400": 504, "500": 571},
@@ -97,11 +107,34 @@ TABLES: dict[str, dict] = {
     },
     "3C4C-XLPE": {
         "title": "3 and 4 core XLPE/PVC", "page": 80, "insulation": "XLPE", "cores": "3C/4C",
-        "flexible": False, "verified": "partly checked",
+        "phase": "three",
+        "flexible": False, "verified": "text",
         "amps": {
             "unenclosed_space": {"1": 16, "1.5": 20, "2.5": 28, "4": 38, "6": 48, "10": 66, "16": 88, "25": 119, "35": 147, "50": 180, "70": 229, "95": 283, "120": 330, "150": 377, "185": 436, "240": 517, "300": 594, "400": 685, "500": 779},
             "touching": {"1": 14, "1.5": 19, "2.5": 26, "4": 35, "6": 45, "10": 62, "16": 83, "25": 111, "35": 137, "50": 168, "70": 213, "95": 263, "120": 306, "150": 350, "185": 404, "240": 479, "300": 549, "400": 632, "500": 718},
             "enclosed_conduit_in_air": {"1": 13, "1.5": 16, "2.5": 24, "4": 30, "6": 38, "10": 53, "16": 68, "25": 91, "35": 114, "50": 136, "70": 173, "95": 209, "120": 246, "150": 277, "185": 322, "240": 386},
+        },
+    },
+    "3x1C-PVC": {
+        "title": "3 single core V-90 PVC, three phase", "page": 72, "insulation": "PVC", "cores": "1C",
+        "phase": "three",
+        "flexible": False, "verified": "text",
+        "amps": {
+            "unenclosed_space": {"1": 16, "1.5": 20, "2.5": 29, "4": 38, "6": 49, "10": 67, "16": 89, "25": 120, "35": 148, "50": 181, "70": 230, "95": 287, "120": 335, "150": 385, "185": 447, "240": 535, "300": 620, "400": 726, "500": 846, "630": 990},
+            "spaced_from_surface": {"1": 14, "1.5": 17, "2.5": 25, "4": 33, "6": 42, "10": 58, "16": 77, "25": 103, "35": 127, "50": 156, "70": 197, "95": 246, "120": 287, "150": 330, "185": 383, "240": 457, "300": 529, "400": 615, "500": 710, "630": 817},
+            "touching": {"1": 13, "1.5": 16, "2.5": 23, "4": 31, "6": 40, "10": 54, "16": 72, "25": 97, "35": 119, "50": 146, "70": 184, "95": 230, "120": 267, "150": 308, "185": 357, "240": 426, "300": 492, "400": 573, "500": 661, "630": 760},
+            "enclosed_conduit_in_air": {"1": 12, "1.5": 15, "2.5": 21, "4": 28, "6": 35, "10": 47, "16": 62, "25": 81, "35": 100, "50": 119, "70": 152, "95": 183, "120": 217, "150": 244, "185": 284, "240": 331, "300": 388, "400": 442, "500": 523, "630": 588},
+        },
+    },
+    "3x1C-XLPE": {
+        "title": "3 single core XLPE/PVC, three phase", "page": 74, "insulation": "XLPE", "cores": "1C",
+        "phase": "three",
+        "flexible": False, "verified": "text",
+        "amps": {
+            "unenclosed_space": {"1": 19, "1.5": 25, "2.5": 35, "4": 46, "6": 59, "10": 81, "16": 108, "25": 146, "35": 180, "50": 221, "70": 282, "95": 350, "120": 410, "150": 472, "185": 550, "240": 660, "300": 766, "400": 899, "500": 1051, "630": 1230},
+            "spaced_from_surface": {"1": 16, "1.5": 21, "2.5": 30, "4": 40, "6": 50, "10": 69, "16": 92, "25": 125, "35": 154, "50": 188, "70": 240, "95": 298, "120": 349, "150": 403, "185": 468, "240": 560, "300": 648, "400": 756, "500": 874, "630": 1010},
+            "touching": {"1": 16, "1.5": 20, "2.5": 28, "4": 37, "6": 47, "10": 65, "16": 86, "25": 117, "35": 144, "50": 176, "70": 224, "95": 278, "120": 325, "150": 375, "185": 435, "240": 521, "300": 602, "400": 702, "500": 812, "630": 938},
+            "enclosed_conduit_in_air": {"1": 15, "1.5": 18, "2.5": 25, "4": 33, "6": 42, "10": 56, "16": 72, "25": 97, "35": 120, "50": 143, "70": 183, "95": 220, "120": 261, "150": 295, "185": 335, "240": 399, "300": 469, "400": 534, "500": 633, "630": 714},
         },
     },
 }
