@@ -123,7 +123,9 @@ record, when, and what changed**.
    database is not safe on a share. Only the engine opens it; nobody else needs
    file access to that folder.
 4. Allow inbound TCP 8765 in Windows Firewall, for your office network only.
-5. Back up the `--data-dir` folder, and any project folders kept elsewhere.
+5. Back up each project from the app (**Projects** → **Back up…**, an administrator's action): one .zip per
+   project, taken safely while people are working. Or back up the `--data-dir` folder, and any project
+   folders kept elsewhere, with the engine stopped.
 
 ### On each PC
 

@@ -316,6 +316,42 @@ class Registry:
                 self._copy_standards(source.store, store, source.meta["name"])
             return self._view(entry)
 
+    def free_name(self, name: str) -> str:
+        """``name``, or ``name 2``, ``name 3``… when a project already has it."""
+        with self._lock:
+            taken = {e.meta["name"].casefold() for e in self._projects.values()}
+            out, n = name, 2
+            while out.casefold() in taken:
+                out, n = f"{name} {n}", n + 1
+            return out
+
+    def new_folder(self, name: str) -> Path:
+        """A new, empty folder for a project of that name under ``<data dir>/projects``."""
+        with self._lock:
+            base = self.root / "projects" / _safe_folder_name(name)
+            folder, n = base, 2
+            while folder.exists():
+                folder, n = base.with_name(f"{base.name} ({n})"), n + 1
+            folder.mkdir(parents=True)
+            return folder
+
+    def adopt(self, folder: Path, name: str, note: str) -> dict:
+        """Serve the project database just put in ``folder`` (see ``new_folder``) as a new
+        project: a new id, the given name, not archived. Its lists, members and history are
+        the ones in the database."""
+        with self._lock:
+            store = Store(folder / "workbench.db")
+            try:
+                old = store.project_meta() or {}
+                meta = {"members": [], "created_at": _now(), "created_by": identity.current().user, **old,
+                        "id": uuid.uuid4().hex, "name": self._check_name(name), "archived": False}
+                store.save_project_meta(meta, note=note)
+            except BaseException:
+                store._db.close()
+                raise
+            entry = self._projects[meta["id"]] = Entry(store, folder, False, meta)
+            return self._view(entry)
+
     def attach(self, path: str) -> dict:
         """Serve a project folder that already exists (moved here, restored from a backup,
         or copied from another PC). It keeps its own name, members and history."""

@@ -7,6 +7,23 @@ from __future__ import annotations
 from fastapi import HTTPException, Request
 
 
+async def save_upload(request: Request, limit: int, target) -> int:
+    """Write the request body to the file ``target`` as it arrives (never all in memory),
+    refused with 413 as ``read_upload`` does. Returns its size."""
+    too_large = HTTPException(413, f"The file is larger than {limit // (1024 * 1024)} MB.")
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise too_large
+    size = 0
+    with open(target, "wb") as out:
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > limit:
+                raise too_large
+            out.write(chunk)
+    return size
+
+
 async def read_upload(request: Request, limit: int) -> bytes:
     """The request body, refused with 413 as soon as it is known to be over `limit` bytes:
     from its Content-Length when the client sends one, else while it arrives."""

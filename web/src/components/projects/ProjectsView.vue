@@ -69,6 +69,27 @@ async function attach() {
 	saved.value = `Added ${p.name}`;
 }
 
+async function backup() {
+	const p = selected.value;
+	if (!p) return;
+	saved.value = null;
+	const where = await pr.backup(p);
+	if (where) saved.value = `Backed up to ${where}`;
+}
+
+const backupFile = ref<HTMLInputElement | null>(null);
+async function restore(event: Event) {
+	const input = event.target as HTMLInputElement;
+	const file = input.files?.[0];
+	input.value = ''; // the same file can be chosen again
+	if (!file) return;
+	pick(null);
+	const p = await pr.restore(file);
+	if (!p) return;
+	pick(pr.all.find((x) => x.id === p.id) ?? null);
+	saved.value = `Restored as ${p.name}`;
+}
+
 async function detach() {
 	const p = selected.value;
 	if (!p) return;
@@ -134,6 +155,8 @@ watch(() => pr.all, () => { if (selectedId.value && !selected.value) pick(null);
 					<button type="submit" :disabled="!editDirty || pr.busy">Save</button>
 					<button v-if="!selected.archived" type="button" class="secondary" :disabled="pr.busy" @click="archive(true)">Archive</button>
 					<button v-else type="button" class="secondary" :disabled="pr.busy" @click="archive(false)">Restore</button>
+					<button type="button" class="secondary" :disabled="pr.busy"
+						title="Save the whole project (its data, drawings and attached PDFs) as one .zip file" @click="backup">{{ pr.busy ? 'Working…' : 'Back up…' }}</button>
 					<button v-if="selected.external && selected.id !== pr.currentId" type="button" class="secondary" :disabled="pr.busy"
 						title="Stop serving this project here. Its folder is left as it is." @click="detach">Remove from list</button>
 					<button v-if="!selected.archived && selected.id !== pr.currentId" type="button" class="secondary"
@@ -200,6 +223,19 @@ watch(() => pr.all, () => { if (selectedId.value && !selected.value) pick(null);
 				</label>
 				<div class="row"><button type="submit" :disabled="!existing.trim() || pr.busy">Add project</button></div>
 			</form>
+		</section>
+
+		<section class="card">
+			<h2>Restore from a backup</h2>
+			<p class="hint">
+				Choose a backup file made with <strong>Back up…</strong>. It becomes a <strong>new</strong> project, named after the one it was
+				made from with the date it is restored. No existing project is changed, so you can open both and compare.
+			</p>
+			<div class="row">
+				<input ref="backupFile" type="file" accept=".zip,application/zip" hidden @change="restore" />
+				<button type="button" class="secondary" :disabled="pr.busy" @click="backupFile?.click()">{{ pr.busy ? 'Working…' : 'Choose a backup file…' }}</button>
+				<span v-if="!selected && saved" class="saved">✓ {{ saved }}</span>
+			</div>
 		</section>
 
 		<section v-if="pr.log.length" class="card">

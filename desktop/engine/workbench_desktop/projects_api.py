@@ -4,10 +4,19 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
-from pydantic import BaseModel
+import os
+import shutil
+import tempfile
+from pathlib import Path
 
-from . import identity, projects
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from starlette.background import BackgroundTask
+
+from . import backup, identity, projects
+from .uploads import save_upload
 from .audit_api import AuditEntry
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -117,6 +126,64 @@ def detach_project(project_id: str) -> dict[str, str]:
     """Take a project kept outside the data folder off the list. Its folder is not touched."""
     _admin().detach(project_id)
     return {"status": "removed from the list"}
+
+
+class BackupBody(BaseModel):
+    path: str | None = None  # desktop: chosen in a Save As dialog
+
+
+def _temp_zip() -> Path:
+    fd, name = tempfile.mkstemp(suffix=".zip", prefix="project-backup-")
+    os.close(fd)
+    return Path(name)
+
+
+@router.post("/{project_id}/backup")
+def backup_project(project_id: str, body: BackupBody, request: Request):
+    """The whole project as one .zip: its database, drawings and attached PDFs. On the user's
+    own PC the engine writes it to ``path``; otherwise (a shared server) it is sent back."""
+    # JSON only: forces a CORS preflight, so a cross-site page can't trigger a file write.
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        raise HTTPException(415, "Expected application/json")
+    reg = _admin()
+    name = backup.backup_name(reg.get(project_id)["name"])
+    if body.path is not None and identity.server_mode:
+        raise HTTPException(403, "A shared server does not save files on its own disk. "
+                                 "Download the backup instead (leave out the path).")
+    tmp = _temp_zip()
+    try:
+        backup.write_backup(reg, project_id, tmp)
+        if body.path is None:
+            return FileResponse(tmp, media_type="application/zip", filename=name, background=BackgroundTask(tmp.unlink, missing_ok=True))
+        target = Path(body.path)
+        if target.suffix.lower() != ".zip":
+            target = target.with_suffix(".zip")
+        try:
+            shutil.move(str(tmp), target)
+        except OSError as exc:
+            raise HTTPException(409, f"Could not save {target.name}: {exc.strerror or exc}.") from exc
+        return {"path": str(target)}
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+#: The largest backup file a restore accepts.
+MAX_BACKUP = 8 * 1024 ** 3
+
+
+@router.post("/restore", response_model=ProjectDetail)
+async def restore_project(request: Request, name: str | None = Query(None)) -> ProjectDetail:
+    """Restore a backup (the request body) as a NEW project. No existing project is changed."""
+    reg = _admin()
+    tmp = _temp_zip()
+    try:
+        if await save_upload(request, MAX_BACKUP, tmp) == 0:
+            raise HTTPException(400, "The file is empty.")
+        # in a worker thread (it unpacks files); the request's user goes with it
+        return ProjectDetail(**await run_in_threadpool(backup.restore_backup, reg, tmp, name))
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 class ProjectUpdate(BaseModel):

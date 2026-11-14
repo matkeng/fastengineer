@@ -20,6 +20,15 @@ The **Project** box in the title bar lists the projects you can open. Each proje
 
 If the box is missing, there is only one project. If you see "No project", ask an administrator to add you to one.
 
+## Backing up and restoring a project
+
+On the **Projects** screen (administrators; on your own PC, you):
+
+- **Back up…** on a project saves all of it as one .zip file: its data and change log, its drawings and page images, and the PDFs attached to load types. It is safe to do while people are working.
+- **Restore from a backup** takes such a file and makes a **new** project from it, named after the original with the date, for example *Plant A (restored 2026-11-14)*. No existing project is changed, so the original and the restored copy can both be opened and compared. Archive the one you no longer need.
+
+A backup made by a newer version of the app is refused until the app is updated.
+
 ## Saving
 
 There are two kinds of screen:

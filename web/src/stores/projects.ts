@@ -3,7 +3,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import type { AuditEntry } from '../lib/auditTypes';
-import { ApiError, apiDelete, apiGet, apiPostJson, apiPut, setProject } from '../lib/engine';
+import { ApiError, apiDelete, apiGet, apiPostBytes, apiPostJson, apiPostJsonForBlob, apiPut, exportToPath, runningInTauri, setProject } from '../lib/engine';
 
 export interface Project { id: string; name: string; archived: boolean }
 export interface ProjectDetail extends Project {
@@ -117,12 +117,38 @@ export const useProjects = defineStore('projects', () => {
 		return ok !== undefined;
 	}
 
+	/** Save the whole project (data, drawings, attached PDFs) as one .zip. Returns where it went, or undefined. */
+	async function backup(p: Project): Promise<string | undefined> {
+		const url = `/api/projects/${p.id}/backup`;
+		const stamp = new Date().toISOString().slice(0, 10);
+		const name = `${p.name.replace(/[<>:"/\\|?*]/g, '_')} backup ${stamp}.zip`;
+		return run(async () => {
+			if (runningInTauri) {
+				const { save: saveDialog } = await import('@tauri-apps/plugin-dialog');
+				const path = await saveDialog({ defaultPath: name, filters: [{ name: 'Project backup', extensions: ['zip'] }] });
+				if (!path) return undefined;
+				return (await exportToPath(url, {}, path)).path;
+			}
+			const href = URL.createObjectURL(await apiPostJsonForBlob(url, {}));
+			Object.assign(document.createElement('a'), { href, download: name }).click();
+			setTimeout(() => URL.revokeObjectURL(href), 10_000);
+			return name;
+		});
+	}
+
+	/** Restore a backup file as a new project. No existing project is changed. */
+	async function restore(file: File) {
+		const p = await run(() => apiPostBytes<ProjectDetail>('/api/projects/restore', file));
+		if (p) await refresh();
+		return p;
+	}
+
 	async function forget(path: string) {
 		if (await run(() => apiPostJson('/api/projects/forget', { path }))) await refresh();
 	}
 
 	return {
 		mine, currentId, current, isAdmin, enforced, loaded, all, users, defaultFolder, missing, log, busy, error, fieldErrors,
-		load, switchTo, loadAll, create, update, attach, detach, forget,
+		load, switchTo, loadAll, create, update, attach, detach, forget, backup, restore,
 	};
 });
