@@ -16,6 +16,7 @@ import { LOAD_FIELD_LABELS } from '../../lib/melTypes';
 import { useKeyLists } from '../../stores/keylists';
 import { useUi } from '../../stores/ui';
 import AppModal from '../common/AppModal.vue';
+import UndoButtons from '../common/UndoButtons.vue';
 
 // The Load List: the MEL and EEL imports' rows, read-only, with a plant area and a load
 // type allocated to each row. An allocation is saved as soon as it is chosen.
@@ -246,6 +247,14 @@ function merge(saved: LoadListRow[]) {
 	version.value++;
 }
 
+// Undo and redo of the last changes made here (each is saved at once): the rows go back to what they had.
+async function stepAlloc(redo: boolean) {
+	const rows = toRaw(view.value!.rows);
+	const r = await kl.stepAllocation(redo, (recipeId, key) => rows.find((x) => x.recipe_id === recipeId && x.key === key));
+	if (r.saved?.length) merge(r.saved);
+	if (r.message) kl.message = r.message;
+}
+
 async function onChange(e: Event) {
 	const el = e.target as HTMLSelectElement | HTMLInputElement;
 	let change: Allocation;
@@ -427,6 +436,7 @@ onBeforeUnmount(() => table?.api.destroy());
 			</span>
 			<span class="spacer" />
 			<span v-if="kl.message" class="saved">✓ {{ kl.message }}</span>
+			<UndoButtons :can-undo="kl.canUndoAllocation" :can-redo="kl.canRedoAllocation" :disabled="kl.busy" @undo="stepAlloc(false)" @redo="stepAlloc(true)" />
 			<button type="button" class="secondary" title="Rename, add, delete or reorder the fields imports map onto and this list shows" @click="editingFields = true">Edit fields…</button>
 			<ListWorkbook list-id="load-list" name="Load List" />
 			<LoadListReset :project="projects.current?.name ?? 'this project'" />

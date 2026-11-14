@@ -13,9 +13,12 @@ import { FIXED_COLUMNS, filledRows, numberColumn, runsheetProblems, type Runshee
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
+import { useUndo } from '../../lib/history';
 import ListWorkbook from './ListWorkbook.vue';
 
 const kl = useKeyLists();
+// Undo for the grid: back to the rows as they were before each edit, until they are saved or loaded again.
+const hist = useUndo({ get: () => kl.runsheetDraft, resetOn: () => kl.runsheetView });
 const view = computed(() => kl.runsheetView!);
 const rows = computed(() => kl.runsheetDraft ?? []);
 // Number columns: what is saved (35 at least), what the rows being edited use, and any added here.
@@ -104,7 +107,7 @@ function removeRows(idx: number[]) {
 			<strong>MEL</strong>. There are 35 number columns (#1 to #35) to start with: <strong>+ 5 # columns</strong> adds more, and so
 			does pasting rows that are wider. Number columns that no row uses go again when the list is saved.
 		</p>
-		<EditGrid :columns="columns" :cells="cells" :cell-class="cellClass" grow-columns @set="setCells" @insert="insertRows" @remove="removeRows"
+		<EditGrid :columns="columns" :cells="cells" :cell-class="cellClass" grow-columns :history="hist" @set="setCells" @insert="insertRows" @remove="removeRows"
 			@focus="(r, c) => (at = { r, c })" />
 		<p v-if="here" class="warn small runsheet-here">Row {{ at.r + 1 }}, {{ cols[at.c]?.heading }}: {{ here }}</p>
 		<ul v-else-if="problemCount" class="warn-list">

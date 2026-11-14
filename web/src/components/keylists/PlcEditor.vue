@@ -10,9 +10,13 @@ import { CARD_KINDS, type CardKind, type CardType, asTyped, cellText, newId } fr
 import type { PlcCard as Card, PlcRack as Rack, PlcSystem as Panel } from '../../lib/keyListTypes';
 import { useKeyLists } from '../../stores/keylists';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
+import { useUndo } from '../../lib/history';
 import AppModal from '../common/AppModal.vue';
 
 const g = useKeyLists();
+// Undo for the grids: the IO points of the PLC List, and the card and rack types (one history for both type grids).
+const pointsHist = useUndo({ get: () => g.plcDraft, resetOn: () => g.plcSaved });
+const typesHist = useUndo({ get: () => g.catDraft, resetOn: () => g.catSaved });
 const view = ref<'racks' | 'types'>('racks');
 const panelId = ref<string | null>(null);
 const sel = ref<{ rack: string; slot: number } | null>(null);
@@ -429,7 +433,7 @@ function insertRackTypes(at: number, n: number) {
 						<div v-if="selCard.points.length" class="io-points">
 							<strong>IO points</strong> <span class="hint small">One per channel of the card type. Tags must be unique in the project.</span>
 							<EditGrid :columns="pointCols" :cells="pointCells" :height="Math.min(36 + 26 * selCard.points.length, 320)"
-								:can-edit-rows="false" :cell-class="pointClass" @set="setPoint" />
+								:can-edit-rows="false" :cell-class="pointClass" :history="pointsHist" @set="setPoint" />
 						</div>
 					</div>
 				</div>
@@ -479,9 +483,9 @@ function insertRackTypes(at: number, n: number) {
 				channels against IO points. Types used in a saved rack can't be removed.
 			</p>
 			<h4>Card types</h4>
-			<EditGrid :columns="cardCols" :cells="cardCells" :height="360" @set="setCard" @insert="insertCardTypes" @remove="removeTypes('card_types', $event)" />
+			<EditGrid :columns="cardCols" :cells="cardCells" :height="360" :history="typesHist" @set="setCard" @insert="insertCardTypes" @remove="removeTypes('card_types', $event)" />
 			<h4>Rack types</h4>
-			<EditGrid :columns="rackCols" :cells="rackCells" :height="160" @set="setRack" @insert="insertRackTypes" @remove="removeTypes('rack_types', $event)" />
+			<EditGrid :columns="rackCols" :cells="rackCells" :height="160" :history="typesHist" @set="setRack" @insert="insertRackTypes" @remove="removeTypes('rack_types', $event)" />
 		</div>
 
 		<AppModal :open="!!importing" title="Import the PLC List" @close="importing = null">

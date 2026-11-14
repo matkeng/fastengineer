@@ -10,6 +10,7 @@ import type { CableType, CableTypeForm } from '../../lib/keyListTypes';
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
+import ListUndoButtons from './ListUndoButtons.vue';
 import AppModal from '../common/AppModal.vue';
 
 // Cable Types: a grid of every row (a project starts with a default set); a row is added or
@@ -157,6 +158,7 @@ onBeforeUnmount(() => table?.api.destroy());
 			<span class="spacer" />
 			<span v-if="kl.message" class="saved">✓ {{ kl.message }}</span>
 			<button type="button" class="secondary" :disabled="kl.busy" title="Add back any of the default cable types that are not in the list; nothing else changes" @click="addDefaults">Add missing defaults</button>
+			<ListUndoButtons list="cable-types" />
 			<HistoryButton entity="cable_types" record-id="cable-types" label="Cable Types" />
 			<ListWorkbook list-id="cable-types" name="Cable Types" />
 			<button type="button" @click="open(null)">Add cable type</button>

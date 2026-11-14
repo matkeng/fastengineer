@@ -10,6 +10,7 @@ import { type CodeListId, type CodeRow, type Discipline, codeRowProblems } from 
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
+import ListUndoButtons from './ListUndoButtons.vue';
 import AppModal from '../common/AppModal.vue';
 
 // Equipment Codes and Instrument Codes: a grid of every row; a row is added or edited in a
@@ -142,6 +143,7 @@ onBeforeUnmount(() => table?.api.destroy());
 			<h2 class="key-title">{{ cfg.title }}</h2>
 			<span class="hint small">{{ items.length }} {{ cfg.noun }}(s). Click a row to edit or delete it.</span>
 			<span class="spacer" />
+			<ListUndoButtons :list="listId" />
 			<HistoryButton :entity="cfg.entity" :record-id="listId" :label="cfg.title" />
 			<ListWorkbook :list-id="listId" :name="cfg.title" />
 			<button type="button" @click="open(null)">Add {{ cfg.noun }}</button>

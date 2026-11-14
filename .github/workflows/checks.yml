@@ -49,11 +49,12 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Type-check and build
+      - name: Type-check, build and unit tests
         working-directory: web
         run: |
           npm ci
           npm run build
+          npm test
 
       - name: Help pages
         run: node scripts/check-help.cjs

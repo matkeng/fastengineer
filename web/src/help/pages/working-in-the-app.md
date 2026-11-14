@@ -65,6 +65,22 @@ Template rows, the Instrument Runsheet and PLC card types are edited in a grid t
 - <kbd>Ctrl</kbd>+<kbd>C</kbd> and <kbd>Ctrl</kbd>+<kbd>V</kbd> copy and paste, including blocks of cells from Excel.
 - <kbd>Delete</kbd> clears the selected cells.
 - **+ Row**, **Insert above** and **Delete rows** are above the grid.
+- <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes and <kbd>Ctrl</kbd>+<kbd>Y</kbd> redoes; **↶ Undo** and **↷ Redo** above the grid do the same.
+
+## Undo and redo
+
+Undo goes back up to 100 changes, and Redo forward again. It works in two ways, depending on how the list saves.
+
+**In a spreadsheet-style grid**, nothing is saved until you press **Save**, so undo simply puts the grid back as it was before each edit. A paste, however many cells and rows it fills, is one step. The history starts again when you save, discard or reload.
+
+**In a list that saves each change at once** (Motor Data, Drive Data, Starter Coordination, Load Factors, Instrument Types, Cable Types, Load Types, the code lists, the Electrical Equipment List, the Drawing and Document Lists, and the Load List), **↶ Undo** in the title row saves the list again as it was before your last change. That save is recorded in the change log like any other. The history lasts while the app is open.
+
+Two things to know:
+
+- If the list has changed since your last change (a workbook import, a reset, or a colleague's edit), undo does nothing and says so, so it never throws away someone else's work.
+- On the Load List, undoing a plant area, load type or supply that the app had chosen automatically puts the same value back, but it is then kept as your choice: it no longer follows the import.
+
+Undo does not reach back before the app was opened. For that, see the [change log](help:change-log), or restore a [backup](help:working-in-the-app#backing-up-and-restoring-a-project).
 
 ## Trees
 

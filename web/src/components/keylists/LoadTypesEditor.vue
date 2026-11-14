@@ -14,8 +14,10 @@ import {
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
+import ListUndoButtons from './ListUndoButtons.vue';
 import AppModal from '../common/AppModal.vue';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
+import { useUndo } from '../../lib/history';
 import TagHelp from './TagHelp.vue';
 import TypeRowsWorkbook from './TypeRowsWorkbook.vue';
 import ComponentTablesEditor from './ComponentTablesEditor.vue';
@@ -118,6 +120,8 @@ function build() {
 
 // -- the form ---------------------------------------------------------------------------
 const editing = ref<{ isNew: boolean; form: LoadTypeForm; pdf: AttachedFile | null } | null>(null);
+// Undo for the rows grid of the load type being edited; it starts again when the form is opened.
+const hist = useUndo({ get: () => editing.value?.form.rows, resetOn: () => editing.value });
 // The dialog's tab: 'details' or the key of a deliverable list.
 const tab = ref('details');
 const lists = computed(() => kl.templateLists?.lists ?? []);
@@ -347,6 +351,7 @@ onBeforeUnmount(() => {
 			<span class="hint small" title="Load types can share a code when their From–To ranges (same unit) don't overlap or touch. A load gets the type of its code whose unit is its Load units (HP counts as kW) and whose range includes its rating.">
 				{{ items.length }} load type(s). Click a row to edit or delete it. A load is matched on <strong>code, rating unit and From–To range</strong>.</span>
 			<span class="spacer" />
+			<ListUndoButtons list="load-types" />
 			<HistoryButton entity="load_types" record-id="load-types" label="Load Types" />
 			<ListWorkbook list-id="load-types" name="Load Types" />
 			<button type="button" @click="open(null)">Add load type</button>
@@ -377,7 +382,7 @@ onBeforeUnmount(() => {
 					Follow a link with <code>.</code> (<code>&lt;&lt;LoadType.Name&gt;&gt;</code>), change it with <code>|</code> (<code>&lt;&lt;Tag|upper&gt;&gt;</code>).
 					<TagHelp :tags="kl.templateLists?.tags ?? []" :paths="kl.templateLists?.paths ?? []" :modifiers="kl.templateLists?.modifiers ?? []" />
 				</p>
-				<EditGrid :columns="gridCols" :cells="gridCells" :tag-suggestions="tagNames" :modifier-suggestions="modifierNames" :cell-class="tagClass"
+				<EditGrid :columns="gridCols" :cells="gridCells" :history="hist" :tag-suggestions="tagNames" :modifier-suggestions="modifierNames" :cell-class="tagClass"
 					:height="Math.min(360, 96 + 26 * Math.max(4, listRows.length))" @set="setCells" @insert="insertRows" @remove="removeRows" />
 				<p v-if="!listRows.length" class="hint small">No rows yet: loads of this type add nothing to the {{ list.name }}. Use “+ Row”.</p>
 				<p v-for="(msg, k) in kl.fieldErrors" v-show="String(k).startsWith(`${editing.form.id}.rows`)" :key="k" class="warn small">{{ msg }}</p>

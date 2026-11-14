@@ -15,6 +15,7 @@ import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
 import { useProjects } from '../../stores/projects';
 import HistoryButton from '../audit/HistoryButton.vue';
+import ListUndoButtons from './ListUndoButtons.vue';
 import AppModal from '../common/AppModal.vue';
 import ListWorkbook from './ListWorkbook.vue';
 
@@ -184,6 +185,7 @@ onBeforeUnmount(() => table?.api.destroy());
 			</span>
 			<span class="spacer" />
 			<span v-if="kl.message && !editing" class="saved" :title="kl.message">✓ {{ kl.message }}</span>
+			<ListUndoButtons :list="kind" />
 			<HistoryButton :entity="entity" :record-id="kind" :label="name" />
 			<ListWorkbook :list-id="kind" :name="name" />
 			<button type="button" :disabled="kl.busy" @click="open(null)">Add {{ item }}</button>

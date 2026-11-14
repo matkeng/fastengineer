@@ -6,10 +6,13 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { type Scalar, asTyped, cellText, isTag } from '../../lib/genTypes';
 import { useGenerators } from '../../stores/generators';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
+import { useUndo } from '../../lib/history';
 
 const g = useGenerators();
 const grid = ref<InstanceType<typeof EditGrid> | null>(null);
 const gen = computed(() => g.draft!.generator);
+// Undo for the grid: back to the runsheet as it was before each edit, until it is saved or loaded again.
+const hist = useUndo({ get: () => g.draft?.generator.runsheet, resetOn: () => g.saved });
 const cfg = computed(() => gen.value.config);
 const cols = computed(() => gen.value.runsheet.columns);
 const rows = computed(() => gen.value.runsheet.rows);
@@ -118,6 +121,7 @@ watch(() => g.jumpToRow, async (id) => {
 			:cells="cells"
 			:row-labels="rowLabels"
 			:cell-class="keyClass"
+			:history="hist"
 			@set="onSet"
 			@insert="onInsert"
 			@remove="onRemove"

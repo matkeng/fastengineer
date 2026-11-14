@@ -9,9 +9,12 @@ import {
 } from '../../lib/genTypes';
 import { useGenerators } from '../../stores/generators';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
+import { useUndo } from '../../lib/history';
 
 const g = useGenerators();
 const gen = computed(() => g.draft!.generator);
+// Undo for the grid: back to the templates as they were before each edit, until they are saved or loaded again.
+const hist = useUndo({ get: () => g.draft?.generator.templates, resetOn: () => g.saved });
 const filter = ref('');
 const lower = (s: string | null | undefined) => (s ?? '').trim().toLowerCase();
 
@@ -230,6 +233,7 @@ const previewCols = computed(() => {
 				:cells="cells"
 				:row-labels="rowLabels"
 				:cell-class="kindClass"
+				:history="hist"
 				:tag-suggestions="tagSuggestions"
 				:height="Math.min(320, 70 + 26 * Math.max(3, current.rows.length))"
 				@set="onSet"

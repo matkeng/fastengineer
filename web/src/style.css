@@ -1354,3 +1354,7 @@ main.fill > .help { flex: 1; min-height: 0; display: grid; grid-template-columns
 .key-loading .load-warn input { width: 70px; flex: none; }
 .load-left-out { margin-top: 12px; }
 .load-left-out summary { cursor: pointer; }
+
+/* Undo and Redo */
+.undo-buttons { display: inline-flex; gap: 4px; }
+.undo-buttons button { white-space: nowrap; }

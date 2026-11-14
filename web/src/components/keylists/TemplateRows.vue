@@ -8,6 +8,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { type TemplateRows, modifierText } from '../../lib/keyListTypes';
 import { useKeyLists } from '../../stores/keylists';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
+import { useUndo } from '../../lib/history';
 import TagHelp from './TagHelp.vue';
 import TypeRowsWorkbook from './TypeRowsWorkbook.vue';
 
@@ -16,6 +17,8 @@ import TypeRowsWorkbook from './TypeRowsWorkbook.vue';
 const props = defineProps<{ rows: TemplateRows; errors?: string[]; tags?: { tag: string; meaning: string }[]; paths?: { tag: string; meaning: string }[];
 	name?: string; kind?: 'load' | 'equipment' }>();
 const kl = useKeyLists();
+// Undo for the grid, across the lists' rows; it starts again when another record's rows are shown.
+const hist = useUndo({ get: () => props.rows, resetOn: () => props.rows });
 onMounted(() => kl.loadTemplateLists());
 const lists = computed(() => kl.templateLists?.lists ?? []);
 const tagList = computed(() => props.tags ?? kl.templateLists?.tags ?? []);
@@ -75,7 +78,7 @@ function removeRows(idx: number[]) {
 				and <code>|</code> for a modifier (<code>&lt;&lt;Tag|upper&gt;&gt;</code>).
 				<TagHelp :tags="tagList" :paths="pathList" :modifiers="modifiers" />
 			</p>
-			<EditGrid :columns="gridCols" :cells="gridCells" :tag-suggestions="tagNames" :modifier-suggestions="modifierNames" :cell-class="tagClass"
+			<EditGrid :columns="gridCols" :cells="gridCells" :history="hist" :tag-suggestions="tagNames" :modifier-suggestions="modifierNames" :cell-class="tagClass"
 				:height="Math.min(360, 96 + 26 * Math.max(4, listRows.length))" @set="setCells" @insert="insertRows" @remove="removeRows" />
 			<p v-if="!listRows.length" class="hint small">No rows yet for the {{ list.name }}. Use “+ Row”.</p>
 			<p v-for="m in errors ?? []" :key="m" class="warn small">{{ m }}</p>

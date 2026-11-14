@@ -10,8 +10,11 @@ import { apiGet } from '../../lib/engine';
 import type { ComponentTable } from '../../lib/keyListTypes';
 import { newId } from '../../lib/refTypes';
 import EditGrid, { type CellEdit, type GridColumn } from '../common/EditGrid.vue';
+import { useUndo } from '../../lib/history';
 
 const props = defineProps<{ tables: ComponentTable[]; errors: Record<string, string>; formId: string }>();
+// Undo for the tables' grids (one history for all of them); it starts again when another record's tables are shown.
+const hist = useUndo({ get: () => props.tables, resetOn: () => props.tables });
 // What a table can be matched on: the Load List's fields (calculated ones too), then what the app works out.
 const choices = ref<{ key: string; label: string }[]>([]);
 const APP = [{ key: 'rating', label: 'Rating (the load rating)' }, { key: 'voltage', label: "Voltage (the load's, else the load type's)" },
@@ -104,7 +107,7 @@ function removeRows(t: ComponentTable, idx: number[]) {
 				<button type="button" class="secondary small" @click="t.columns.push(`Column ${t.columns.length + 1}`)">+ Column</button>
 			</div>
 			<span v-if="err(i, 'columns')" class="warn small">{{ err(i, 'columns') }}</span>
-			<EditGrid :columns="gridCols(t)" :cells="gridCells(t)" :height="Math.min(300, 96 + 26 * Math.max(3, t.rows.length))"
+			<EditGrid :columns="gridCols(t)" :cells="gridCells(t)" :history="hist" :height="Math.min(300, 96 + 26 * Math.max(3, t.rows.length))"
 				@set="(e) => setCells(t, e)" @insert="(at, n) => insertRows(t, at, n)" @remove="(idx) => removeRows(t, idx)" />
 			<p v-for="m in rowErrors(i)" :key="m" class="warn small">{{ m }}</p>
 		</section>

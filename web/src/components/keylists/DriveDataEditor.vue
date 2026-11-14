@@ -14,6 +14,8 @@ import { ApiError, apiGet, apiPostJson, apiPut } from '../../lib/engine';
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
+import UndoButtons from '../common/UndoButtons.vue';
+import { useSavedUndo } from '../../lib/history';
 import AppModal from '../common/AppModal.vue';
 import ListWorkbook from './ListWorkbook.vue';
 
@@ -103,11 +105,18 @@ function onClick(e: MouseEvent) {
 	const row = table.api.row(tr as HTMLTableRowElement).data() as Drive | undefined;
 	if (row) open(row);
 }
-async function put(list: unknown[], id?: string) {
+// Undo: every change is saved at once, so undo saves the list as it was before it.
+const hist = useSavedUndo<unknown[]>(() => items.value, (earlier) => put(earlier, undefined, true));
+async function step(redo = false) {
+	note.value = await hist.step(redo);
+}
+async function put(list: unknown[], id?: string, undoing = false) {
 	busy.value = true;
 	error.value = '';
+	const before = items.value ? [...items.value] : null;
 	try {
 		items.value = (await apiPut<{ items: Drive[] }>(API, { items: list })).items;
+		if (before && !undoing) hist.saved(before);
 		await kl.refresh();
 		return true;
 	} catch (err) {
@@ -138,7 +147,9 @@ async function addDefaults() {
 	busy.value = true;
 	try {
 		const before = items.value?.length ?? 0;
+		const was = items.value ? [...items.value] : null;
 		items.value = (await apiPostJson<{ items: Drive[] }>(`${API}/defaults`, {})).items;
+		if (was) hist.saved(was);
 		note.value = items.value.length > before ? `Added ${items.value.length - before} PowerFlex 755TS drive(s)` : 'Every PowerFlex 755TS drive is already in the list';
 		await kl.refresh();
 	} catch (err) {
@@ -159,6 +170,7 @@ const count = computed(() => items.value?.length ?? 0);
 			<span class="spacer" />
 			<span v-if="note" class="saved">✓ {{ note }}</span>
 			<button type="button" class="secondary" :disabled="busy" title="Add back any of the PowerFlex 755TS drives that are not in the list; nothing else changes" @click="addDefaults">Add missing PowerFlex 755TS</button>
+			<UndoButtons :can-undo="hist.canUndo.value" :can-redo="hist.canRedo.value" :disabled="busy" @undo="step()" @redo="step(true)" />
 			<HistoryButton entity="drives" record-id="drives" label="Drive Data" />
 			<ListWorkbook list-id="drives" name="Drive Data" />
 			<button type="button" @click="open(null)">Add drive</button>

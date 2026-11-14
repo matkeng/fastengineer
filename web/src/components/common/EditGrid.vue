@@ -6,6 +6,8 @@
 // rendering so a few thousand rows stay smooth. Cells are shown and edited as text; the
 // parent converts edits into its own values.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import type { Undo } from '../../lib/history';
+import UndoButtons from './UndoButtons.vue';
 
 export interface GridColumn {
 	label: string;
@@ -34,6 +36,7 @@ const props = withDefaults(defineProps<{
 	canEditRows?: boolean;
 	height?: number;
 	growColumns?: boolean; // a paste wider than the grid is passed on whole: the parent adds the columns
+	history?: Undo; // undo and redo of what the grid edits (lib/history.ts useUndo): Ctrl+Z, Ctrl+Y and two buttons
 }>(), { canEditRows: true, height: 0 });
 
 const emit = defineEmits<{
@@ -42,6 +45,26 @@ const emit = defineEmits<{
 	remove: [rows: number[]];
 	focus: [r: number, c: number];
 }>();
+
+// Every change goes through here, so the history has the state before it.
+function change(kind: 'set', edits: CellEdit[]): void;
+function change(kind: 'insert', at: number, count: number): void;
+function change(kind: 'remove', rows: number[]): void;
+function change(kind: 'set' | 'insert' | 'remove', a: CellEdit[] | number | number[], b?: number): void {
+	props.history?.record();
+	if (kind === 'set') emit('set', a as CellEdit[]);
+	else if (kind === 'insert') emit('insert', a as number, b as number);
+	else emit('remove', a as number[]);
+}
+function undo(redo = false) {
+	if (!props.history) return;
+	if (redo) props.history.redo();
+	else props.history.undo();
+	void nextTick(() => {
+		moveTo(Math.min(head.value.r, nRows.value - 1), head.value.c);
+		focusGrid();
+	});
+}
 
 const ROW_H = 26;
 const scroller = ref<HTMLDivElement | null>(null);
@@ -148,7 +171,7 @@ function commit(move: 'down' | 'right' | 'left' | 'none' = 'none') {
 	if (!e) return;
 	editing.value = null;
 	tagQuery.value = null;
-	if (e.value !== (props.cells[e.r]?.[e.c] ?? '')) emit('set', [{ r: e.r, c: e.c, value: e.value }]);
+	if (e.value !== (props.cells[e.r]?.[e.c] ?? '')) change('set', [{ r: e.r, c: e.c, value: e.value }]);
 	if (move === 'down') moveTo(e.r + 1, e.c);
 	else if (move === 'right') moveTo(e.r, e.c + 1);
 	else if (move === 'left') moveTo(e.r, e.c - 1);
@@ -164,7 +187,7 @@ function cancel() {
 function toggle(r: number, c: number) {
 	if (props.columns[c]?.readonly) return;
 	const on = /^(true|yes|y|1|x|locked)$/i.test(props.cells[r]?.[c] ?? '');
-	emit('set', [{ r, c, value: on ? '' : 'TRUE' }]);
+	change('set', [{ r, c, value: on ? '' : 'TRUE' }]);
 }
 
 function clearSelection() {
@@ -172,7 +195,7 @@ function clearSelection() {
 	for (let r = sel.value.r1; r <= sel.value.r2; r++)
 		for (let c = sel.value.c1; c <= sel.value.c2; c++)
 			if (!props.columns[c]?.readonly && (props.cells[r]?.[c] ?? '') !== '') edits.push({ r, c, value: '' });
-	if (edits.length) emit('set', edits);
+	if (edits.length) change('set', edits);
 }
 
 function onKey(e: KeyboardEvent) {
@@ -206,6 +229,9 @@ function onKey(e: KeyboardEvent) {
 	} else if (e.key === ' ' && props.columns[c]?.type === 'bool') {
 		e.preventDefault();
 		toggle(r, c);
+	} else if (ctrl && props.history && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
+		e.preventDefault();
+		undo(e.key.toLowerCase() === 'y' || e.shiftKey);
 	} else if (ctrl && e.key.toLowerCase() === 'a') {
 		e.preventDefault();
 		anchor.value = { r: 0, c: 0 };
@@ -359,7 +385,7 @@ function onPaste(e: ClipboardEvent) {
 	// A single value pasted over a range fills the range (as Excel does)
 	const fill = data.length === 1 && data[0].length === 1 && (sel.value.r2 > r1 || sel.value.c2 > c1);
 	const need = fill ? 0 : r1 + data.length - nRows.value;
-	if (need > 0 && props.canEditRows) emit('insert', nRows.value, need);
+	if (need > 0 && props.canEditRows) change('insert', nRows.value, need);
 	const edits: CellEdit[] = [];
 	if (fill) {
 		for (let r = r1; r <= sel.value.r2; r++)
@@ -372,7 +398,7 @@ function onPaste(e: ClipboardEvent) {
 		}));
 	}
 	void nextTick(() => {
-		if (edits.length) emit('set', edits);
+		if (edits.length) change('set', edits);
 		head.value = clamp(r1 + (fill ? sel.value.r2 - r1 : data.length - 1), c1 + (fill ? sel.value.c2 - c1 : Math.max(...data.map((d) => d.length)) - 1));
 	});
 }
@@ -386,7 +412,7 @@ function selectedRows(): number[] {
 }
 
 function addRow() {
-	emit('insert', nRows.value, 1);
+	change('insert', nRows.value, 1);
 	void nextTick(() => {
 		moveTo(nRows.value - 1, 0);
 		focusGrid(); // so typing goes straight into the new row
@@ -395,7 +421,7 @@ function addRow() {
 
 function insertAbove() {
 	const at = sel.value.r1;
-	emit('insert', at, sel.value.r2 - at + 1);
+	change('insert', at, sel.value.r2 - at + 1);
 	void nextTick(() => {
 		moveTo(at, head.value.c);
 		focusGrid();
@@ -404,7 +430,7 @@ function insertAbove() {
 
 function removeRows() {
 	const rows = selectedRows();
-	if (rows.length && confirm(`Delete ${rows.length} row(s)?`)) emit('remove', rows);
+	if (rows.length && confirm(`Delete ${rows.length} row(s)?`)) change('remove', rows);
 	moveTo(Math.min(sel.value.r1, nRows.value - 1 - rows.length), head.value.c);
 }
 
@@ -436,11 +462,14 @@ const boolOn = (v: string | undefined) => /^(true|yes|y|1|x|locked)$/i.test(v ??
 
 <template>
 	<div class="edit-grid" :class="{ fixed: !!height }">
-		<div v-if="canEditRows" class="row grid-tools">
-			<button type="button" class="secondary small" @click="addRow">+ Row</button>
-			<button type="button" class="secondary small" :disabled="!nRows" @click="insertAbove">Insert above</button>
-			<button type="button" class="secondary small" :disabled="!nRows" @click="removeRows">Delete rows</button>
-			<span class="hint">Type or press Enter to edit · Ctrl+C / Ctrl+V copy and paste with Excel · Delete clears</span>
+		<div v-if="canEditRows || history" class="row grid-tools">
+			<template v-if="canEditRows">
+				<button type="button" class="secondary small" @click="addRow">+ Row</button>
+				<button type="button" class="secondary small" :disabled="!nRows" @click="insertAbove">Insert above</button>
+				<button type="button" class="secondary small" :disabled="!nRows" @click="removeRows">Delete rows</button>
+			</template>
+			<UndoButtons v-if="history" small :can-undo="history.canUndo.value" :can-redo="history.canRedo.value" @undo="undo()" @redo="undo(true)" />
+			<span class="hint">Type or press Enter to edit · Ctrl+C / Ctrl+V copy and paste with Excel · Delete clears<template v-if="history"> · Ctrl+Z undoes, Ctrl+Y redoes</template></span>
 		</div>
 		<div
 			ref="scroller"

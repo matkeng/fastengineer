@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Matthew Kelly
+import { type SavedUndo, UNDO_STEPS, useSavedUndo } from '../lib/history';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import {
@@ -22,6 +23,9 @@ const PANELS = '/api/distribution-panels';
 const differ = (a: unknown, b: unknown) => !!a && JSON.stringify(a) !== JSON.stringify(b);
 
 /** The project's built-in lists. Each is a saved copy plus the draft being edited. */
+/** The lists whose every change is saved at once, each with its own undo history. */
+export type SavedListKey = 'load-types' | 'equipment-codes' | 'instrument-codes' | 'eel' | 'cable-types' | 'drawing-list' | 'document-list';
+
 export const useKeyLists = defineStore('keylists', () => {
 	const overview = ref<KeyListOverview | null>(null);
 	const selected = ref<KeyListId>('plant-areas');
@@ -127,9 +131,64 @@ export const useKeyLists = defineStore('keylists', () => {
 	async function allocate(rows: LoadListRow[], change: Allocation): Promise<LoadListRow[] | undefined> {
 		const body = { rows: rows.map((r) => ({ recipe_id: r.recipe_id, key: r.key })), ...change };
 		const seen: Record<string, string> = rows.length === 1 && rows[0].updated_at ? { 'X-Workbench-Base-Time': rows[0].updated_at } : {};
+		// What each row had before, for undo. (A value the app had chosen itself comes back as the
+		// same value, now kept as a person's choice: the engine has no "back to automatic".)
+		const before = rows.map((r) => Object.fromEntries(Object.keys(change).map((k) => [k, (r as unknown as Record<string, unknown>)[k] ?? null])) as Allocation);
 		const saved = await run(() => apiPutWith<LoadListRow[]>('/api/loadlist/allocations', body, seen));
-		if (saved) void refresh();
+		if (saved) {
+			allocPast.value.push({ refs: body.rows, before, change, stamps: stampsOf(body.rows, saved) });
+			if (allocPast.value.length > UNDO_STEPS) allocPast.value.shift();
+			allocFuture.value = [];
+			void refresh();
+		}
 		return saved;
+	}
+
+	// -- undo for the Load List: each change is saved at once, so undo saves what the rows had before --
+	type RowRef = { recipe_id: string; key: string };
+	interface AllocStep { refs: RowRef[]; before: Allocation[]; change: Allocation; stamps: (string | null)[] }
+	const allocPast = ref<AllocStep[]>([]);
+	const allocFuture = ref<AllocStep[]>([]);
+	const canUndoAllocation = computed(() => allocPast.value.length > 0);
+	const canRedoAllocation = computed(() => allocFuture.value.length > 0);
+	const stampsOf = (refs: RowRef[], saved: LoadListRow[]) =>
+		refs.map((r) => saved.find((s) => s.recipe_id === r.recipe_id && s.key === r.key)?.updated_at ?? null);
+	/**
+	 * Undo (or redo) the last change to Load List rows. `find`: the row as the screen has it now.
+	 * Returns the rows as saved and what to tell the user. If a row has changed since (a colleague,
+	 * an import), nothing is undone and the history is dropped.
+	 */
+	async function stepAllocation(redo: boolean, find: (recipeId: string, key: string) => LoadListRow | undefined): Promise<{ saved?: LoadListRow[]; message: string }> {
+		const from = redo ? allocFuture : allocPast;
+		const step = from.value[from.value.length - 1];
+		if (!step || busy.value) return { message: '' };
+		if (step.refs.some((r, i) => (find(r.recipe_id, r.key)?.updated_at ?? null) !== step.stamps[i])) {
+			allocPast.value = [];
+			allocFuture.value = [];
+			return { message: 'The rows have changed since (an import or a colleague): nothing was undone' };
+		}
+		// redo: the change again, on every row; undo: each row back to what it had (rows that had the same go together)
+		const groups = new Map<string, { rows: RowRef[]; change: Allocation }>();
+		step.refs.forEach((r, i) => {
+			const change = redo ? step.change : step.before[i];
+			const k = JSON.stringify(change);
+			if (!groups.has(k)) groups.set(k, { rows: [], change });
+			groups.get(k)!.rows.push(r);
+		});
+		const saved: LoadListRow[] = [];
+		for (const g of groups.values()) {
+			const got = await run(() => apiPutWith<LoadListRow[]>('/api/loadlist/allocations', { rows: g.rows, ...g.change }, {}));
+			if (!got) { // refused part of the way: what is left of the history no longer matches the rows
+				allocPast.value = [];
+				allocFuture.value = [];
+				return { saved, message: '' };
+			}
+			saved.push(...got);
+		}
+		from.value.pop();
+		(redo ? allocPast : allocFuture).value.push({ ...step, stamps: stampsOf(step.refs, saved) });
+		void refresh();
+		return { saved, message: `${redo ? 'Redone' : 'Undone'}: ${saved.length} row(s)` };
 	}
 
 	/** Load the lists from the engine. A list with unsaved changes is left as it is. */
@@ -166,10 +225,12 @@ export const useKeyLists = defineStore('keylists', () => {
 	}
 
 	/** Save the whole list of load types with `items`. False (with error/fieldErrors set) if refused. */
-	async function putLoadTypes(items: unknown[]): Promise<boolean> {
+	async function putLoadTypes(items: unknown[], undoing = false): Promise<boolean> {
+		const before = loadTypes.value ? [...loadTypes.value.items] : null;
 		const l = await run(() => apiPut<LoadTypeList>(LOAD_TYPES, { items }));
 		if (!l) return false;
 		loadTypes.value = l;
+		if (before && !undoing) listUndo['load-types'].saved(before);
 		await refresh();
 		return true;
 	}
@@ -225,10 +286,12 @@ export const useKeyLists = defineStore('keylists', () => {
 		return putCodeList(id, (codeLists.value[id]?.items ?? []).filter((r) => r.id !== rowId));
 	}
 
-	async function putCodeList(id: CodeListId, items: CodeRow[]): Promise<boolean> {
+	async function putCodeList(id: CodeListId, items: CodeRow[], undoing = false): Promise<boolean> {
+		const before = codeLists.value[id] ? [...codeLists.value[id]!.items] : null;
 		const c = await run(() => apiPut<CodeList>(`/api/keylists/${id}`, { items }));
 		if (!c) return false;
 		codeLists.value[id] = c;
+		if (before && !undoing) listUndo[id].saved(before);
 		await refresh();
 		return true;
 	}
@@ -246,10 +309,12 @@ export const useKeyLists = defineStore('keylists', () => {
 		return putEel((eel.value?.items ?? []).filter((r) => r.id !== id));
 	}
 
-	async function putEel(items: unknown[]): Promise<boolean> {
+	async function putEel(items: unknown[], undoing = false): Promise<boolean> {
+		const before = eel.value ? [...eel.value.items] : null;
 		const e = await run(() => apiPut<EelView>('/api/eel', { items }));
 		if (!e) return false;
 		eel.value = e;
+		if (before && !undoing) listUndo.eel.saved(before);
 		await refresh();
 		return true;
 	}
@@ -429,10 +494,12 @@ export const useKeyLists = defineStore('keylists', () => {
 		if (v) registers.value[kind] = v;
 	}
 
-	async function putRegister(kind: RegisterKind, items: unknown[]): Promise<boolean> {
+	async function putRegister(kind: RegisterKind, items: unknown[], undoing = false): Promise<boolean> {
+		const before = registers.value[kind] ? [...registers.value[kind]!.items] : null;
 		const v = await run(() => apiPut<RegisterView>(`/api/${kind}`, { items }));
 		if (!v) return false;
 		registers.value[kind] = v;
+		if (before && !undoing) listUndo[kind].saved(before);
 		await refresh();
 		return true;
 	}
@@ -482,10 +549,12 @@ export const useKeyLists = defineStore('keylists', () => {
 		return putCableTypes((cableTypes.value?.items ?? []).filter((r) => r.id !== id));
 	}
 
-	async function putCableTypes(items: unknown[]): Promise<boolean> {
+	async function putCableTypes(items: unknown[], undoing = false): Promise<boolean> {
+		const before = cableTypes.value ? [...cableTypes.value.items] : null;
 		const c = await run(() => apiPut<CableTypeList>('/api/keylists/cable-types', { items }));
 		if (!c) return false;
 		cableTypes.value = c;
+		if (before && !undoing) listUndo['cable-types'].saved(before);
 		await refresh();
 		return true;
 	}
@@ -536,7 +605,24 @@ export const useKeyLists = defineStore('keylists', () => {
 		error.value = null;
 	}
 
+	// Undo for the lists whose every change is saved at once: undo saves the list as it was before
+	// the change (see lib/history.ts useSavedUndo). One history per list, for this session.
+	const listUndo: Record<SavedListKey, SavedUndo<unknown[]>> = {
+		'load-types': useSavedUndo<unknown[]>(() => loadTypes.value?.items, (e) => putLoadTypes(e, true)),
+		'equipment-codes': useSavedUndo<unknown[]>(() => codeLists.value['equipment-codes']?.items, (e) => putCodeList('equipment-codes', e as CodeRow[], true)),
+		'instrument-codes': useSavedUndo<unknown[]>(() => codeLists.value['instrument-codes']?.items, (e) => putCodeList('instrument-codes', e as CodeRow[], true)),
+		eel: useSavedUndo<unknown[]>(() => eel.value?.items, (e) => putEel(e, true)),
+		'cable-types': useSavedUndo<unknown[]>(() => cableTypes.value?.items, (e) => putCableTypes(e, true)),
+		'drawing-list': useSavedUndo<unknown[]>(() => registers.value['drawing-list']?.items, (e) => putRegister('drawing-list', e, true)),
+		'document-list': useSavedUndo<unknown[]>(() => registers.value['document-list']?.items, (e) => putRegister('document-list', e, true)),
+	};
+	const canUndoList = (key: SavedListKey) => listUndo[key].canUndo.value;
+	const canRedoList = (key: SavedListKey) => listUndo[key].canRedo.value;
+	/** Undo (or redo) the last saved change of a list. Returns what to tell the user ('' when the save failed: error is set). */
+	const stepList = (key: SavedListKey, redo = false) => listUndo[key].step(redo);
+
 	return {
+		canUndoList, canRedoList, stepList, canUndoAllocation, canRedoAllocation, stepAllocation,
 		overview, selected, busy, error, fieldErrors, message, areasSaved, areasDraft, packagesSaved, packagesDraft,
 		loadTypes, areasDirty, packagesDirty, dirty, refresh, select, load, saveAreas, savePackages, discard,
 		saveLoadType, deleteLoadType, templateLists, loadTemplateLists, attachLoadTypePdf, removeLoadTypePdf, loadTypePdf, loadList, loadLoadList, allocate, codeLists, saveCodeRow, deleteCodeRow, eel, saveEelItem, deleteEelItem, cableTypes, saveCableType, deleteCableType, addDefaultCableTypes,

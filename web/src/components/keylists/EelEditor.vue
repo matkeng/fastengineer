@@ -10,6 +10,7 @@ import { EEL_SOURCE, type EelChoice, type EelForm, type EelItem, PHASES, RATING_
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
+import ListUndoButtons from './ListUndoButtons.vue';
 import AppModal from '../common/AppModal.vue';
 
 // The Electrical Equipment List: a grid of every item; an item is added or edited in a form
@@ -201,6 +202,7 @@ const BYS: { field: Ref; title: string }[] = [
 			<h2 class="key-title">Electrical Equipment List</h2>
 			<span class="hint small">{{ items.length }} item(s), each also a row of the Load List. Click a row to edit or delete it.</span>
 			<span class="spacer" />
+			<ListUndoButtons list="eel" />
 			<HistoryButton entity="eel" record-id="eel" label="Electrical Equipment List" />
 			<ListWorkbook list-id="eel" name="Electrical Equipment List" />
 			<button type="button" @click="open(null)">Add equipment</button>

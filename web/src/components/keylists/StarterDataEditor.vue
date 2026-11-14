@@ -14,6 +14,8 @@ import { ApiError, apiGet, apiPostJson, apiPut } from '../../lib/engine';
 import { newId } from '../../lib/refTypes';
 import { useKeyLists } from '../../stores/keylists';
 import HistoryButton from '../audit/HistoryButton.vue';
+import UndoButtons from '../common/UndoButtons.vue';
+import { useSavedUndo } from '../../lib/history';
 import AppModal from '../common/AppModal.vue';
 import ListWorkbook from './ListWorkbook.vue';
 
@@ -108,13 +110,22 @@ function onClick(e: MouseEvent) {
 	const row = table.api.row(tr as HTMLTableRowElement).data() as Starter | undefined;
 	if (row) open(row);
 }
-async function put(list: unknown[], id?: string, chart = defaultChart.value) {
+// Undo: every change is saved at once, so undo saves the rows and the default chart as they were before it.
+type Saved = { items: unknown[]; chart: string };
+const state = (): Saved | null => (items.value ? { items: [...items.value], chart: defaultChart.value } : null);
+const hist = useSavedUndo<Saved>(state, (earlier) => put(earlier.items, undefined, earlier.chart, true));
+async function step(redo = false) {
+	note.value = await hist.step(redo);
+}
+async function put(list: unknown[], id?: string, chart = defaultChart.value, undoing = false) {
 	busy.value = true;
 	error.value = '';
+	const before = state();
 	try {
 		const got = await apiPut<StarterList>(API, { items: list, default_chart: chart });
 		items.value = got.items;
 		defaultChart.value = got.default_chart;
+		if (before && !undoing) hist.saved(before);
 		await kl.refresh();
 		return true;
 	} catch (err) {
@@ -145,9 +156,11 @@ async function addDefaults() {
 	busy.value = true;
 	try {
 		const before = items.value?.length ?? 0;
+		const was = state();
 		const got = await apiPostJson<StarterList>(`${API}/defaults`, {});
 		items.value = got.items;
 		defaultChart.value = got.default_chart;
+		if (was) hist.saved(was);
 		note.value = items.value.length > before ? `Added ${items.value.length - before} NHP row(s)` : 'Every NHP chart row is already in the list';
 		await kl.refresh();
 	} catch (err) {
@@ -179,6 +192,7 @@ async function setDefault(e: Event) {
 				</select>
 			</label>
 			<button type="button" class="secondary" :disabled="busy" title="Add back any rows of NHP's six Type 2 charts that are not in the list; nothing else changes" @click="addDefaults">Add missing NHP charts</button>
+			<UndoButtons :can-undo="hist.canUndo.value" :can-redo="hist.canRedo.value" :disabled="busy" @undo="step()" @redo="step(true)" />
 			<HistoryButton entity="starters" record-id="starters" label="Starter Coordination" />
 			<ListWorkbook list-id="starters" name="Starter Coordination" />
 			<button type="button" @click="open(null)">Add row</button>
