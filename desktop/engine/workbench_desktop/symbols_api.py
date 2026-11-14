@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -57,6 +58,7 @@ from .storage import InUse, NotFound, SymbolStore, get_symbols
 router = APIRouter(prefix="/api/symbols", tags=["symbol detection"])
 
 MAX_UPLOAD = 200 * 1024 * 1024
+log = logging.getLogger(__name__)
 LIBRARY_FORMAT = "drawing-workbench-symbol-library"
 _worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="symbols")
 _cancel: set[str] = set()
@@ -354,6 +356,7 @@ def _render_job(doc_id: str) -> None:
                                   text_source="pdf" if p.words else "none", word_count=len(p.words)))
         d = d.model_copy(update={"pages": pages, "status": "ready", "error": None})
     except Exception as exc:  # report it on the drawing rather than losing it in a thread
+        log.exception("Reading drawing %s failed", doc_id)
         d = d.model_copy(update={"status": "error", "error": str(exc)})
     try:
         st.save_drawing(d)
@@ -424,6 +427,7 @@ def _run_job(run_id: str) -> None:
         if run.status != "cancelled":
             run.status = "done"
     except Exception as exc:
+        log.exception("Detection run %s failed", run_id)
         run.status, run.error = "error", str(exc)
     run.finished_at, run.current = _now(), ""
     run.tag_count = len(tags_table(sheets, run.columns)[1])

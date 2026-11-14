@@ -30,6 +30,25 @@ def _ensure_std_streams() -> None:
             sys.stderr = stream
 
 
+def log_config(folder) -> dict:
+    """uvicorn's logging, also written to <data folder>/logs/engine.log (1 MB, 3 old files
+    kept). The engine's output is otherwise lost: the installed app has no console."""
+    import copy
+
+    from uvicorn.config import LOGGING_CONFIG
+
+    folder.mkdir(parents=True, exist_ok=True)
+    cfg = copy.deepcopy(LOGGING_CONFIG)
+    cfg["formatters"]["file"] = {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"}
+    cfg["handlers"]["file"] = {"class": "logging.handlers.RotatingFileHandler", "formatter": "file",
+                               "filename": str(folder / "engine.log"), "maxBytes": 1_000_000,
+                               "backupCount": 3, "encoding": "utf-8"}
+    cfg["loggers"]["uvicorn"]["handlers"].append("file")  # start-up, and errors with their traceback
+    cfg["loggers"]["uvicorn.access"]["handlers"].append("file")
+    cfg["loggers"]["workbench_desktop"] = {"handlers": ["default", "file"], "level": "INFO", "propagate": False}
+    return cfg
+
+
 def _pid_alive(pid: int) -> bool:
     if os.name == "nt":
         import ctypes
@@ -122,11 +141,13 @@ def main(argv: list[str] | None = None) -> None:
     for p in reg.all():
         print(f"[engine] project '{p['name']}'{' (archived)' if p['archived'] else ''}: {p['folder']}", flush=True)
 
+    logs = reg.root / "logs"
+    print(f"[engine] log: {logs / 'engine.log'}", flush=True)
     print(f"[engine] listening on http://{args.host}:{args.port}", flush=True)
     # Pass the app object (not an import string) and pin loop/http so the
     # compiled binary doesn't depend on uvicorn's dynamic "auto" imports.
     uvicorn.run(app, host=args.host, port=args.port, loop="asyncio", http="h11",
-                ws="none", lifespan="on", log_level="info")
+                ws="none", lifespan="on", log_level="info", log_config=log_config(logs))
 
 
 if __name__ == "__main__":

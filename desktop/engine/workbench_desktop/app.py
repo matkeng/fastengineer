@@ -38,7 +38,7 @@ from .keylist_workbooks_api import router as keylist_workbooks_router
 from .deliverables_api import router as deliverables_router
 from .projects_api import router as projects_router
 from .sample_api import router as sample_router
-from .storage import get_keylists, get_store
+from .storage import NotFound, get_keylists, get_store
 
 app = FastAPI(title="ECG Source List engine", version=workbench_core.__version__)
 
@@ -106,6 +106,12 @@ app.add_middleware(
 def project_error(_: Request, exc: projects.ProjectError) -> JSONResponse:
     return JSONResponse(status_code=exc.status, content={
         "detail": exc.message, "fields": {exc.field: exc.message} if exc.field else {}})
+
+
+@app.exception_handler(NotFound)
+def not_found(_: Request, exc: NotFound) -> JSONResponse:
+    # A record deleted (by a colleague, or in another window) between two steps of a request.
+    return JSONResponse(status_code=404, content={"detail": "That record no longer exists."})
 
 
 @app.exception_handler(Conflict)

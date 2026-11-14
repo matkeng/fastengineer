@@ -244,6 +244,21 @@ class Store:
         self._db.executescript(SCHEMA)
         self._db.executescript(audit.SCHEMA)
         self._keep_load_list_columns()
+        self._fail_interrupted_work()
+
+    def _fail_interrupted_work(self) -> None:
+        """Drawings still "rendering" and detection runs still "queued" or "running" when the
+        project is opened were cut short (the app was closed, or it crashed): nothing is working
+        on them any more, so say so instead of leaving them waiting for ever."""
+        with self._db:
+            for table, column, waiting, error in (
+                    ("sym_drawings", "data", ("rendering",), "The app closed before this drawing was read. Delete it and add it again."),
+                    ("sym_runs", "info", ("queued", "running"), "The app closed before this run finished. Run it again.")):
+                for rid, data in self._db.execute(f"SELECT id, {column} FROM {table}").fetchall():
+                    d = json.loads(data)
+                    if d.get("status") in waiting:
+                        d.update(status="error", error=error)
+                        self._db.execute(f"UPDATE {table} SET {column} = ? WHERE id = ?", (json.dumps(d), rid))
 
     def _keep_load_list_columns(self) -> None:
         """Once per project: the Load List deliverable's content became the whole Project Master
