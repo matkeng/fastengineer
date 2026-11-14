@@ -279,8 +279,9 @@ def load_cells(row: LoadListRow, load_types: dict[str, LoadType], areas: dict[st
     from .motors import motor_fields, motor_for
     m = motor_for(cells.get("rating"), cells.get("units"), cells.get("poles"), motors or [])
     cells |= {f"motor.{k}": v for k, v in motor_fields(m).items()}
-    from .drives import drive_fields, drive_for_load
-    x = drive_for_load(cells.get("rating"), cells.get("units"), cells.get("voltage"), m.flc if m else None,
+    from .drives import drive_fields, drive_for_load, flc_at
+    x = drive_for_load(cells.get("rating"), cells.get("units"), cells.get("voltage"),
+                       flc_at(m.flc, m.voltage, cells.get("voltage")) if m else None,
                        cells.get("drive_duty"), cells.get("drive_enclosure"), drives or [])
     cells |= {f"drive.{k}": v for k, v in drive_fields(x, cells.get("drive_duty")).items()}
     from .starters import starter_fields, starter_for_load
@@ -316,13 +317,20 @@ def apply_calcs(rows: list[LoadListRow], fields: LoadFields, load_types: dict[st
         keys = [k for k in keys if k in need]
     compiled = {k: (_Expr.of(calcs[k].applies_if), _Expr.of(calcs[k].formula), _Expr.of(calcs[k].otherwise),
                     [(_Expr.of(ch.rule), ch) for ch in calcs[k].checks]) for k in keys}
+    from .drives import VOLTAGE_RANGES, voltage_class
+    uses_drive = {k: any(r.startswith("drive.") for r in _calc_refs(calcs[k])) for k in keys}
     by_ref = {r.ref(): r for r in rows}
     ai = make_interpreter()
     for row in rows:
         cells = load_cells(row, load_types, areas, by_ref, motors, drives, starters, load_factors)
         issues: list[CalcIssue] = []
+        volts = cells.get("voltage")
+        no_class = volts not in (None, "") and voltage_class(volts) is None
         for k in keys:
             test, formula, otherwise, checks = compiled[k]
+            if uses_drive[k] and no_class:  # the drive's values are blank: say why
+                issues.append(CalcIssue(field=k, severity="warning",
+                                        message=f"No drive is matched: {volts} V is not {VOLTAGE_RANGES}"))
             applies, why = (True, None) if not test.code and not test.problem else test.run(ai, cells)
             if why:
                 issues.append(CalcIssue(field=k, severity="error", message=f"Applies when can't be worked out: {why}"))

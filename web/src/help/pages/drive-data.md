@@ -23,7 +23,7 @@ A load gets the smallest drive that covers it, among the drives of:
 - its **Drive enclosure** (a Load List field: Open, IP54 or Flange; blank means Open);
 - its **Drive duty** (ND or HD; blank means Normal Duty).
 
-"Covers" means the drive's continuous amps at that duty are at least the matched motor's full load current. When there is no motor, a rating in Amps is used; with no current at all, the drive's power must cover the load's kW. Of two that fit equally, the smaller frame is chosen.
+"Covers" means the drive's continuous amps at that duty are at least the matched motor's full load current at the load's voltage. Motor Data gives the current at the motor's own voltage (415 V for the WEG table); for a load at another voltage it is scaled, so 55.4 A at 415 V counts as 95.8 A at 240 V and 33.3 A at 690 V. A load whose voltage is in none of the drives' ranges (433 V, for example) gets no drive, and a calculated field that uses the drive shows a warning saying so. When there is no motor, a rating in Amps is used; with no current at all, the drive's power must cover the load's kW. Of two that fit equally, the smaller frame is chosen.
 
 ## Using the drive's data
 

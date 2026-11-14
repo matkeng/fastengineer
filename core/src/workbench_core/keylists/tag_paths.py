@@ -260,11 +260,12 @@ class Links:
 
     def drive(self, flat: dict[str, object]):
         """The Drive Data row a load matches (keylists.drives.drive_for_load), on its motor's FLC."""
-        from .drives import drive_fields, drive_for_load
+        from .drives import drive_fields, drive_for_load, flc_at
         from .motors import motor_for
 
         m = motor_for(flat.get("rating"), flat.get("units"), flat.get("poles"), self.motors)
-        x = drive_for_load(flat.get("rating"), flat.get("units"), flat.get("voltage"), m.flc if m else None,
+        x = drive_for_load(flat.get("rating"), flat.get("units"), flat.get("voltage"),
+                           flc_at(m.flc, m.voltage, flat.get("voltage")) if m else None,
                            flat.get("drive_duty"), flat.get("drive_enclosure"), self.drives)
         return None if x is None else Record("drive", dict(drive_fields(x, flat.get("drive_duty"))), name=x.cat_no)
 

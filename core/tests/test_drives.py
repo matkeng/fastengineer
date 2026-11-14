@@ -88,3 +88,28 @@ def test_template_rows_and_calculations_reach_the_drive() -> None:
     check_calcs(fields)
     apply_calcs(loads[:1], fields, lt, {}, motors=default_motors(), drives=PF)
     assert loads[0].values["drive_margin"] == round(15.4 - 13.5, 1)
+
+
+def test_the_motors_current_is_taken_at_the_loads_voltage() -> None:
+    from workbench_core.keylists.drives import flc_at
+    assert flc_at(55.4, 415, 415) == 55.4
+    assert flc_at(55.4, 415, 240) == pytest.approx(95.8, abs=0.05) and flc_at(55.4, 415, 690) == pytest.approx(33.3, abs=0.05)
+    assert flc_at(55.4, None, 240) == 55.4 and flc_at(55.4, 415, "") == 55.4 and flc_at(None, 415, 240) is None
+
+    def drive_amps(volts: str) -> tuple[object, list[dict]]:
+        types = check_load_types([{"id": "t1", "code": "VSD", "name": "VSD", "rating_unit": "kW", "voltage": volts, "phases": "AC-3-phase"}])
+        load = LoadListRow(recipe_id="m", key="P-1", source="MEL", target="MEL", load_type_id="t1",
+                           values={"tag": "P-1", "load_rating": 30, "load_units": "kW", "poles": 4})
+        calc = LoadField(key="drive_amps", label="Drive amps", kind="calc", calc=LoadCalc(formula="<<Drive.Amps>>"))
+        fields = default_load_fields().model_copy(update={"fields": [*default_load_fields().fields, calc]})
+        apply_calcs([load], fields, {t.id: t for t in types.items}, {}, motors=default_motors(), drives=PF)
+        return load.values["drive_amps"], load.calc_issues
+
+    # a 30 kW 4-pole motor: 55.4 A at 415 V
+    assert drive_amps("415")[0] >= 55.4
+    assert drive_amps("240")[0] >= 95.8  # was a 70 A drive, picked on the 415 V current
+    assert drive_amps("690")[0] < 55.4   # 33.3 A at 690 V: a smaller drive is enough
+    amps, issues = drive_amps("433")
+    assert amps == "" and [(i["severity"], i["message"]) for i in issues] == [
+        ("warning", "No drive is matched: 433 V is not 200-240, 380-415, 440-480, 550-600 or 660-690 V")]
+    assert drive_amps("415")[1] == []

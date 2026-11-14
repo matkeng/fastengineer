@@ -170,6 +170,21 @@ def voltage_class(volts: object) -> int | None:
     return None
 
 
+#: The voltage ranges a drive can be matched in, for messages.
+VOLTAGE_RANGES = "200-240, 380-415, 440-480, 550-600 or 660-690 V"
+
+
+def flc_at(motor_flc: object, motor_volts: object, load_volts: object) -> float | None:
+    """A motor's full load current at the load's voltage. The Motor Data figure is at the
+    motor's own rated voltage (415 V for the WEG table); for the same power the current
+    changes inversely with the voltage: 55.4 A at 415 V is 95.8 A at 240 V and 33.3 A at 690 V.
+    Unchanged when either voltage isn't known."""
+    flc, mv, lv = _number(motor_flc), _number(motor_volts), _number(load_volts)
+    if flc is None or mv is None or lv is None or mv <= 0 or lv <= 0:
+        return flc
+    return flc * mv / lv
+
+
 def _enclosure(text: object) -> Enclosure:
     t = str(text or "").casefold()
     if "flange" in t:
