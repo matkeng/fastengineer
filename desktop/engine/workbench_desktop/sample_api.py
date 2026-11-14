@@ -10,8 +10,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from workbench_core.deliverables import DELIVERABLE_TYPES, PANEL_TYPE, Deliverable, check_deliverable
-from workbench_core.keylists.distribution_panels import (DistributionPanel, DistributionPanelList, PanelDivider, PanelEntry,
-                                                         PoleValues, auto_place, check_panels)
+from workbench_core.keylists.distribution_panels import (CB_RATINGS, DistributionPanel, DistributionPanelList, PanelDivider, PanelEntry,
+                                                         PoleValues, auto_place, check_panels, resolve)
 from workbench_core.keylists import (EquipmentCode, EquipmentPackage, EquipmentPackageList, EquipmentType,
                                      InstrumentCode, PlantArea, PlantAreaList, check_code_list, check_eel,
                                      check_equipment_packages, check_load_types, check_plant_areas)
@@ -288,8 +288,14 @@ def load_sample_data() -> Added:
         types = {t.id: t for t in lists.load_types().items}
         panel = auto_place(DistributionPanel(id=SAMPLE_PANEL, load_ref="eel/smcc2", ways=12, isolator_rating=630, upstream_cb=630),
                            loads, types)
+        # each load's breaker: 63 A, or the next size up that carries its current on a pole
+        per_amp = panel.voltage * panel.power_factor
+        amps = {}
+        for r in resolve(panel, loads, types).rows:
+            amps[r.way] = max(amps.get(r.way, 0.0), r.total_w / per_amp)
         for e in panel.entries:
-            e.rows = [PoleValues(cb_rating=63) for _ in e.rows]
+            size = next((c for c in CB_RATINGS if c >= max(63, amps.get(e.way, 0.0))), CB_RATINGS[-1])
+            e.rows = [PoleValues(cb_rating=size) for _ in e.rows]
         way = max((e.way for e in panel.entries), default=0) + 1
         if way + 1 > 8:
             return 0

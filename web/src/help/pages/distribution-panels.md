@@ -58,6 +58,8 @@ Click a way to choose what is on it:
 
 For each pole row, type what the Load List does not hold: the **CB rating**, a **quantity** and the **watts each**. Left blank, the quantity is 1 and the watts come from the load's rating: a kW rating is shared equally by its poles, and an Amps rating is amps × voltage × power factor on each pole.
 
+The notes under the panel say when a circuit's breaker is **smaller than its load current** (its watts ÷ the panel's voltage ÷ its power factor), as well as when a breaker or the upstream CB is larger than the isolator and chassis rating.
+
 **+ Heading** adds a heading, such as "Lighting Contactor", that runs across the schedule above a pair of ways.
 
 A load that is deleted, or moved to another panel in the Load List, stays on the schedule, marked, until you remove it. Nothing in the Load List is changed from here.

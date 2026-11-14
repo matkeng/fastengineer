@@ -270,6 +270,13 @@ def resolve(panel: DistributionPanel, loads: dict[str, LoadListRow], load_types:
     big = [r.circuit for r in rows if r.cb_rating is not None and panel.isolator_rating > 0 and r.cb_rating > panel.isolator_rating]
     if big:
         findings.append(f"Circuit breaker(s) rated above the isolator and chassis: {', '.join(big[:12])}.")
+    if panel.voltage > 0 and panel.power_factor > 0:
+        per_amp = panel.voltage * panel.power_factor  # watts a pole carries per amp
+        small = list(dict.fromkeys(f"{r.circuit} ({r.total_w / per_amp:.1f} A on a {r.cb_rating:g} A breaker)" for r in rows
+                                   if r.cb_rating is not None and r.total_w and r.total_w / per_amp > r.cb_rating + 1e-9))
+        if small:
+            findings.append(f"Circuit breaker(s) smaller than their load current: {', '.join(small[:12])}"
+                            + (f" and {len(small) - 12} more" if len(small) > 12 else "") + ".")
     if panel.upstream_cb > panel.isolator_rating > 0:
         findings.append(f"The upstream CB ({panel.upstream_cb:g} A) is larger than the isolator and chassis rating "
                         f"({panel.isolator_rating:g} A).")

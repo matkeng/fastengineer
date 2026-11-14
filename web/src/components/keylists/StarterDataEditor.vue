@@ -39,7 +39,7 @@ const COLS: { field: string; title: string; tag?: string; select?: boolean; text
 	{ field: 'contactor', title: 'Contactor', tag: 'Contactor', select: true, text: true }, { field: 'overload', title: 'Overload relay', tag: 'Overload', text: true },
 	{ field: 'range_min', title: 'Setting from (A)', tag: 'RangeMin' }, { field: 'range_max', title: 'Setting to (A)', tag: 'RangeMax' },
 	{ field: 'inst_trip', title: 'C/B inst. trip (A)', tag: 'InstTrip' }, { field: 'min_trip', title: 'Min trip × FLC', tag: 'MinTrip' },
-	{ field: 'note', title: 'Note', tag: 'Note', text: true },
+	{ field: 'voltage', title: 'Voltage', tag: 'Voltage', select: true }, { field: 'note', title: 'Note', tag: 'Note', text: true },
 ];
 const HIDDEN = new Set(['manufacturer', 'cb_amps']);
 const NOTES: Record<string, string> = { '*': 'Overload mounted separately from the contactor, or use the pass-thru version',
@@ -202,7 +202,7 @@ async function setDefault(e: Event) {
 			Starts with <strong>NHP's Type 2 coordination charts</strong> for DOL starters at 400/415 V (Terasaki ZS earth leakage circuit breakers,
 			AS/NZS 60947.4.1): <strong>50 kA</strong> ECH54.2, ECH54.12, RECH54.23 and <strong>65 kA</strong> ECH64.2, ECH64.13, RECH64.24, with
 			Sprecher+Schuh CA7/CA9 or Allen-Bradley 100-C contactors and CEP7-1EF or E300 overloads. Each load type names its <strong>Starter chart</strong>
-			(blank: the project default above; <em>None</em>: no starter). A load gets the chart's row for the smallest motor at least its kW (Hp converted;
+			(blank: the project default above; <em>None</em>: no starter). A load gets the chart's row, among those for its voltage range (the <strong>Voltage</strong> column), for the smallest motor at least its kW (Hp converted;
 			a rating in Amps on the FLC), and its rows reach it as <code>&lt;&lt;Starter.CB&gt;&gt;</code>, <code>&lt;&lt;Starter.Contactor&gt;&gt;</code>,
 			<code>&lt;&lt;Starter.Overload&gt;&gt;</code>, <code>&lt;&lt;Starter.Range&gt;&gt;</code>, <code>&lt;&lt;Starter.InstTrip&gt;&gt;</code>…
 			Set the circuit breaker Ir to 1 (= In) and the overload to the motor FLC. Notes: <code>*</code> {{ NOTES['*'] }}; <code>^</code> {{ NOTES['^'] }}.

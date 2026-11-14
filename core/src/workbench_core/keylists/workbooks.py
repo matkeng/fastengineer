@@ -633,7 +633,7 @@ def _starter_head() -> list[tuple[str, str]]:
     from .starters import NUMBERS, TEXTS
 
     order = ("chart", "fault_ka", "manufacturer", "kw", "flc", "cb", "cb_amps", "el_setting", "contactor", "overload", "range_min",
-             "range_max", "inst_trip", "min_trip", "note")
+             "range_max", "inst_trip", "min_trip", "voltage", "note")
     return [(f, {**TEXTS, **NUMBERS}[f][0]) for f in order]
 
 
@@ -648,14 +648,19 @@ def export_starters(starters) -> Sheets:
 def import_starters(sheets: dict[str, Rows], old) -> Parsed:
     head = _starter_head()
     rows = _sheet(sheets, "Starter Coordination", ("Chart", "kW"))
-    ids = {(name_key(s.chart), s.kw): s.id for s in old.items}
+    # a row keeps its id by chart, voltage and kW (a workbook from before the Voltage column: 400 V)
+    ids = {(name_key(s.chart), s.voltage, s.kw): s.id for s in old.items}
     items = []
     for r in rows:
         try:
             kw = float(_get(r, "kW"))
         except ValueError:
             kw = -1.0
-        items.append({"id": ids.get((name_key(_get(r, "Chart")), kw)) or new_id()} | {f: _get(r, t) for f, t in head})
+        try:
+            volts = float(_get(r, "Voltage") or 400)
+        except ValueError:
+            volts = -1.0
+        items.append({"id": ids.get((name_key(_get(r, "Chart")), volts, kw)) or new_id()} | {f: _get(r, t) for f, t in head})
     default, notes = old.default_chart, []
     if "settings" in sheets:
         found = [_get(r, "Value") for r in _sheet(sheets, "Settings", ("Setting", "Value")) if _get(r, "Setting").casefold() == "default chart"]

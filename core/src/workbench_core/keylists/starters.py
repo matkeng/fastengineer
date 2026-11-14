@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from ..refdata.models import RefValidationError, new_id
 from ..refdata.validate import name_key
 from .starter_data_nhp import NHP_TYPE2
+from .drives import VOLTAGE_RANGES, class_range, flc_at, voltage_class
 from .units import rating_kw, unit_kind
 
 DEFAULT_CHART = "ECH64.2"
@@ -48,7 +49,10 @@ NUMBERS: dict[str, tuple[str, str]] = {
     "range_min": ("Range Min", "overload setting range from (A)"), "range_max": ("Range Max", "overload setting range to (A)"),
     "inst_trip": ("Inst Trip", "circuit breaker instantaneous trip (A, ±20 %)"),
     "min_trip": ("Min Trip", "minimum trip amps as a multiple of motor FLC"),
+    "voltage": ("Voltage", "the voltage the row is for (V); blank: 400"),
 }
+#: The voltage of a row that doesn't give one: NHP's charts are printed for 400/415 V.
+DEFAULT_VOLTAGE = 400.0
 TEXTS: dict[str, tuple[str, str]] = {
     "chart": ("Chart", "coordination chart"), "manufacturer": ("Manufacturer", "manufacturer"),
     "cb": ("CB", "circuit breaker"), "el_setting": ("EL Setting", "earth leakage setting range"),
@@ -72,6 +76,8 @@ class Starter(BaseModel):
     range_max: float | None = None
     inst_trip: float | None = None
     min_trip: float | None = None
+    #: The voltage the row is for. A load only gets a row of its own voltage range (drives.voltage_class).
+    voltage: float = DEFAULT_VOLTAGE
     note: str = ""
 
 
@@ -112,13 +118,14 @@ def charts_of(items: list[Starter]) -> list[str]:
 
 
 def check_starters(rows: list[dict], default_chart: str | None = None) -> StarterList:
-    """Check the rows as sent: chart and kW required, kW more than 0 and once per chart, the
-    other numbers numbers or blank (CB Amps from the CB when blank). The default chart, when
-    given, must be a chart of the list. Order is kept."""
+    """Check the rows as sent: chart and kW required, kW more than 0 and once per chart and
+    voltage, the other numbers numbers or blank (CB Amps from the CB when blank; Voltage 400
+    when blank, and in one of the voltage ranges). The default chart, when given, must be a
+    chart of the list. Order is kept."""
     errors: dict[str, str] = {}
     out: list[Starter] = []
     ids: set[str] = set()
-    seen: set[tuple[str, float]] = set()
+    seen: set[tuple[str, float, float]] = set()
     for raw in rows:
         rid = str(raw.get("id") or new_id())
         if rid in ids:
@@ -136,13 +143,18 @@ def check_starters(rows: list[dict], default_chart: str | None = None) -> Starte
                 errors[f"{rid}.{f}"] = f"{NUMBERS[f][0]}: can't be negative"
         if not data["chart"]:
             errors[f"{rid}.chart"] = "Chart is required"
+        if data["voltage"] is None:
+            data["voltage"] = DEFAULT_VOLTAGE
+        elif voltage_class(data["voltage"]) is None and f"{rid}.voltage" not in errors:
+            errors[f"{rid}.voltage"] = f"Voltage: {data['voltage']:g} V is not {VOLTAGE_RANGES}"
+        volts = float(data["voltage"])  # type: ignore[arg-type]
         kw = data["kw"]
         if not kw or float(kw) <= 0:  # type: ignore[arg-type]
             errors.setdefault(f"{rid}.kw", "kW is required and more than 0")
             data["kw"] = 0.0
-        elif (name_key(str(data["chart"])), float(kw)) in seen:  # type: ignore[arg-type]
-            errors[f"{rid}.kw"] = f"{data['chart']} has {kw:g} kW twice"
-        seen.add((name_key(str(data["chart"])), float(data["kw"])))  # type: ignore[arg-type]
+        elif (name_key(str(data["chart"])), volts, float(kw)) in seen:  # type: ignore[arg-type]
+            errors[f"{rid}.kw"] = f"{data['chart']} has {kw:g} kW twice" + (f" at {volts:g} V" if volts != DEFAULT_VOLTAGE else "")
+        seen.add((name_key(str(data["chart"])), volts, float(data["kw"])))  # type: ignore[arg-type]
         if data["cb_amps"] is None:
             data["cb_amps"] = cb_amps(str(data["cb"]))
         out.append(Starter(id=rid, **data))  # type: ignore[arg-type]
@@ -174,16 +186,29 @@ def chart_for(load_type_chart: object, default_chart: str) -> str | None:
     return c or (default_chart or "").strip() or None
 
 
-def starter_for(rating: object, units: object, chart: str | None, starters: list[Starter]) -> Starter | None:
-    """The row of `chart` a load gets: the smallest motor kW at least the load's (a rating in Hp
-    converted to kW); a rating in Amps: the smallest FLC at least it. None when there is no chart,
-    no rating, or the load is bigger than the chart."""
+def chart_rows(chart: str | None, starters: list[Starter], volts: object = None) -> list[Starter]:
+    """The rows of `chart` a load of `volts` can get: those of its voltage range (a 415 V load
+    gets the 400 V rows; a 690 V load gets none of them). With no voltage, every row of the chart."""
+    if not chart:
+        return []
+    pool = [s for s in starters if name_key(s.chart) == name_key(chart)]
+    if _number(volts) is None:
+        return pool
+    cls = voltage_class(volts)
+    return [s for s in pool if cls is not None and voltage_class(s.voltage) == cls]
+
+
+def starter_for(rating: object, units: object, chart: str | None, starters: list[Starter], volts: object = None) -> Starter | None:
+    """The row of `chart` a load gets, among those of its voltage range (chart_rows): the smallest
+    motor kW at least the load's (a rating in Hp converted to kW); a rating in Amps: the smallest
+    FLC at least it. None when there is no chart, no rating, no row for its voltage, or the load
+    is bigger than the chart."""
     if not chart:
         return None
     r = _number(rating)
     if r is None or r <= 0:
         return None
-    pool = [s for s in starters if name_key(s.chart) == name_key(chart)]
+    pool = chart_rows(chart, starters, volts)
     if unit_kind(units) == "Amps":
         fits = [s for s in pool if s.flc is not None and s.flc >= r - 1e-9]
         return min(fits, key=lambda s: (s.flc, s.kw)) if fits else None
@@ -194,10 +219,37 @@ def starter_for(rating: object, units: object, chart: str | None, starters: list
     return min(fits, key=lambda s: s.kw) if fits else None
 
 
-def starter_for_load(rating: object, units: object, load_type_chart: object, starters: StarterList | None) -> Starter | None:
+def starter_for_load(rating: object, units: object, load_type_chart: object, starters: StarterList | None,
+                     volts: object = None) -> Starter | None:
     if starters is None:
         return None
-    return starter_for(rating, units, chart_for(load_type_chart, starters.default_chart), starters.items)
+    return starter_for(rating, units, chart_for(load_type_chart, starters.default_chart), starters.items, volts)
+
+
+def starter_problems(volts: object, load_type_chart: object, starters: StarterList | None, s: Starter | None,
+                     motor_flc: object = None, motor_volts: object = None) -> list[str]:
+    """What is wrong with a load's starter, in words (nothing: []):
+    - its chart has no row for the load's voltage, so it gets no starter;
+    - its motor's full load current, at the load's voltage, is outside the overload's setting range."""
+    if starters is None:
+        return []
+    chart = chart_for(load_type_chart, starters.default_chart)
+    if not chart:
+        return []
+    out: list[str] = []
+    v = _number(volts)
+    of_chart = chart_rows(chart, starters.items)
+    if v is not None and of_chart and not chart_rows(chart, starters.items, v):
+        made_for = sorted({class_range(voltage_class(x.voltage)) for x in of_chart} - {""})
+        out.append(f"No starter is matched: chart {chart} is for {' and '.join(made_for)}, the load is {v:g} V")
+    flc = flc_at(motor_flc, motor_volts, volts)
+    if s is not None and flc is not None and s.range_min is not None:
+        top = s.range_max if s.range_max is not None else s.range_min
+        if flc < s.range_min - 1e-9 or flc > top + 1e-9:
+            at = f" at {v:g} V" if v is not None else ""
+            out.append(f"The motor's full load current ({flc:.3g} A{at}) is outside the overload's setting range "
+                       f"({s.range_min:g} to {top:g} A)")
+    return out
 
 
 def starter_fields(s: Starter | None) -> dict[str, object]:

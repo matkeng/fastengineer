@@ -158,16 +158,25 @@ def _number(v: object) -> float | None:
         return None
 
 
+#: The voltage classes: (from, to, class), both ends included.
+VOLTAGE_CLASSES: tuple[tuple[int, int, int], ...] = ((200, 240, 240), (380, 415, 400), (440, 480, 480), (550, 600, 600), (660, 690, 690))
+
+
 def voltage_class(volts: object) -> int | None:
-    """The drives' voltage class for a load's voltage: 200-240 -> 240, 380-415 -> 400, 440-480 -> 480,
-    550-600 -> 600, 660-690 -> 690."""
+    """The voltage class of a voltage: 200-240 -> 240, 380-415 -> 400, 440-480 -> 480,
+    550-600 -> 600, 660-690 -> 690. None for a voltage in none of them."""
     v = _number(volts)
     if v is None:
         return None
-    for lo, hi, cls in ((200, 240, 240), (380, 415, 400), (440, 480, 480), (550, 600, 600), (660, 690, 690)):
+    for lo, hi, cls in VOLTAGE_CLASSES:
         if lo <= v <= hi:
             return cls
     return None
+
+
+def class_range(cls: int | None) -> str:
+    """A voltage class in words: 400 -> "380-415 V"."""
+    return next((f"{lo}-{hi} V" for lo, hi, c in VOLTAGE_CLASSES if c == cls), "")
 
 
 #: The voltage ranges a drive can be matched in, for messages.

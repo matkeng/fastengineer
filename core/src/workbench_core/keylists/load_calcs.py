@@ -265,8 +265,10 @@ def supply_chain(row: LoadListRow, by_ref: dict[str, LoadListRow]) -> list[str]:
 
 def load_cells(row: LoadListRow, load_types: dict[str, LoadType], areas: dict[str, tuple[str, str]],
                by_ref: dict[str, LoadListRow], motors: list | None = None, drives: list | None = None,
-               starters=None, load_factors: list | None = None) -> dict[str, object]:
-    """What an expression about a load can refer to, by lower-case name: the app's tags for it,
+               starters=None, load_factors: list | None = None, starter_issues: list[str] | None = None) -> dict[str, object]:
+    """`starter_issues`: a list that is given what is wrong with the load's starter (starters.starter_problems).
+
+    What an expression about a load can refer to, by lower-case name: the app's tags for it,
     its own values (a number staying a number; a blank one leaves what the app works out), its
     cable, <<supplychain>>: the panels it is fed from, nearest first (see supply_chain), and
     <<Motor.…>>: the Motor Data row its rating and poles match (keylists.motors; blank if none)."""
@@ -284,10 +286,13 @@ def load_cells(row: LoadListRow, load_types: dict[str, LoadType], areas: dict[st
                        flc_at(m.flc, m.voltage, cells.get("voltage")) if m else None,
                        cells.get("drive_duty"), cells.get("drive_enclosure"), drives or [])
     cells |= {f"drive.{k}": v for k, v in drive_fields(x, cells.get("drive_duty")).items()}
-    from .starters import starter_fields, starter_for_load
+    from .starters import starter_fields, starter_for_load, starter_problems
     lt = load_types.get(row.load_type_id or "")
-    s = starter_for_load(cells.get("rating"), cells.get("units"), lt.starter_chart if lt else "", starters)
+    s = starter_for_load(cells.get("rating"), cells.get("units"), lt.starter_chart if lt else "", starters, cells.get("voltage"))
     cells |= {f"starter.{k}": v for k, v in starter_fields(s).items()}
+    if starter_issues is not None:
+        starter_issues.extend(starter_problems(cells.get("voltage"), lt.starter_chart if lt else "", starters, s,
+                                               m.flc if m else None, m.voltage if m else None))
     from .load_factors import effective_factors
     cells |= {f"loadfactor.{k}": v for k, v in effective_factors(row, cells.get("equiptype"), load_factors or [])[0].items()}
     cells |= {f: ("" if getattr(row, f) is None else getattr(row, f)) for f in FACTOR_FIELDS}
@@ -319,10 +324,12 @@ def apply_calcs(rows: list[LoadListRow], fields: LoadFields, load_types: dict[st
                     [(_Expr.of(ch.rule), ch) for ch in calcs[k].checks]) for k in keys}
     from .drives import VOLTAGE_RANGES, voltage_class
     uses_drive = {k: any(r.startswith("drive.") for r in _calc_refs(calcs[k])) for k in keys}
+    uses_starter = {k: any(r.startswith("starter.") for r in _calc_refs(calcs[k])) for k in keys}
     by_ref = {r.ref(): r for r in rows}
     ai = make_interpreter()
     for row in rows:
-        cells = load_cells(row, load_types, areas, by_ref, motors, drives, starters, load_factors)
+        starter_issues: list[str] = []
+        cells = load_cells(row, load_types, areas, by_ref, motors, drives, starters, load_factors, starter_issues)
         issues: list[CalcIssue] = []
         volts = cells.get("voltage")
         no_class = volts not in (None, "") and voltage_class(volts) is None
@@ -331,6 +338,8 @@ def apply_calcs(rows: list[LoadListRow], fields: LoadFields, load_types: dict[st
             if uses_drive[k] and no_class:  # the drive's values are blank: say why
                 issues.append(CalcIssue(field=k, severity="warning",
                                         message=f"No drive is matched: {volts} V is not {VOLTAGE_RANGES}"))
+            if uses_starter[k]:
+                issues.extend(CalcIssue(field=k, severity="warning", message=m) for m in starter_issues)
             applies, why = (True, None) if not test.code and not test.problem else test.run(ai, cells)
             if why:
                 issues.append(CalcIssue(field=k, severity="error", message=f"Applies when can't be worked out: {why}"))

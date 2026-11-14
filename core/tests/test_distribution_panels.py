@@ -62,6 +62,11 @@ def test_findings() -> None:
     text = " ".join(s.findings)
     assert "3 load(s) supplied from this panel" in text and "QW1" in text and "upstream CB" in text
     assert resolve(_panel(load_ref=None, tag="DP-9"), LOADS, TYPES).findings[0].startswith("Not linked")
+    # a breaker smaller than the current of its circuit: 3000 W at 240 V and 0.85 is 14.7 A
+    p = _panel(entries=[PanelEntry(way=1, pole="R", kind="other", description="Heater", rows=[PoleValues(cb_rating=10, qty=1, watts_each=3000)]),
+                        PanelEntry(way=2, pole="R", kind="other", description="Light", rows=[PoleValues(cb_rating=16, qty=1, watts_each=3000)])])
+    found = [f for f in resolve(p, LOADS, TYPES).findings if "smaller than their load current" in f]
+    assert found == ["Circuit breaker(s) smaller than their load current: QR1 (14.7 A on a 10 A breaker)."]
 
 
 def test_single_phase() -> None:

@@ -275,7 +275,7 @@ class Links:
         from .starters import starter_fields, starter_for_load
 
         t = self.load_types.get(getattr(row, "load_type_id", None) or "")
-        s = starter_for_load(flat.get("rating"), flat.get("units"), t.starter_chart if t else "", self.starters)
+        s = starter_for_load(flat.get("rating"), flat.get("units"), t.starter_chart if t else "", self.starters, flat.get("voltage"))
         return None if s is None else Record("starter", dict(starter_fields(s)), name=s.chart)
 
     def load_factor(self, load, flat: dict[str, object]):
